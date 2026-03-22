@@ -1,0 +1,25 @@
+{
+  "DemoUsers": [
+    {
+      "Email": "admin@demo.com",
+      "Password": "Admin123!",
+      "FirstName": "Admin",
+      "LastName": "User",
+      "RoleName": "Admin"
+    },
+    {
+      "Email": "client@demo.com",
+      "Password": "Client123!",
+      "FirstName": "Demo",
+      "LastName": "Client",
+      "RoleName": "Client"
+    },
+    {
+      "Email": "accountant@demo.com",
+      "Password": "Acct123!",
+      "FirstName": "Demo",
+      "LastName": "Accountant",
+      "RoleName": "Accountant"
+    }
+  ]
+}

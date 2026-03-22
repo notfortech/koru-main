@@ -1,0 +1,350 @@
+using System.Security.Claims;
+using Microsoft.Extensions.Logging;
+using StudioTechBI.Application.DTOs.Auth;
+using StudioTechBI.Application.Interfaces;
+using StudioTechBI.Domain.Entities;
+using StudioTechBI.Domain.Interfaces;
+
+namespace StudioTechBI.Application.Services;
+
+public class AuthService : BaseService, IAuthService
+{
+    private readonly IRepository<User> _userRepository;
+    private readonly IRepository<Role> _roleRepository;
+    private readonly IRepository<UserRole> _userRoleRepository;
+    private readonly IRepository<Client> _clientRepository;
+    private readonly IRepository<RegistrationAttempt> _registrationAttemptRepository;
+    private readonly IJwtTokenService _jwtTokenService;
+    private readonly IUnitOfWork _unitOfWork;
+    private readonly ILogger<AuthService> _logger;
+    private readonly IClientByCompanyQuery _clientByCompanyQuery;
+
+    public AuthService(
+        IRepository<User> userRepository,
+        IRepository<Role> roleRepository,
+        IRepository<UserRole> userRoleRepository,
+        IRepository<Client> clientRepository,
+        IRepository<RegistrationAttempt> registrationAttemptRepository,
+        IJwtTokenService jwtTokenService,
+        IUnitOfWork unitOfWork,
+        ILogger<AuthService> logger,
+        IClientByCompanyQuery clientByCompanyQuery)
+        : base(unitOfWork)
+    {
+        _userRepository = userRepository;
+        _roleRepository = roleRepository;
+        _userRoleRepository = userRoleRepository;
+        _clientRepository = clientRepository;
+        _registrationAttemptRepository = registrationAttemptRepository;
+        _jwtTokenService = jwtTokenService;
+        _unitOfWork = unitOfWork;
+        _logger = logger;
+        _clientByCompanyQuery = clientByCompanyQuery;
+    }
+
+    public async Task<LoginResponseDto> LoginAsync(LoginRequestDto request, CancellationToken cancellationToken = default)
+    {
+        var user = await _userRepository.GetByPredicateAsync(u => u.Email == request.Email.ToLower() && !u.IsDeleted, cancellationToken);
+
+        if (user == null || !VerifyPassword(request.Password, user.PasswordHash))
+        {
+            throw new UnauthorizedAccessException("Invalid email or password");
+        }
+
+        if (!user.IsActive)
+        {
+            throw new UnauthorizedAccessException("User account is inactive");
+        }
+
+        var roles = await GetUserRolesAsync(user.Id, cancellationToken);
+        var client = await ResolveClientForUserAsync(user, cancellationToken);
+        var claims = GenerateClaims(user, roles, client);
+
+        var accessToken = _jwtTokenService.GenerateAccessToken(claims);
+        var refreshToken = _jwtTokenService.GenerateRefreshToken();
+
+        user.RefreshToken = refreshToken;
+        user.RefreshTokenExpiryTime = DateTime.UtcNow.AddDays(7);
+        user.LastLoginAt = DateTime.UtcNow;
+
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        return new LoginResponseDto
+        {
+            AccessToken = accessToken,
+            RefreshToken = refreshToken,
+            ExpiresAt = DateTime.UtcNow.AddMinutes(60),
+            User = MapUserToDto(user, roles, client),
+            ClientId = client?.Id ?? user.ClientId,
+            ClientCode = client?.ClientCode ?? client?.BlobFolderPath
+        };
+    }
+
+    public async Task<LoginResponseDto> RegisterAsync(RegisterRequestDto request, CancellationToken cancellationToken = default)
+    {
+        var attempt = new RegistrationAttempt
+        {
+            Id = Guid.NewGuid(),
+            Email = request.Email.ToLower(),
+            Success = false,
+            FailureReason = null
+        };
+        await _registrationAttemptRepository.AddAsync(attempt, cancellationToken);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+        _logger.LogInformation("Registration attempt written to DB (pending). Email={Email}", attempt.Email);
+
+        try
+        {
+            var existingUser = await _userRepository.GetByPredicateAsync(u => u.Email == request.Email.ToLower() && !u.IsDeleted, cancellationToken);
+
+            if (existingUser != null)
+            {
+                attempt.FailureReason = "User with this email already exists";
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
+                _logger.LogInformation("Registration attempt recorded in DB: Failure. Email={Email}, Reason={Reason}", attempt.Email, attempt.FailureReason);
+                throw new InvalidOperationException(attempt.FailureReason);
+            }
+
+            if (!string.IsNullOrEmpty(request.ConfirmPassword) && request.Password != request.ConfirmPassword)
+            {
+                attempt.FailureReason = "Passwords do not match";
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
+                _logger.LogInformation("Registration attempt recorded in DB: Failure. Email={Email}, Reason={Reason}", attempt.Email, attempt.FailureReason);
+                throw new InvalidOperationException(attempt.FailureReason);
+            }
+
+            var passwordHash = HashPassword(request.Password);
+
+            var user = new User
+            {
+                Id = Guid.NewGuid(),
+                Email = request.Email.Trim().ToLowerInvariant(),
+                FirstName = string.IsNullOrWhiteSpace(request.FirstName) ? "User" : request.FirstName.Trim(),
+                LastName = (request.LastName ?? "").Trim(),
+                PasswordHash = passwordHash,
+                IsActive = false
+            };
+
+            await _userRepository.AddAsync(user, cancellationToken);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+            var clientRole = await _roleRepository.GetByPredicateAsync(r => r.Name == "Client" && !r.IsDeleted, cancellationToken);
+            if (clientRole != null)
+            {
+                var userRole = new UserRole
+                {
+                    UserId = user.Id,
+                    RoleId = clientRole.Id
+                };
+                await _userRoleRepository.AddAsync(userRole, cancellationToken);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
+            }
+
+            var roles = clientRole != null ? new List<string> { clientRole.Name } : new List<string>();
+            var client = await ResolveClientForUserAsync(user, cancellationToken);
+            var claims = GenerateClaims(user, roles, client);
+
+            var accessToken = _jwtTokenService.GenerateAccessToken(claims);
+            var refreshToken = _jwtTokenService.GenerateRefreshToken();
+
+            user.RefreshToken = refreshToken;
+            user.RefreshTokenExpiryTime = DateTime.UtcNow.AddDays(7);
+
+            attempt.Success = true;
+            attempt.FailureReason = null;
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            _logger.LogInformation("Registration attempt recorded in DB: Success. Email={Email}", attempt.Email);
+
+            return new LoginResponseDto
+            {
+                AccessToken = accessToken,
+                RefreshToken = refreshToken,
+                ExpiresAt = DateTime.UtcNow.AddMinutes(60),
+                User = MapUserToDto(user, roles, client),
+                ClientId = client?.Id ?? user.ClientId,
+                ClientCode = client?.ClientCode ?? client?.BlobFolderPath
+            };
+        }
+        catch (InvalidOperationException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            attempt.FailureReason = ex.Message;
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            _logger.LogInformation("Registration attempt recorded in DB: Failure. Email={Email}, Reason={Reason}", attempt.Email, attempt.FailureReason);
+            throw;
+        }
+    }
+
+    public async Task<LoginResponseDto> RefreshTokenAsync(RefreshTokenRequestDto request, CancellationToken cancellationToken = default)
+    {
+        var principal = _jwtTokenService.GetPrincipalFromExpiredToken(request.AccessToken);
+
+        if (principal == null)
+        {
+            throw new UnauthorizedAccessException("Invalid access token");
+        }
+
+        var emailClaim = principal.FindFirst(ClaimTypes.Email)?.Value;
+        if (string.IsNullOrEmpty(emailClaim))
+        {
+            throw new UnauthorizedAccessException("Invalid token claims");
+        }
+
+        var user = await _userRepository.GetByPredicateAsync(u => u.Email == emailClaim && !u.IsDeleted, cancellationToken);
+
+        if (user == null || user.RefreshToken != request.RefreshToken || user.RefreshTokenExpiryTime < DateTime.UtcNow)
+        {
+            throw new UnauthorizedAccessException("Invalid refresh token");
+        }
+
+        var roles = await GetUserRolesAsync(user.Id, cancellationToken);
+        var client = await ResolveClientForUserAsync(user, cancellationToken);
+        var claims = GenerateClaims(user, roles, client);
+
+        var accessToken = _jwtTokenService.GenerateAccessToken(claims);
+        var refreshToken = _jwtTokenService.GenerateRefreshToken();
+
+        user.RefreshToken = refreshToken;
+        user.RefreshTokenExpiryTime = DateTime.UtcNow.AddDays(7);
+
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        return new LoginResponseDto
+        {
+            AccessToken = accessToken,
+            RefreshToken = refreshToken,
+            ExpiresAt = DateTime.UtcNow.AddMinutes(60),
+            User = MapUserToDto(user, roles, client),
+            ClientId = client?.Id ?? user.ClientId,
+            ClientCode = client?.ClientCode ?? client?.BlobFolderPath
+        };
+    }
+
+    public async Task<bool> RevokeTokenAsync(string userId, CancellationToken cancellationToken = default)
+    {
+        if (!Guid.TryParse(userId, out var userGuid))
+        {
+            return false;
+        }
+
+        var user = await _userRepository.GetByIdAsync(userGuid, cancellationToken);
+
+        if (user == null)
+        {
+            return false;
+        }
+
+        user.RefreshToken = null;
+        user.RefreshTokenExpiryTime = null;
+
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        return true;
+    }
+
+    private async Task<List<string>> GetUserRolesAsync(Guid userId, CancellationToken cancellationToken)
+    {
+        var userRoles = await _userRoleRepository.FindAsync(
+            ur => ur.UserId == userId && !ur.IsDeleted,
+            cancellationToken);
+
+        var roleIds = userRoles.Select(ur => ur.RoleId).ToList();
+        var roles = new List<string>();
+
+        foreach (var roleId in roleIds)
+        {
+            var role = await _roleRepository.GetByIdAsync(roleId, cancellationToken);
+            if (role != null && !role.IsDeleted)
+            {
+                roles.Add(role.Name);
+            }
+        }
+
+        return roles;
+    }
+
+    /// <summary>Resolve client for user: when user is active, try company path (User → CompanyUsers → Company → Client) first; otherwise use User.ClientId.</summary>
+    private async Task<Client?> ResolveClientForUserAsync(User user, CancellationToken cancellationToken)
+    {
+        if (user.IsActive)
+        {
+            var fromCompany = await _clientByCompanyQuery.GetClientForUserEmailAsync(user.Email, cancellationToken);
+            if (fromCompany != null)
+                return await _clientRepository.GetByIdAsync(fromCompany.ClientId, cancellationToken);
+        }
+        return await GetClientForUserAsync(user, cancellationToken);
+    }
+
+    /// <summary>Load client for user (for claims). Logs when user has no client so admins can fix assignment and have user re-login.</summary>
+    private async Task<Client?> GetClientForUserAsync(User user, CancellationToken cancellationToken)
+    {
+        if (!user.ClientId.HasValue)
+        {
+            _logger.LogWarning("User {Email} has no ClientId. Assign via POST /api/admin/clients/{{clientId}}/users/{{userId}}, then have user log in again.", user.Email);
+            return null;
+        }
+        var client = await _clientRepository.GetByIdAsync(user.ClientId.Value, cancellationToken);
+        if (client == null)
+            _logger.LogWarning("User {Email} has ClientId {ClientId} but client not found (deleted?). No client_code claim.", user.Email, user.ClientId);
+        return client;
+    }
+
+    private List<Claim> GenerateClaims(User user, List<string> roles, Client? client)
+    {
+        var claims = new List<Claim>
+        {
+            new(ClaimTypes.NameIdentifier, user.Id.ToString()),
+            new(ClaimTypes.Email, user.Email),
+            new(ClaimTypes.Name, $"{user.FirstName} {user.LastName}"),
+            new(ClaimTypes.GivenName, user.FirstName),
+            new(ClaimTypes.Surname, user.LastName)
+        };
+
+        foreach (var role in roles)
+        {
+            claims.Add(new Claim(ClaimTypes.Role, role));
+        }
+
+        var folderName = client?.ClientCode ?? client?.BlobFolderPath;
+        if (!string.IsNullOrEmpty(folderName))
+            claims.Add(new Claim("client_code", folderName));
+
+        return claims;
+    }
+
+    private UserDto MapUserToDto(User user, List<string> roles, Client? client)
+    {
+        return new UserDto
+        {
+            Id = user.Id,
+            Email = user.Email,
+            FirstName = user.FirstName,
+            LastName = user.LastName,
+            PhoneNumber = user.PhoneNumber,
+            IsActive = user.IsActive,
+            ClientId = client?.Id ?? user.ClientId,
+            ClientCode = client?.ClientCode ?? client?.BlobFolderPath,
+            Roles = roles
+        };
+    }
+
+    public static string HashPassword(string password)
+    {
+        return BCrypt.Net.BCrypt.HashPassword(password, workFactor: 11);
+    }
+
+    public static bool VerifyPassword(string password, string hash)
+    {
+        try
+        {
+            return BCrypt.Net.BCrypt.Verify(password, hash);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+}

@@ -1,0 +1,11 @@
+E:\Kamakshi Projects\STAR\koru-main\StudioTechBi.Backend\StudioTechBI.Domain\bin\Debug\net8.0\StudioTechBI.Domain.deps.json
+E:\Kamakshi Projects\STAR\koru-main\StudioTechBi.Backend\StudioTechBI.Domain\bin\Debug\net8.0\StudioTechBI.Domain.dll
+E:\Kamakshi Projects\STAR\koru-main\StudioTechBi.Backend\StudioTechBI.Domain\bin\Debug\net8.0\StudioTechBI.Domain.pdb
+E:\Kamakshi Projects\STAR\koru-main\StudioTechBi.Backend\StudioTechBI.Domain\obj\Debug\net8.0\StudioTechBI.Domain.GeneratedMSBuildEditorConfig.editorconfig
+E:\Kamakshi Projects\STAR\koru-main\StudioTechBi.Backend\StudioTechBI.Domain\obj\Debug\net8.0\StudioTechBI.Domain.AssemblyInfoInputs.cache
+E:\Kamakshi Projects\STAR\koru-main\StudioTechBi.Backend\StudioTechBI.Domain\obj\Debug\net8.0\StudioTechBI.Domain.AssemblyInfo.cs
+E:\Kamakshi Projects\STAR\koru-main\StudioTechBi.Backend\StudioTechBI.Domain\obj\Debug\net8.0\StudioTechBI.Domain.csproj.CoreCompileInputs.cache
+E:\Kamakshi Projects\STAR\koru-main\StudioTechBi.Backend\StudioTechBI.Domain\obj\Debug\net8.0\StudioTechBI.Domain.dll
+E:\Kamakshi Projects\STAR\koru-main\StudioTechBi.Backend\StudioTechBI.Domain\obj\Debug\net8.0\refint\StudioTechBI.Domain.dll
+E:\Kamakshi Projects\STAR\koru-main\StudioTechBi.Backend\StudioTechBI.Domain\obj\Debug\net8.0\StudioTechBI.Domain.pdb
+E:\Kamakshi Projects\STAR\koru-main\StudioTechBi.Backend\StudioTechBI.Domain\obj\Debug\net8.0\ref\StudioTechBI.Domain.dll

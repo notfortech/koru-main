@@ -1,0 +1,154 @@
+{
+  "format": 1,
+  "restore": {
+    "E:\\Kamakshi Projects\\STAR\\koru-main\\StudioTechBI.Backend\\StudioTechBI.Application\\StudioTechBI.Application.csproj": {}
+  },
+  "projects": {
+    "E:\\Kamakshi Projects\\STAR\\koru-main\\StudioTechBI.Backend\\StudioTechBI.Application\\StudioTechBI.Application.csproj": {
+      "version": "1.0.0",
+      "restore": {
+        "projectUniqueName": "E:\\Kamakshi Projects\\STAR\\koru-main\\StudioTechBI.Backend\\StudioTechBI.Application\\StudioTechBI.Application.csproj",
+        "projectName": "StudioTechBI.Application",
+        "projectPath": "E:\\Kamakshi Projects\\STAR\\koru-main\\StudioTechBI.Backend\\StudioTechBI.Application\\StudioTechBI.Application.csproj",
+        "packagesPath": "C:\\Users\\Q tech\\.nuget\\packages\\",
+        "outputPath": "E:\\Kamakshi Projects\\STAR\\koru-main\\StudioTechBI.Backend\\StudioTechBI.Application\\obj\\",
+        "projectStyle": "PackageReference",
+        "configFilePaths": [
+          "C:\\Users\\Q tech\\AppData\\Roaming\\NuGet\\NuGet.Config"
+        ],
+        "originalTargetFrameworks": [
+          "net8.0"
+        ],
+        "sources": {
+          "https://api.nuget.org/v3/index.json": {}
+        },
+        "frameworks": {
+          "net8.0": {
+            "targetAlias": "net8.0",
+            "projectReferences": {
+              "E:\\Kamakshi Projects\\STAR\\koru-main\\StudioTechBI.Backend\\StudioTechBI.Domain\\StudioTechBI.Domain.csproj": {
+                "projectPath": "E:\\Kamakshi Projects\\STAR\\koru-main\\StudioTechBI.Backend\\StudioTechBI.Domain\\StudioTechBI.Domain.csproj"
+              }
+            }
+          }
+        },
+        "warningProperties": {
+          "warnAsError": [
+            "NU1605"
+          ]
+        },
+        "restoreAuditProperties": {
+          "enableAudit": "true",
+          "auditLevel": "low",
+          "auditMode": "direct"
+        }
+      },
+      "frameworks": {
+        "net8.0": {
+          "targetAlias": "net8.0",
+          "dependencies": {
+            "BCrypt.Net-Next": {
+              "target": "Package",
+              "version": "[4.0.3, )"
+            },
+            "Microsoft.Extensions.DependencyInjection.Abstractions": {
+              "target": "Package",
+              "version": "[8.0.0, )"
+            },
+            "Microsoft.Extensions.Logging.Abstractions": {
+              "target": "Package",
+              "version": "[8.0.0, )"
+            },
+            "Microsoft.Extensions.Options": {
+              "target": "Package",
+              "version": "[8.0.0, )"
+            },
+            "Microsoft.Extensions.Options.ConfigurationExtensions": {
+              "target": "Package",
+              "version": "[8.0.0, )"
+            },
+            "Microsoft.Identity.Client": {
+              "target": "Package",
+              "version": "[4.61.3, )"
+            }
+          },
+          "imports": [
+            "net461",
+            "net462",
+            "net47",
+            "net471",
+            "net472",
+            "net48",
+            "net481"
+          ],
+          "assetTargetFallback": true,
+          "warn": true,
+          "frameworkReferences": {
+            "Microsoft.NETCore.App": {
+              "privateAssets": "all"
+            }
+          },
+          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\8.0.418/PortableRuntimeIdentifierGraph.json"
+        }
+      }
+    },
+    "E:\\Kamakshi Projects\\STAR\\koru-main\\StudioTechBI.Backend\\StudioTechBI.Domain\\StudioTechBI.Domain.csproj": {
+      "version": "1.0.0",
+      "restore": {
+        "projectUniqueName": "E:\\Kamakshi Projects\\STAR\\koru-main\\StudioTechBI.Backend\\StudioTechBI.Domain\\StudioTechBI.Domain.csproj",
+        "projectName": "StudioTechBI.Domain",
+        "projectPath": "E:\\Kamakshi Projects\\STAR\\koru-main\\StudioTechBI.Backend\\StudioTechBI.Domain\\StudioTechBI.Domain.csproj",
+        "packagesPath": "C:\\Users\\Q tech\\.nuget\\packages\\",
+        "outputPath": "E:\\Kamakshi Projects\\STAR\\koru-main\\StudioTechBI.Backend\\StudioTechBI.Domain\\obj\\",
+        "projectStyle": "PackageReference",
+        "configFilePaths": [
+          "C:\\Users\\Q tech\\AppData\\Roaming\\NuGet\\NuGet.Config"
+        ],
+        "originalTargetFrameworks": [
+          "net8.0"
+        ],
+        "sources": {
+          "https://api.nuget.org/v3/index.json": {}
+        },
+        "frameworks": {
+          "net8.0": {
+            "targetAlias": "net8.0",
+            "projectReferences": {}
+          }
+        },
+        "warningProperties": {
+          "warnAsError": [
+            "NU1605"
+          ]
+        },
+        "restoreAuditProperties": {
+          "enableAudit": "true",
+          "auditLevel": "low",
+          "auditMode": "direct"
+        }
+      },
+      "frameworks": {
+        "net8.0": {
+          "targetAlias": "net8.0",
+          "imports": [
+            "net461",
+            "net462",
+            "net47",
+            "net471",
+            "net472",
+            "net48",
+            "net481"
+          ],
+          "assetTargetFallback": true,
+          "warn": true,
+          "frameworkReferences": {
+            "Microsoft.NETCore.App": {
+              "privateAssets": "all"
+            }
+          },
+          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\8.0.418/PortableRuntimeIdentifierGraph.json"
+        }
+      }
+    }
+  }
+}

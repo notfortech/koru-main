@@ -1,0 +1,15 @@
+E:\Kamakshi Projects\STAR\koru-main\StudioTechBi.Backend\StudioTechBI.Application\bin\Debug\net8.0\StudioTechBI.Application.deps.json
+E:\Kamakshi Projects\STAR\koru-main\StudioTechBi.Backend\StudioTechBI.Application\bin\Debug\net8.0\StudioTechBI.Application.dll
+E:\Kamakshi Projects\STAR\koru-main\StudioTechBi.Backend\StudioTechBI.Application\bin\Debug\net8.0\StudioTechBI.Application.pdb
+E:\Kamakshi Projects\STAR\koru-main\StudioTechBi.Backend\StudioTechBI.Application\bin\Debug\net8.0\StudioTechBI.Domain.dll
+E:\Kamakshi Projects\STAR\koru-main\StudioTechBi.Backend\StudioTechBI.Application\bin\Debug\net8.0\StudioTechBI.Domain.pdb
+E:\Kamakshi Projects\STAR\koru-main\StudioTechBi.Backend\StudioTechBI.Application\obj\Debug\net8.0\StudioTechBI.Application.csproj.AssemblyReference.cache
+E:\Kamakshi Projects\STAR\koru-main\StudioTechBi.Backend\StudioTechBI.Application\obj\Debug\net8.0\StudioTechBI.Application.GeneratedMSBuildEditorConfig.editorconfig
+E:\Kamakshi Projects\STAR\koru-main\StudioTechBi.Backend\StudioTechBI.Application\obj\Debug\net8.0\StudioTechBI.Application.AssemblyInfoInputs.cache
+E:\Kamakshi Projects\STAR\koru-main\StudioTechBi.Backend\StudioTechBI.Application\obj\Debug\net8.0\StudioTechBI.Application.AssemblyInfo.cs
+E:\Kamakshi Projects\STAR\koru-main\StudioTechBi.Backend\StudioTechBI.Application\obj\Debug\net8.0\StudioTechBI.Application.csproj.CoreCompileInputs.cache
+E:\Kamakshi Projects\STAR\koru-main\StudioTechBi.Backend\StudioTechBI.Application\obj\Debug\net8.0\StudioTe.68051441.Up2Date
+E:\Kamakshi Projects\STAR\koru-main\StudioTechBi.Backend\StudioTechBI.Application\obj\Debug\net8.0\StudioTechBI.Application.dll
+E:\Kamakshi Projects\STAR\koru-main\StudioTechBi.Backend\StudioTechBI.Application\obj\Debug\net8.0\refint\StudioTechBI.Application.dll
+E:\Kamakshi Projects\STAR\koru-main\StudioTechBi.Backend\StudioTechBI.Application\obj\Debug\net8.0\StudioTechBI.Application.pdb
+E:\Kamakshi Projects\STAR\koru-main\StudioTechBi.Backend\StudioTechBI.Application\obj\Debug\net8.0\ref\StudioTechBI.Application.dll

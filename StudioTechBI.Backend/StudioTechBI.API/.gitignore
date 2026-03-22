@@ -1,0 +1,14 @@
+# Local credentials - do not commit (copy from appsettings.Local.example.json)
+appsettings.Local.json
+
+# Build / IDE
+bin/
+obj/
+*.user
+.vs/
+
+# Logs
+logs/
+
+# SQLite (optional: uncomment if you don't want to commit the dev database)
+# *.db

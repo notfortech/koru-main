@@ -1,0 +1,24 @@
+namespace StudioTechBI.Domain.Entities;
+
+public class Client : BaseEntity
+{
+    /// <summary>Folder key used in blob paths and report API (e.g. AU-001).</summary>
+    public string? ClientCode { get; set; }
+    public string ClientName { get; set; } = string.Empty;
+    public string? Industry { get; set; }
+    public string? BlobFolderPath { get; set; }
+    public string? TemplateVersion { get; set; }
+    public bool IsActive { get; set; } = true;
+    public DateTime CreatedDate { get; set; } = DateTime.UtcNow;
+
+    // Power BI identifiers are now sourced from reporting.PowerBiAssets (not stored in dbo.Clients).
+    // Keep these properties for backward compatibility with existing DTOs/code, but do not map them in EF.
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public string? PowerBIWorkspaceId { get; set; }
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public string? PowerBIDatasetId { get; set; }
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public string? PowerBIReportId { get; set; }
+
+    public ICollection<ProcessingJob> ProcessingJobs { get; set; } = new List<ProcessingJob>();
+}
