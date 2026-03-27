@@ -28,13 +28,13 @@ jobs:
         run: dotnet build StudioTechBI.Backend/StudioTechBI.API --configuration Release --no-restore
 
       - name: Publish
-        run: dotnet publish StudioTechBI.Backend/StudioTechBI.API -c Release -o ${{ env.DOTNET_ROOT }}/myapp
+        run: dotnet publish StudioTechBI.Backend/StudioTechBI.API -c Release -o publish
 
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
         with:
           name: dotnet-app
-          path: ${{ env.DOTNET_ROOT }}/myapp
+          path: publish
 
   deploy:
     runs-on: ubuntu-latest
