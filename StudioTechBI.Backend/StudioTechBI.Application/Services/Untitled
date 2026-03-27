@@ -1,35 +1,18 @@
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Logging;
-using System.Net.Http.Headers;
-using System.Text;
-using System.Text.Json;
-using StudioTechBI.Application.DTOs.AI;
-
 public class AIInsightsService
 {
     private readonly IConfiguration _config;
     private readonly HttpClient _httpClient;
-    private readonly ILogger<AIInsightsService> _logger;
 
-    public AIInsightsService(IConfiguration config, HttpClient httpClient, ILogger<AIInsightsService> logger)
+    public AIInsightsService(IConfiguration config, HttpClient httpClient)
     {
         _config = config;
         _httpClient = httpClient;
-        _logger = logger;
     }
 
-    public async Task<string> GenerateInsights(DashboardSummaryDto summaryData)
+    public async Task<string> GenerateInsights(string summaryData)
     {
         var apiKey = _config["OpenAI:ApiKey"];
         var model = _config["OpenAI:Model"];
-        if (string.IsNullOrWhiteSpace(apiKey))
-        {
-            throw new InvalidOperationException("OpenAI API key is not configured.");
-        }
-        if (string.IsNullOrWhiteSpace(model))
-        {
-            throw new InvalidOperationException("OpenAI model is not configured.");
-        }
 
         _httpClient.DefaultRequestHeaders.Authorization =
             new AuthenticationHeaderValue("Bearer", apiKey);
@@ -37,22 +20,11 @@ public class AIInsightsService
         var prompt = $@"
 You are a senior financial analyst generating insights for a business dashboard.
 
-Analyze the following:
+Analyze the following data:
 
-Period: {summaryData.Period}
-Revenue: {summaryData.Revenue}
-Expenses: {summaryData.Expenses}
-Profit: {summaryData.Profit}
-Growth: {summaryData.GrowthPercentage}%
-Top Region: {summaryData.TopRegion}
+{summaryData}
 
-Focus on:
-- Trends
-- Cost efficiency
-- Profitability drivers
-- Any unusual patterns
-
-Return STRICT JSON:
+Return response STRICTLY in this JSON format:
 
 {{
   ""summary"": ""..."",
@@ -81,19 +53,19 @@ Return STRICT JSON:
 
         if (!response.IsSuccessStatusCode)
         {
-            _logger.LogWarning("OpenAI request failed with status code {StatusCode}.", (int)response.StatusCode);
-            throw new InvalidOperationException("AI provider request failed.");
+            var error = await response.Content.ReadAsStringAsync();
+            throw new Exception($"OpenAI Error: {error}");
         }
 
         var json = await response.Content.ReadAsStringAsync();
 
-        using var document = JsonDocument.Parse(json);
+        var result = JsonDocument.Parse(json);
 
-        return document
+        return result
             .RootElement
             .GetProperty("choices")[0]
             .GetProperty("message")
             .GetProperty("content")
-            .GetString() ?? string.Empty;
+            .GetString();
     }
 }

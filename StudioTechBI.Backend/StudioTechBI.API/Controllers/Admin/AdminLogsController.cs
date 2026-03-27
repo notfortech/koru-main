@@ -7,7 +7,7 @@ namespace StudioTechBI.API.Controllers.Admin;
 
 [ApiController]
 [Route("api/admin/logs")]
-[Authorize(Policy = AuthorizationPolicies.PortalAdminPolicy)]
+[Authorize(Roles = "Admin,SuperAdmin,OperationsAdmin,SupportAdmin")]
 public class AdminLogsController : ControllerBase
 {
     private readonly IAdminLoggingService _loggingService;

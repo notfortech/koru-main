@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using StudioTechBI.Application.Interfaces;
 using StudioTechBI.Application.Services;
@@ -7,6 +8,7 @@ namespace StudioTechBI.API.Controllers;
 
 [ApiController]
 [Route("api/powerbi")]
+[Authorize]
 public class PowerBIController : ControllerBase
 {
     private readonly PowerBIService _service;
@@ -71,32 +73,33 @@ public class PowerBIController : ControllerBase
             var result = await _service.GetEmbedToken(periodType, period, clientCodeOrId);
             return Ok(result);
         }
-        catch (InvalidOperationException ex)
+        catch (InvalidOperationException)
         {
             // Expected when blob master or reporting.PowerBiAssets is missing for this client — not a server fault.
             await _technicalLogWriter.LogAsync(
                 "PowerBIService.GetEmbedToken",
                 "Warning",
-                ex.Message,
-                ex.StackTrace,
+                "Power BI configuration missing for requested client or report type.",
+                null,
                 HttpContext.RequestAborted);
             return StatusCode(
                 StatusCodes.Status422UnprocessableEntity,
                 new
                 {
                     success = false,
-                    message = ex.Message,
+                    message = "Power BI report is not configured for the selected client.",
                     error = "PowerBiNotConfigured"
                 });
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            await _technicalLogWriter.LogAsync("PowerBIService.GetEmbedToken", "Error", $"Embed token failed: {ex.Message}", ex.StackTrace, HttpContext.RequestAborted);
+            await _technicalLogWriter.LogAsync("PowerBIService.GetEmbedToken", "Error", "Embed token request failed.", null, HttpContext.RequestAborted);
             throw;
         }
     }
 
     [HttpGet("reports")]
+    [Authorize(Roles = "Admin,SuperAdmin,OperationsAdmin,SupportAdmin")]
     public async Task<IActionResult> GetReports()
     {
         var result =
@@ -106,12 +109,17 @@ public class PowerBIController : ControllerBase
     }
 
     [HttpGet("ai-insights/{period}")]
+    [Authorize(Roles = "Admin,SuperAdmin,OperationsAdmin,SupportAdmin")]
     public async Task<IActionResult> GetAIInsights(
         string period,
-        [FromServices] AIInsightsService ai)
+        [FromQuery] string? periodType,
+        [FromQuery] string? clientCode,
+        [FromServices] AllInsightsService insights)
     {
-        var result =
-            await ai.GenerateInsights(period);
+        var result = await insights.GetInsights(
+            periodType ?? "monthly",
+            period,
+            clientCode);
 
         return Ok(result);
     }

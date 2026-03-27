@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.Json;
+using Microsoft.Extensions.Hosting;
 using StudioTechBI.Application.DTOs.Common;
 
 namespace StudioTechBI.API.Middleware;
@@ -8,11 +9,16 @@ public class ExceptionHandlingMiddleware
 {
     private readonly RequestDelegate _next;
     private readonly ILogger<ExceptionHandlingMiddleware> _logger;
+    private readonly bool _isProduction;
 
-    public ExceptionHandlingMiddleware(RequestDelegate next, ILogger<ExceptionHandlingMiddleware> logger)
+    public ExceptionHandlingMiddleware(
+        RequestDelegate next,
+        ILogger<ExceptionHandlingMiddleware> logger,
+        IHostEnvironment env)
     {
         _next = next;
         _logger = logger;
+        _isProduction = env.IsProduction();
     }
 
     public async Task InvokeAsync(HttpContext context)
@@ -28,14 +34,16 @@ public class ExceptionHandlingMiddleware
         }
     }
 
-    private static Task HandleExceptionAsync(HttpContext context, Exception exception)
+    private Task HandleExceptionAsync(HttpContext context, Exception exception)
     {
         context.Response.ContentType = "application/json";
         context.Response.StatusCode = (int)HttpStatusCode.InternalServerError;
 
         var response = ApiResponse<object>.ErrorResponse(
-            "An error occurred while processing your request.",
-            new List<string> { exception.Message }
+            _isProduction
+                ? "An error occurred while processing your request."
+                : "An error occurred while processing your request.",
+            _isProduction ? null : new List<string> { exception.Message }
         );
 
         var jsonOptions = new JsonSerializerOptions

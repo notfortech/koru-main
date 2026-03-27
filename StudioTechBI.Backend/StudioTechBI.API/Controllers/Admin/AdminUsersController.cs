@@ -10,7 +10,7 @@ namespace StudioTechBI.API.Controllers.Admin;
 
 [ApiController]
 [Route("api/admin/users")]
-[Authorize(Policy = AuthorizationPolicies.PortalAdminPolicy)]
+[Authorize(Roles = "Admin,SuperAdmin,OperationsAdmin,SupportAdmin")]
 public class AdminUsersController : BaseApiController
 {
     private readonly IAdminUserService _adminUserService;
@@ -28,9 +28,9 @@ public class AdminUsersController : BaseApiController
             var result = await _adminUserService.CreateAsync(dto, cancellationToken);
             return HandleResult(ApiResponse<AdminUserDto>.SuccessResponse(result, "User created."));
         }
-        catch (InvalidOperationException ex)
+        catch (InvalidOperationException)
         {
-            return HandleResult(ApiResponse<AdminUserDto>.ErrorResponse(ex.Message));
+            return HandleResult(ApiResponse<AdminUserDto>.ErrorResponse("User request could not be completed."));
         }
     }
 
@@ -61,9 +61,9 @@ public class AdminUsersController : BaseApiController
                 return NotFound();
             return HandleResult(ApiResponse<AdminUserDto>.SuccessResponse(result, "User updated."));
         }
-        catch (InvalidOperationException ex)
+        catch (InvalidOperationException)
         {
-            return HandleResult(ApiResponse<AdminUserDto>.ErrorResponse(ex.Message));
+            return HandleResult(ApiResponse<AdminUserDto>.ErrorResponse("User update request could not be completed."));
         }
     }
 

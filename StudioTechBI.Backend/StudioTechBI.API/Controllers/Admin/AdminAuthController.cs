@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
 using StudioTechBI.API.Authorization;
 using StudioTechBI.Application.DTOs.Admin;
 using StudioTechBI.Application.Interfaces;
@@ -12,10 +13,12 @@ namespace StudioTechBI.API.Controllers.Admin;
 public class AdminAuthController : ControllerBase
 {
     private readonly IAdminAuthService _authService;
+    private readonly ILogger<AdminAuthController> _logger;
 
-    public AdminAuthController(IAdminAuthService authService)
+    public AdminAuthController(IAdminAuthService authService, ILogger<AdminAuthController> logger)
     {
         _authService = authService;
+        _logger = logger;
     }
 
     [HttpPost("login")]
@@ -27,14 +30,19 @@ public class AdminAuthController : ControllerBase
             var result = await _authService.LoginAsync(request, cancellationToken);
             return Ok(result);
         }
-        catch (UnauthorizedAccessException ex)
+        catch (UnauthorizedAccessException)
         {
-            return Unauthorized(new { message = ex.Message });
+            return Unauthorized(new { message = "Invalid email or password." });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Unhandled exception during admin login.");
+            return StatusCode(500, new { message = "An error occurred during admin login." });
         }
     }
 
     [HttpGet("me")]
-    [Authorize(Policy = AuthorizationPolicies.PortalAdminPolicy)]
+    [Authorize(Roles = "Admin,SuperAdmin,OperationsAdmin,SupportAdmin")]
     public async Task<ActionResult<AdminMeDto>> Me(CancellationToken cancellationToken)
     {
         var adminIdClaim = User.FindFirstValue("AdminId") ?? User.FindFirstValue(ClaimTypes.NameIdentifier);

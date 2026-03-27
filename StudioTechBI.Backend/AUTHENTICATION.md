@@ -103,7 +103,8 @@ Authenticate user with email and password.
       "lastName": "Doe",
       "phoneNumber": "+1234567890",
       "isActive": true,
-      "roles": ["Admin"]
+      "roles": ["Admin"],
+      "hasAIInsights": true
     }
   },
   "message": "Login successful"
@@ -422,7 +423,7 @@ Sensitive information is excluded from logs:
 ```csharp
 options.AddPolicy("AllowAll", policy =>
 {
-    policy.AllowAnyOrigin()
+    policy.WithOrigins("https://yourdomain.com")
           .AllowAnyMethod()
           .AllowAnyHeader();
 });

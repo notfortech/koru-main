@@ -10,7 +10,7 @@ namespace StudioTechBI.API.Controllers.Admin;
 
 [ApiController]
 [Route("api/admin/clients")]
-[Authorize(Policy = AuthorizationPolicies.PortalAdminPolicy)]
+[Authorize(Roles = "Admin,SuperAdmin,OperationsAdmin,SupportAdmin")]
 public class AdminClientsController : BaseApiController
 {
     private readonly IClientService _clientService;
@@ -31,9 +31,9 @@ public class AdminClientsController : BaseApiController
                 new { id = client.ClientId },
                 ApiResponse<ClientDto>.SuccessResponse(client, "Client created."));
         }
-        catch (InvalidOperationException ex)
+        catch (InvalidOperationException)
         {
-            return HandleResult(ApiResponse<ClientDto>.ErrorResponse(ex.Message));
+            return HandleResult(ApiResponse<ClientDto>.ErrorResponse("Client request could not be completed."));
         }
     }
 

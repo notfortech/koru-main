@@ -109,7 +109,8 @@ public class ReportsController : ControllerBase
         }
         catch (Exception ex)
         {
-            return StatusCode(500, new { success = false, message = ex.Message });
+            _logger.LogError(ex, "Reports generation failed for client {ClientId}", clientId);
+            return StatusCode(500, new { success = false, message = "Failed to generate report." });
         }
     }
 
@@ -213,15 +214,18 @@ public class ReportsController : ControllerBase
             var (success, message, log, datasetRefreshed) = await _worker.RefreshReportIfUpdated(clientId ?? "", period, reportType ?? "monthly");
             if (!success)
             {
-                var fullError = string.IsNullOrEmpty(log) ? message : $"{message}\n\n{log}";
-                return StatusCode(500, new { success = false, message, error = fullError, log, datasetRefreshed = false, reportShouldRefresh = false });
+                _logger.LogError(
+                    "Report refresh failed for client {ClientId}. WorkerMessage={WorkerMessage}",
+                    clientId,
+                    message);
+                return StatusCode(500, new { success = false, message = "Report refresh failed.", datasetRefreshed = false, reportShouldRefresh = false });
             }
             return Ok(new { success = true, message, error = (string?)null, log, datasetRefreshed, reportShouldRefresh = datasetRefreshed });
         }
         catch (Exception ex)
         {
-            var err = $"{ex.Message}\n\n{ex.StackTrace}";
-            return StatusCode(500, new { success = false, message = ex.Message, error = err, log = ex.ToString(), datasetRefreshed = false, reportShouldRefresh = false });
+            _logger.LogError(ex, "Unhandled exception during report refresh for client {ClientId}", clientId);
+            return StatusCode(500, new { success = false, message = "Report refresh failed.", datasetRefreshed = false, reportShouldRefresh = false });
         }
     }
 
@@ -237,18 +241,30 @@ public class ReportsController : ControllerBase
         {
             var (success, message, log) = await _worker.ProcessUploadsAsync(clientId);
             if (!success)
-                return StatusCode(500, new { success = false, message, log });
+            {
+                _logger.LogError(
+                    "Upload processing failed for client {ClientId}. WorkerMessage={WorkerMessage}",
+                    clientId,
+                    message);
+                return StatusCode(500, new { success = false, message = "File processing failed." });
+            }
             return Ok(new { success, message, log });
         }
         catch (Exception ex)
         {
-            return StatusCode(500, new { success = false, message = ex.Message });
+            _logger.LogError(ex, "Unhandled exception during upload processing for client {ClientId}", clientId);
+            return StatusCode(500, new { success = false, message = "File processing failed." });
         }
     }
 }
 
 public class GenerateRequest
 {
+    [System.ComponentModel.DataAnnotations.Required]
+    [System.ComponentModel.DataAnnotations.StringLength(16)]
     public string PeriodType { get; set; } = string.Empty;
+
+    [System.ComponentModel.DataAnnotations.Required]
+    [System.ComponentModel.DataAnnotations.StringLength(16)]
     public string Period { get; set; } = string.Empty;
 }

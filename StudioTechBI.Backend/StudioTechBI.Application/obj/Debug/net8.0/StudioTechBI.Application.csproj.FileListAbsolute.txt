@@ -13,3 +13,4 @@ E:\Kamakshi Projects\STAR\koru-main\StudioTechBi.Backend\StudioTechBI.Applicatio
 E:\Kamakshi Projects\STAR\koru-main\StudioTechBi.Backend\StudioTechBI.Application\obj\Debug\net8.0\refint\StudioTechBI.Application.dll
 E:\Kamakshi Projects\STAR\koru-main\StudioTechBi.Backend\StudioTechBI.Application\obj\Debug\net8.0\StudioTechBI.Application.pdb
 E:\Kamakshi Projects\STAR\koru-main\StudioTechBi.Backend\StudioTechBI.Application\obj\Debug\net8.0\ref\StudioTechBI.Application.dll
+E:\Kamakshi Projects\STAR\koru-main\StudioTechBI.Backend\StudioTechBI.Application\obj\Debug\net8.0\StudioTechBI.Application.sourcelink.json

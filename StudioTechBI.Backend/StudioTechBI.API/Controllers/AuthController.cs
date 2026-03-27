@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
 using StudioTechBI.Application.DTOs.Auth;
 using StudioTechBI.Application.DTOs.Common;
 using StudioTechBI.Application.Interfaces;
@@ -10,10 +11,12 @@ namespace StudioTechBI.API.Controllers;
 public class AuthController : BaseApiController
 {
     private readonly IAuthService _authService;
+    private readonly ILogger<AuthController> _logger;
 
-    public AuthController(IAuthService authService)
+    public AuthController(IAuthService authService, ILogger<AuthController> logger)
     {
         _authService = authService;
+        _logger = logger;
     }
 
     /// <summary>
@@ -45,15 +48,14 @@ public class AuthController : BaseApiController
 
             return Ok(ApiResponse<LoginResponseDto>.SuccessResponse(result, "Login successful"));
         }
-        catch (UnauthorizedAccessException ex)
+        catch (UnauthorizedAccessException)
         {
-            return Unauthorized(ApiResponse<object>.ErrorResponse("Authentication failed", new List<string> { ex.Message }));
+            return Unauthorized(ApiResponse<object>.ErrorResponse("Authentication failed", new List<string> { "Invalid credentials." }));
         }
         catch (Exception ex)
         {
-            return StatusCode(500, ApiResponse<object>.ErrorResponse(
-                "An error occurred during login",
-                new List<string> { ex.Message }));
+            _logger.LogError(ex, "Unhandled exception during login.");
+            return StatusCode(500, ApiResponse<object>.ErrorResponse("An error occurred during login"));
         }
     }
 
@@ -86,15 +88,14 @@ public class AuthController : BaseApiController
 
             return Ok(ApiResponse<LoginResponseDto>.SuccessResponse(result, "Registration successful"));
         }
-        catch (InvalidOperationException ex)
+        catch (InvalidOperationException)
         {
-            return BadRequest(ApiResponse<object>.ErrorResponse("Registration failed", new List<string> { ex.Message }));
+            return BadRequest(ApiResponse<object>.ErrorResponse("Registration failed", new List<string> { "Registration request could not be completed." }));
         }
         catch (Exception ex)
         {
-            return StatusCode(500, ApiResponse<object>.ErrorResponse(
-                "An error occurred during registration",
-                new List<string> { ex.Message }));
+            _logger.LogError(ex, "Unhandled exception during registration.");
+            return StatusCode(500, ApiResponse<object>.ErrorResponse("An error occurred during registration"));
         }
     }
 
@@ -129,15 +130,14 @@ public class AuthController : BaseApiController
 
             return Ok(ApiResponse<LoginResponseDto>.SuccessResponse(result, "Token refreshed successfully"));
         }
-        catch (UnauthorizedAccessException ex)
+        catch (UnauthorizedAccessException)
         {
-            return Unauthorized(ApiResponse<object>.ErrorResponse("Token refresh failed", new List<string> { ex.Message }));
+            return Unauthorized(ApiResponse<object>.ErrorResponse("Token refresh failed", new List<string> { "Invalid token or refresh token." }));
         }
         catch (Exception ex)
         {
-            return StatusCode(500, ApiResponse<object>.ErrorResponse(
-                "An error occurred during token refresh",
-                new List<string> { ex.Message }));
+            _logger.LogError(ex, "Unhandled exception during token refresh.");
+            return StatusCode(500, ApiResponse<object>.ErrorResponse("An error occurred during token refresh"));
         }
     }
 
@@ -171,9 +171,8 @@ public class AuthController : BaseApiController
         }
         catch (Exception ex)
         {
-            return StatusCode(500, ApiResponse<object>.ErrorResponse(
-                "An error occurred during logout",
-                new List<string> { ex.Message }));
+            _logger.LogError(ex, "Unhandled exception during logout.");
+            return StatusCode(500, ApiResponse<object>.ErrorResponse("An error occurred during logout"));
         }
     }
 }

@@ -14,7 +14,7 @@ public static class DependencyInjection
     public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
         var useDemoStorage = configuration.GetValue<bool>("UseDemoStorage");
-        var connectionString = configuration.GetConnectionString("DefaultConnection");
+        var connectionString = configuration["DB_CONNECTION"] ?? configuration.GetConnectionString("DefaultConnection");
         var migrationsAssembly = typeof(ApplicationDbContext).Assembly.FullName!;
 
         services.AddDbContext<ApplicationDbContext>(options =>

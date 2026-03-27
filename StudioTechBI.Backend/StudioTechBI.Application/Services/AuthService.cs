@@ -48,11 +48,17 @@ public class AuthService : BaseService, IAuthService
 
         if (user == null || !VerifyPassword(request.Password, user.PasswordHash))
         {
+            _logger.LogWarning(
+                "User login attempt failed for email {Email}. Reason=InvalidCredentials",
+                request.Email);
             throw new UnauthorizedAccessException("Invalid email or password");
         }
 
         if (!user.IsActive)
         {
+            _logger.LogWarning(
+                "User login attempt failed for email {Email}. Reason=AccountInactive",
+                request.Email);
             throw new UnauthorizedAccessException("User account is inactive");
         }
 
@@ -68,6 +74,11 @@ public class AuthService : BaseService, IAuthService
         user.LastLoginAt = DateTime.UtcNow;
 
         await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation(
+            "User {UserId} logged in successfully (email {Email}).",
+            user.Id,
+            user.Email);
 
         return new LoginResponseDto
         {
@@ -195,7 +206,7 @@ public class AuthService : BaseService, IAuthService
 
         var user = await _userRepository.GetByPredicateAsync(u => u.Email == emailClaim && !u.IsDeleted, cancellationToken);
 
-        if (user == null || user.RefreshToken != request.RefreshToken || user.RefreshTokenExpiryTime < DateTime.UtcNow)
+        if (user == null || !user.IsActive || user.RefreshToken != request.RefreshToken || user.RefreshTokenExpiryTime < DateTime.UtcNow)
         {
             throw new UnauthorizedAccessException("Invalid refresh token");
         }

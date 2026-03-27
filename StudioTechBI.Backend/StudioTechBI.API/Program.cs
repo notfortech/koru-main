@@ -14,6 +14,9 @@ using StudioTechBI.Application.Models;
 using StudioTechBI.Application.Services;
 using StudioTechBI.Infrastructure;
 using System.Text;
+using System.Security.Claims;
+using StudioTechBI.Domain.Entities;
+using StudioTechBI.Domain.Interfaces;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -21,21 +24,34 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Configuration.AddJsonFile("appsettings.Local.json", optional: true, reloadOnChange: true);
 builder.Configuration.AddJsonFile("DemoUsers.json", optional: true, reloadOnChange: true);
 
-var tenantId = builder.Configuration["AzureAd:TenantId"];
-var clientId = builder.Configuration["AzureAd:ClientId"];
-var clientSecret = builder.Configuration["AzureAd:ClientSecret"];
+var envOverrides = new Dictionary<string, string?>();
+MapEnvOverride("DB_CONNECTION", "ConnectionStrings:DefaultConnection");
+MapEnvOverride("JWT_SECRET", "JwtSettings:SecretKey");
+MapEnvOverride("JWT_ISSUER", "JwtSettings:Issuer");
+MapEnvOverride("JWT_AUDIENCE", "JwtSettings:Audience");
+MapEnvOverride("OPENAI_API_KEY", "OpenAI:ApiKey");
+MapEnvOverride("POWERBI_CLIENT_ID", "PowerBI:ClientId");
+MapEnvOverride("POWERBI_CLIENT_SECRET", "PowerBI:ClientSecret");
+MapEnvOverride("POWERBI_TENANT_ID", "PowerBI:TenantId");
+MapEnvOverride("POWERBI_WORKSPACE_ID", "PowerBI:WorkspaceId");
+MapEnvOverride("POWERBI_REPORT_ID", "PowerBI:ReportId");
+MapEnvOverride("POWERBI_DATASET_ID", "PowerBI:DatasetId");
+MapEnvOverride("AZURE_AD_TENANT_ID", "AzureAd:TenantId");
+MapEnvOverride("AZURE_AD_CLIENT_ID", "AzureAd:ClientId");
+MapEnvOverride("AZURE_AD_CLIENT_SECRET", "AzureAd:ClientSecret");
+
+if (envOverrides.Count > 0)
+{
+    builder.Configuration.AddInMemoryCollection(envOverrides);
+}
+
 var vaultUrl = builder.Configuration["KeyVault:VaultUrl"];
 
-var credential = new ClientSecretCredential(
-    tenantId,
-    clientId,
-    clientSecret);
-
-if(!string.IsNullOrEmpty(vaultUrl))
+if(!string.IsNullOrWhiteSpace(vaultUrl))
 {
     builder.Configuration.AddAzureKeyVault(
         new Uri(vaultUrl),
-        credential);
+        new DefaultAzureCredential());
 }
 
 Log.Logger = new LoggerConfiguration()
@@ -49,7 +65,8 @@ builder.Host.UseSerilog();
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddScoped<AIInsightsService>();
+builder.Services.AddHttpClient<AIInsightsService>();
+builder.Services.AddScoped<AllInsightsService>();
 builder.Services.AddScoped<ReportWorkerService>();
 
 builder.Services.AddSwaggerGen(c =>
@@ -66,8 +83,6 @@ builder.Services.AddSwaggerGen(c =>
         }
     });
 
-    // Default to HTTP so Swagger works without trusting the dev HTTPS certificate; use HTTPS when cert is trusted
-    c.AddServer(new OpenApiServer { Url = "http://localhost:5000", Description = "HTTP (use this if HTTPS fails)" });
     c.AddServer(new OpenApiServer { Url = "https://localhost:5001", Description = "HTTPS" });
 
     c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
@@ -102,6 +117,13 @@ builder.Services.AddAuthentication(options =>
 })
 .AddJwtBearer(options =>
 {
+    var jwtSecretKey = builder.Configuration["JwtSettings:SecretKey"];
+    if (string.IsNullOrWhiteSpace(jwtSecretKey))
+    {
+        throw new InvalidOperationException(
+            "JwtSettings:SecretKey is required and must be non-empty. Provide it via environment variable 'JwtSettings__SecretKey'.");
+    }
+
     options.TokenValidationParameters = new TokenValidationParameters
     {
         ValidateIssuer = true,
@@ -111,7 +133,7 @@ builder.Services.AddAuthentication(options =>
         ValidIssuer = builder.Configuration["JwtSettings:Issuer"],
         ValidAudience = builder.Configuration["JwtSettings:Audience"],
         IssuerSigningKey = new SymmetricSecurityKey(
-            Encoding.UTF8.GetBytes(builder.Configuration["JwtSettings:SecretKey"] ?? throw new InvalidOperationException("JWT Secret Key not configured")))
+            Encoding.UTF8.GetBytes(jwtSecretKey))
     };
     options.Events = new JwtBearerEvents
     {
@@ -124,9 +146,41 @@ builder.Services.AddAuthentication(options =>
             {
                 success = false,
                 message = "Missing or invalid token. Please log in again.",
-                error = context.AuthenticateFailure?.Message ?? "Unauthorized"
+                error = "Unauthorized"
             });
             return context.Response.WriteAsync(body);
+        },
+        OnTokenValidated = async context =>
+        {
+            var principal = context.Principal;
+            if (principal?.Identity is not ClaimsIdentity identity || !identity.IsAuthenticated)
+            {
+                context.Fail("Unauthenticated.");
+                return;
+            }
+
+            var userIdRaw = principal.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (!Guid.TryParse(userIdRaw, out var userId))
+                return;
+
+            var cancellationToken = context.HttpContext.RequestAborted;
+            using var scope = context.HttpContext.RequestServices.CreateScope();
+
+            // Admin JWTs contain "AdminId"; normal user JWTs do not.
+            var adminIdRaw = principal.FindFirstValue("AdminId");
+            if (!string.IsNullOrWhiteSpace(adminIdRaw) && Guid.TryParse(adminIdRaw, out var adminId))
+            {
+                var adminRepo = scope.ServiceProvider.GetRequiredService<IRepository<AdminUser>>();
+                var admin = await adminRepo.GetByIdAsync(adminId, cancellationToken);
+                if (admin == null || admin.IsDeleted || !admin.IsActive)
+                    context.Fail("Account inactive.");
+                return;
+            }
+
+            var userRepo = scope.ServiceProvider.GetRequiredService<IRepository<User>>();
+            var user = await userRepo.GetByIdAsync(userId, cancellationToken);
+            if (user == null || user.IsDeleted || !user.IsActive)
+                context.Fail("Account inactive.");
         }
     };
 });
@@ -138,11 +192,24 @@ builder.Services.AddAuthorizationPolicies();
 
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowAll", policy =>
+    options.AddPolicy("RestrictedCors", policy =>
     {
-        policy.AllowAnyOrigin()
-              .AllowAnyMethod()
-              .AllowAnyHeader();
+        var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
+            ?.Where(origin => !string.IsNullOrWhiteSpace(origin))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray() ?? Array.Empty<string>();
+
+        if (!builder.Environment.IsDevelopment() && allowedOrigins.Length == 0)
+        {
+            throw new InvalidOperationException("Cors:AllowedOrigins must be configured for non-development environments.");
+        }
+
+        if (allowedOrigins.Length > 0)
+        {
+            policy.WithOrigins(allowedOrigins)
+                  .AllowAnyMethod()
+                  .AllowAnyHeader();
+        }
     });
 });
 
@@ -161,25 +228,23 @@ builder.Services.AddHealthChecks()
 
 var app = builder.Build();
 
-// Swagger in Development and Staging only (not Production)
-if (!app.Environment.IsProduction())
+var enableSwaggerInAzure = app.Configuration.GetValue<bool>("Swagger:Enabled");
+if (app.Environment.IsDevelopment() || enableSwaggerInAzure)
 {
     app.UseSwagger();
-    app.UseSwaggerUI(c =>
-    {
-        c.SwaggerEndpoint("/swagger/v1/swagger.json", $"StudioTechBI API v1 ({app.Environment.EnvironmentName})");
-        c.RoutePrefix = string.Empty;
-    });
+    app.UseSwaggerUI();
 }
 
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 app.UseMiddleware<RequestLoggingMiddleware>();
 
-// Skip HTTPS redirect in Development so POST from Swagger over HTTP works (no 307)
-if (app.Environment.IsProduction())
-    app.UseHttpsRedirection();
+if (!app.Environment.IsDevelopment())
+{
+    app.UseHsts();
+}
+app.UseHttpsRedirection();
 
-app.UseCors("AllowAll");
+app.UseCors("RestrictedCors");
 
 app.UseAuthentication();
 app.UseAuthorization();
@@ -187,21 +252,17 @@ app.UseAuthorization();
 app.MapControllers();
 app.MapHealthChecks("/health");
 
-// Config order (later overrides earlier): appsettings.json → appsettings.{Environment}.json → appsettings.Local.json.
-// So appsettings.Local.json wins when present. Put Azure SQL connection string in appsettings.Local.json (gitignored) so secrets are not committed.
+ValidateRequiredSettings(app.Configuration, app.Environment);
+
 var useDemoStorage = app.Configuration.GetValue<bool>("UseDemoStorage");
 var connectionString = app.Configuration.GetConnectionString("DefaultConnection");
-var serverForLog = connectionString != null && connectionString.Contains("Server=", StringComparison.OrdinalIgnoreCase)
-    ? System.Text.RegularExpressions.Regex.Match(connectionString, @"Server=([^;]+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase).Groups[1].Value
-    : (connectionString != null && connectionString.Contains("Data Source=", StringComparison.OrdinalIgnoreCase)
-        ? System.Text.RegularExpressions.Regex.Match(connectionString, @"Data Source=([^;]+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase).Groups[1].Value
-        : null);
-Log.Information("connectionString: " + connectionString);
 if (useDemoStorage)
 {
-    Log.Information("Database: In-memory (demo). UseDemoStorage=true. Set UseDemoStorage=false in appsettings.Local.json to use Azure SQL.");
+    Log.Warning("Database mode is set to in-memory demo storage.");
 } else
-    Log.Information("Database: SQL Server. UseDemoStorage=false. Connection server: {Server}. (From appsettings.Local.json if that file exists, else appsettings.json.)", serverForLog ?? "(unknown)");
+{
+    Log.Information("Database mode is set to SQL Server.");
+}
 
 using (var scope = app.Services.CreateScope())
 {
@@ -213,7 +274,7 @@ using (var scope = app.Services.CreateScope())
         {
             await StudioTechBI.Infrastructure.Data.RoleSeeder.SeedAsync(db);
             await StudioTechBI.Infrastructure.Data.DemoUsersSeeder.SeedAsync(db, config);
-            await StudioTechBI.Infrastructure.Data.AdminUserSeeder.SeedAsync(db);
+            await StudioTechBI.Infrastructure.Data.AdminUserSeeder.SeedAsync(db, config);
             Log.Information("Demo storage ready. Roles, users, and admin seeded.");
         }
         else
@@ -222,8 +283,8 @@ using (var scope = app.Services.CreateScope())
             {
                 if (!await db.Database.CanConnectAsync())
                 {
-                    Log.Error("Cannot connect to database. Check: (1) ConnectionStrings:DefaultConnection in appsettings.Local.json (correct server, database, user, password); (2) Azure SQL firewall allows your IP; (3) Password has no curly braces {{ }} around it.");
-                    throw new InvalidOperationException("Database connection failed. Verify Azure SQL connection string and network access.");
+                    Log.Error("Cannot connect to database.");
+                    throw new InvalidOperationException("Database connection failed.");
                 }
             }
             catch (InvalidOperationException)
@@ -232,23 +293,56 @@ using (var scope = app.Services.CreateScope())
             }
             catch (Exception ex)
             {
-                var inner = ex.InnerException?.Message ?? ex.Message;
-                Log.Error("Database connection failed. Azure/SQL error: {InnerMessage}. Check connection string, password (no {{ }} in password), and firewall.", inner);
-                throw new InvalidOperationException($"Database connection failed: {inner}", ex);
+                Log.Error(ex, "Database connection failed.");
+                throw new InvalidOperationException("Database connection failed.", ex);
             }
             Log.Information("DB connection established.");
             Log.Information("Applying EF Core migrations...");
             await db.Database.MigrateAsync();
             Log.Information("Migrations applied.");
             await StudioTechBI.Infrastructure.Data.RoleSeeder.SeedAsync(db);
-            await StudioTechBI.Infrastructure.Data.AdminUserSeeder.SeedAsync(db);
+            await StudioTechBI.Infrastructure.Data.AdminUserSeeder.SeedAsync(db, config);
             Log.Information("Database migrations applied. Roles and admin user seeded.");
         }
     }
     catch (Exception ex)
     {
-        Log.Error(ex, "Database setup or seed failed: {Message}", ex.Message);
+        Log.Error(ex, "Database setup or seed failed.");
         throw;
+    }
+}
+
+void MapEnvOverride(string environmentVariableName, string configPath)
+{
+    var value = Environment.GetEnvironmentVariable(environmentVariableName);
+    if (!string.IsNullOrWhiteSpace(value))
+    {
+        envOverrides[configPath] = value;
+    }
+}
+
+static void ValidateRequiredSettings(IConfiguration configuration, IWebHostEnvironment environment)
+{
+    if (environment.IsDevelopment())
+    {
+        return;
+    }
+
+    var requiredKeys = new[]
+    {
+        "ConnectionStrings:DefaultConnection",
+        "JwtSettings:SecretKey",
+        "JwtSettings:Issuer",
+        "JwtSettings:Audience",
+        "Cors:AllowedOrigins:0"
+    };
+
+    foreach (var key in requiredKeys)
+    {
+        if (string.IsNullOrWhiteSpace(configuration[key]))
+        {
+            throw new InvalidOperationException($"Missing required configuration key: {key}");
+        }
     }
 }
 

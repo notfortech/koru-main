@@ -7,7 +7,7 @@ namespace StudioTechBI.API.Controllers.Admin;
 
 [ApiController]
 [Route("api/admin/jobs")]
-[Authorize(Policy = AuthorizationPolicies.PortalAdminPolicy)]
+[Authorize(Roles = "Admin,SuperAdmin,OperationsAdmin,SupportAdmin")]
 public class AdminJobsController : ControllerBase
 {
     private readonly IProcessingJobService _jobService;

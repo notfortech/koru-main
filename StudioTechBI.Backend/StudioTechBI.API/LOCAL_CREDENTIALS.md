@@ -26,10 +26,10 @@ When you run the app, the console logs which database is used and the connection
    {
      "UseDemoStorage": false,
      "ConnectionStrings": {
-       "DefaultConnection": "Server=tcp:YOUR_SERVER.database.windows.net,1433;Database=YOUR_DATABASE;User ID=YOUR_USER;Password=studiotech@425pri;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;"
+      "DefaultConnection": "Server=tcp:YOUR_SERVER.database.windows.net,1433;Database=YOUR_DATABASE;User ID=YOUR_USER;Password=YOUR_PASSWORD;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;"
      },
      "JwtSettings": {
-       "SecretKey": "YourSuperSecretKeyThatShouldBeAtLeast32CharactersLong!",
+      "SecretKey": "",
        "Issuer": "StudioTechBI",
        "Audience": "StudioTechBIUsers",
        "AccessTokenExpirationMinutes": 60,

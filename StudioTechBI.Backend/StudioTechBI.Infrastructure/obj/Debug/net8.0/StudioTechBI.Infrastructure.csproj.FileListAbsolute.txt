@@ -17,3 +17,4 @@ E:\Kamakshi Projects\STAR\koru-main\StudioTechBi.Backend\StudioTechBI.Infrastruc
 E:\Kamakshi Projects\STAR\koru-main\StudioTechBi.Backend\StudioTechBI.Infrastructure\obj\Debug\net8.0\StudioTechBI.Infrastructure.pdb
 E:\Kamakshi Projects\STAR\koru-main\StudioTechBi.Backend\StudioTechBI.Infrastructure\obj\Debug\net8.0\StudioTechBI.Infrastructure.genruntimeconfig.cache
 E:\Kamakshi Projects\STAR\koru-main\StudioTechBi.Backend\StudioTechBI.Infrastructure\obj\Debug\net8.0\ref\StudioTechBI.Infrastructure.dll
+E:\Kamakshi Projects\STAR\koru-main\StudioTechBI.Backend\StudioTechBI.Infrastructure\obj\Debug\net8.0\StudioTechBI.Infrastructure.sourcelink.json

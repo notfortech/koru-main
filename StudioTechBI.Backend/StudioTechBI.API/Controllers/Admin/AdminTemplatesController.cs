@@ -8,7 +8,7 @@ namespace StudioTechBI.API.Controllers.Admin;
 
 [ApiController]
 [Route("api/admin/templates")]
-[Authorize(Policy = AuthorizationPolicies.PortalAdminPolicy)]
+[Authorize(Roles = "Admin,SuperAdmin,OperationsAdmin,SupportAdmin")]
 public class AdminTemplatesController : ControllerBase
 {
     private readonly ITemplateService _templateService;

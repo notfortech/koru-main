@@ -10,7 +10,7 @@ namespace StudioTechBI.API.Controllers.Admin;
 
 [ApiController]
 [Route("api/admin/tenants")]
-[Authorize(Policy = AuthorizationPolicies.PortalAdminPolicy)]
+[Authorize(Roles = "Admin,SuperAdmin,OperationsAdmin,SupportAdmin")]
 public class AdminTenantsController : BaseApiController
 {
     private readonly ITenantService _tenantService;
@@ -28,9 +28,9 @@ public class AdminTenantsController : BaseApiController
             var result = await _tenantService.CreateAsync(dto, cancellationToken);
             return HandleResult(ApiResponse<TenantDto>.SuccessResponse(result, "Tenant created."));
         }
-        catch (InvalidOperationException ex)
+        catch (InvalidOperationException)
         {
-            return HandleResult(ApiResponse<TenantDto>.ErrorResponse(ex.Message));
+            return HandleResult(ApiResponse<TenantDto>.ErrorResponse("Tenant request could not be completed."));
         }
     }
 
@@ -61,9 +61,9 @@ public class AdminTenantsController : BaseApiController
                 return NotFound();
             return HandleResult(ApiResponse<TenantDto>.SuccessResponse(result, "Tenant updated."));
         }
-        catch (InvalidOperationException ex)
+        catch (InvalidOperationException)
         {
-            return HandleResult(ApiResponse<TenantDto>.ErrorResponse(ex.Message));
+            return HandleResult(ApiResponse<TenantDto>.ErrorResponse("Tenant update request could not be completed."));
         }
     }
 

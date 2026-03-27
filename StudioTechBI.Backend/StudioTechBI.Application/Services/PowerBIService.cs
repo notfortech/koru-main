@@ -2,6 +2,7 @@ using Microsoft.Extensions.Options;
 using Microsoft.Identity.Client;
 using StudioTechBI.Application.Interfaces;
 using StudioTechBI.Application.Models;
+using StudioTechBI.Application.DTOs.AI;
 using StudioTechBI.Application.DTOs.PowerBI;
 using System.Net.Http.Headers;
 using System.Text;
@@ -159,6 +160,27 @@ public async Task<object> GetReports()
         });
 
     return reports;
+}
+
+public async Task<DashboardSummaryDto> GetDashboardSummary(
+    string periodType,
+    string? period,
+    string? clientCode)
+{
+    // 🚨 TEMP MOCK (replace later with real query / SP / warehouse)
+    // This keeps your system working while you build real pipeline
+
+    await Task.Delay(50); // simulate async
+
+    return new DashboardSummaryDto
+    {
+        Period = period ?? "Current",
+        Revenue = 50000,
+        Expenses = 42000,
+        Profit = 8000,
+        GrowthPercentage = 12.5,
+        TopRegion = "Victoria"
+    };
 }
 
 }

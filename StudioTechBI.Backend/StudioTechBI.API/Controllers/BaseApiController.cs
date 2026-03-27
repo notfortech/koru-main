@@ -17,11 +17,11 @@ public abstract class BaseApiController : ControllerBase
         return BadRequest(response);
     }
 
-    protected IActionResult HandleException(Exception ex)
+    protected IActionResult HandleException(Exception _)
     {
         return StatusCode(500, ApiResponse<object>.ErrorResponse(
             "An error occurred while processing your request.",
-            new List<string> { ex.Message }
+            null
         ));
     }
 }

@@ -9,3 +9,4 @@ E:\Kamakshi Projects\STAR\koru-main\StudioTechBi.Backend\StudioTechBI.Domain\obj
 E:\Kamakshi Projects\STAR\koru-main\StudioTechBi.Backend\StudioTechBI.Domain\obj\Debug\net8.0\refint\StudioTechBI.Domain.dll
 E:\Kamakshi Projects\STAR\koru-main\StudioTechBi.Backend\StudioTechBI.Domain\obj\Debug\net8.0\StudioTechBI.Domain.pdb
 E:\Kamakshi Projects\STAR\koru-main\StudioTechBi.Backend\StudioTechBI.Domain\obj\Debug\net8.0\ref\StudioTechBI.Domain.dll
+E:\Kamakshi Projects\STAR\koru-main\StudioTechBI.Backend\StudioTechBI.Domain\obj\Debug\net8.0\StudioTechBI.Domain.sourcelink.json
