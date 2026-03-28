@@ -1,0 +1,35 @@
+name: Deploy .NET API to Azure
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v3
+      with:
+        dotnet-version: '8.0.x'
+
+    - name: Restore
+      run: dotnet restore StudioTechBI.Backend/StudioTechBI.Backend.API
+
+    - name: Build
+      run: dotnet build StudioTechBI.Backend/StudioTechBI.Backend.API --configuration Release --no-restore
+
+    - name: Publish
+      run: dotnet publish StudioTechBI.Backend/StudioTechBI.Backend.API -c Release -o publish
+
+    - name: Deploy to Azure
+      uses: azure/webapps-deploy@v2
+      with:
+        app-name: studiotechbi-api
+        publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
+        package: publish
