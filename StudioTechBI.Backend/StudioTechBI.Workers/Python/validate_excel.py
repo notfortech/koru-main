@@ -20,9 +20,6 @@ def validate(client_id):
     blob_name = get_latest_upload(client_id)
 
     if not blob_name:
-
-        print("No file found")
-
         return
 
     blob = container.get_blob_client(blob_name)
@@ -37,9 +34,7 @@ def validate(client_id):
 
             raise Exception(f"Missing column {col}")
 
-    validated_path = move_to_validated(blob_name)
-
-    print(validated_path)
+    move_to_validated(blob_name)
 
 
 if __name__ == "__main__":

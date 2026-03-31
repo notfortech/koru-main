@@ -4,8 +4,6 @@ import subprocess
 client_id = sys.argv[1]
 period = sys.argv[2]
 
-print("Starting report generation")
-
 # Step 1 Validate
 subprocess.run(
  [
@@ -33,5 +31,3 @@ subprocess.run(
   "powerbi_refresh.py"
  ]
 )
-
-print("Report generation completed")

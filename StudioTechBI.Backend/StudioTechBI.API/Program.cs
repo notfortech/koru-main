@@ -323,19 +323,34 @@ void MapEnvOverride(string environmentVariableName, string configPath)
 
 static void ValidateRequiredSettings(IConfiguration configuration, IWebHostEnvironment environment)
 {
-    if (environment.IsDevelopment())
+    var enforceInDev = configuration.GetValue<bool>("Startup:EnforceProductionConfigValidation");
+
+    if (environment.IsDevelopment() && !enforceInDev)
     {
         return;
     }
 
-    var requiredKeys = new[]
+    var useDemoStorage = configuration.GetValue<bool>("UseDemoStorage");
+    var requiredKeys = new List<string>
     {
-        "ConnectionStrings:DefaultConnection",
         "JwtSettings:SecretKey",
         "JwtSettings:Issuer",
         "JwtSettings:Audience",
         "Cors:AllowedOrigins:0"
     };
+
+    if (!environment.IsDevelopment() || !useDemoStorage)
+    {
+        requiredKeys.Insert(0, "ConnectionStrings:DefaultConnection");
+    }
+
+    if (environment.IsDevelopment() && enforceInDev)
+    {
+        Log.Information(
+            "Startup:EnforceProductionConfigValidation=true: validating {Count} config keys (DB connection {DbMode}).",
+            requiredKeys.Count,
+            useDemoStorage ? "skipped (UseDemoStorage=true)" : "required");
+    }
 
     foreach (var key in requiredKeys)
     {

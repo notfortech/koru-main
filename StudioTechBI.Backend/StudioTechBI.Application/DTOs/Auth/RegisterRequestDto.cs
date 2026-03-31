@@ -15,8 +15,8 @@ public class RegisterRequestDto
     /// <summary>Optional. If provided, must match Password.</summary>
     public string? ConfirmPassword { get; set; }
 
-    [Required(ErrorMessage = "First name is required")]
-    public string FirstName { get; set; } = string.Empty;
+    /// <summary>Optional; stored as "User" when omitted or whitespace (see AuthService.RegisterAsync).</summary>
+    public string? FirstName { get; set; }
 
     public string? LastName { get; set; }
 

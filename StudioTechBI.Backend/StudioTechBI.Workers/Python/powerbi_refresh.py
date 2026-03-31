@@ -1,5 +1,7 @@
-import requests
 import os
+import sys
+
+import requests
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -50,12 +52,8 @@ def refresh_dataset(client_id=None, workspace_id=None, dataset_id=None):
     url = f"https://api.powerbi.com/v1.0/myorg/groups/{ws}/datasets/{ds}/refreshes"
     headers = {"Authorization": f"Bearer {token}"}
     r = requests.post(url, headers=headers)
-    if client_id:
-        print(f"Power BI refresh for client {client_id}: {r.status_code}")
-    else:
-        print(r.status_code)
     if r.status_code not in (200, 202):
-        raise RuntimeError(f"Power BI refresh failed: {r.status_code} {r.text}")
+        raise RuntimeError(f"Power BI refresh failed: HTTP {r.status_code}")
 
 
 def refresh():

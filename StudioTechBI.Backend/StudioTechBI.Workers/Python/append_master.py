@@ -121,7 +121,6 @@ def append_to_master(client_id, validated_blob_path):
     df_new = _normalize_new_data(df_new)
     df_master, master_blob = _load_master(client_id)
     _append_to_master_df(df_master, df_new, master_blob)
-    print("Master dataset updated successfully")
 
 
 def append_from_monthly_folders(client_id):
@@ -131,12 +130,10 @@ def append_from_monthly_folders(client_id):
     format as master; then mark that month as processed.
     """
     if container is None:
-        print("Monthly append skipped: Azure storage not configured", file=sys.stderr)
         return
     processed = get_processed_months(client_id)
     monthly = list_monthly_validated_excels(client_id)
     if not monthly:
-        print("No monthly validated Excel files found under validated/yyyy-mm/")
         return
     # Group by month (yyyy_mm) and process each month once
     by_month = {}
@@ -145,7 +142,6 @@ def append_from_monthly_folders(client_id):
             by_month[yyyy_mm] = []
         by_month[yyyy_mm].append(blob_path)
     df_master, master_blob = _load_master(client_id)
-    appended_any = False
     for yyyy_mm in sorted(by_month.keys()):
         if yyyy_mm in processed:
             continue
@@ -159,16 +155,10 @@ def append_from_monthly_folders(client_id):
                 df_new = _normalize_new_data(df_new)
                 df_master = _append_to_master_df(df_master, df_new, master_blob)
                 month_appended = True
-                appended_any = True
-                print(f"Appended {blob_path} to master")
-            except Exception as e:
-                print(f"Skip {blob_path}: {e}", file=sys.stderr)
+            except Exception:
+                print("Skip: could not append one monthly file.", file=sys.stderr)
         if month_appended:
             add_processed_month(client_id, yyyy_mm)
-    if appended_any:
-        print("Master dataset updated from monthly folders")
-    else:
-        print("No new months to append (all already processed)")
 
 
 if __name__ == "__main__":

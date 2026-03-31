@@ -47,6 +47,7 @@ public static class DependencyInjection
         services.AddScoped<IReportingProcessingJobWriter, ReportingProcessingJobWriter>();
         services.AddScoped<IReportingTechnicalLogWriter, ReportingTechnicalLogWriter>();
         services.AddScoped<IPowerBiAssetQuery, PowerBiAssetQuery>();
+        services.AddScoped<IClientPortalDashboardService, ClientPortalDashboardService>();
 
         return services;
     }

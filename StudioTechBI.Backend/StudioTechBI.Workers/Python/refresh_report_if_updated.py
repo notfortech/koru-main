@@ -5,15 +5,12 @@ so the report in the client portal updates. Master xlsx path is static for now.
 import io
 import re
 import sys
-import traceback
 from datetime import datetime, timezone
 
 import pandas as pd
 
 from blob_service import (
     download_master_bytes,
-    get_last_master_diagnostic,
-    get_master_path,
     get_last_refresh_time,
     set_last_refresh_time,
 )
@@ -132,22 +129,11 @@ def main():
     try:
         from append_master import append_from_monthly_folders
         append_from_monthly_folders(client_id)
-    except BaseException as e:
-        print(f"Monthly append skipped: {e}", file=sys.stderr)
-        traceback.print_exc(file=sys.stderr)
+    except BaseException:
+        print("Monthly append skipped.", file=sys.stderr)
 
     master_bytes = download_master_bytes(client_id)
     if master_bytes is None:
-        path_tried = get_master_path(client_id)
-        err_msg, blob_names = get_last_master_diagnostic(client_id)
-        print(f"Tried path (container-relative): {path_tried}", file=sys.stderr)
-        if err_msg:
-            print(f"First error: {err_msg}", file=sys.stderr)
-        if blob_names is not None:
-            if blob_names:
-                print(f"Blobs in validated folder: {blob_names}", file=sys.stderr)
-            else:
-                print("Blobs in validated folder: (none listed)", file=sys.stderr)
         print(MSG_NO_MASTER)
         sys.exit(0)
 
@@ -169,7 +155,7 @@ def main():
         if "429" in err or "exceeded the amount of requests" in err.lower():
             print("POWERBI_RATE_LIMIT: Power BI rate limit. Retry in 2 minutes.", file=sys.stderr)
             sys.exit(0)
-        print(f"ERROR: {e}", file=sys.stderr)
+        print("ERROR: Refresh failed.", file=sys.stderr)
         sys.exit(1)
 
 
