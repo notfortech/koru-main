@@ -4,6 +4,10 @@ on:
   push:
     branches:
       - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
 
 jobs:
   build-and-deploy:
@@ -18,14 +22,20 @@ jobs:
       with:
         dotnet-version: '8.0.x'
 
+    - name: Debug - list files
+      run: ls -R
+
     - name: Restore
-      run: dotnet restore StudioTechBI.Backend/StudioTechBI.Backend.API
+      run: |
+        dotnet restore StudioTechBI.Backend/StudioTechBI.Backend.API || dotnet restore
 
     - name: Build
-      run: dotnet build StudioTechBI.Backend/StudioTechBI.Backend.API --configuration Release --no-restore
+      run: |
+        dotnet build StudioTechBI.Backend/StudioTechBI.Backend.API --configuration Release --no-restore || dotnet build --configuration Release --no-restore
 
     - name: Publish
-      run: dotnet publish StudioTechBI.Backend/StudioTechBI.Backend.API -c Release -o publish
+      run: |
+        dotnet publish StudioTechBI.Backend/StudioTechBI.Backend.API -c Release -o publish || dotnet publish --configuration Release -o publish
 
     - name: Deploy to Azure
       uses: azure/webapps-deploy@v2
