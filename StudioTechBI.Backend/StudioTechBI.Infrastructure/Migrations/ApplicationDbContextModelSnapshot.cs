@@ -372,6 +372,54 @@ namespace StudioTechBI.Infrastructure.Migrations
                     b.ToTable("CompanyUsers", (string)null);
                 });
 
+            modelBuilder.Entity("StudioTechBI.Domain.Entities.DataConnection", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("AccessToken")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid>("ClientId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ConfigJson")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime?>("ExpiresAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("RefreshToken")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClientId");
+
+                    b.ToTable("DataConnections", (string)null);
+                });
+
             modelBuilder.Entity("StudioTechBI.Domain.Entities.DatasetRefreshLog", b =>
                 {
                     b.Property<Guid>("RefreshId")
@@ -458,6 +506,11 @@ namespace StudioTechBI.Infrastructure.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("datetime2");
 
@@ -471,6 +524,52 @@ namespace StudioTechBI.Infrastructure.Migrations
                     b.ToTable("InsightDatasets", (string)null);
                 });
 
+            modelBuilder.Entity("StudioTechBI.Domain.Entities.InsightJob", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("CompletedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("ErrorMessage")
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<Guid>("ModelId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("StartedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ModelId");
+
+                    b.ToTable("InsightJobs", (string)null);
+                });
+
             modelBuilder.Entity("StudioTechBI.Domain.Entities.InsightModel", b =>
                 {
                     b.Property<Guid>("Id")
@@ -480,7 +579,7 @@ namespace StudioTechBI.Infrastructure.Migrations
                     b.Property<Guid>("ClientId")
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<double?>("ConfidenceScore")
+                    b.Property<double>("Confidence")
                         .HasColumnType("float");
 
                     b.Property<DateTime>("CreatedAt")
@@ -495,22 +594,34 @@ namespace StudioTechBI.Infrastructure.Migrations
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
 
+                    b.Property<bool>("IsFallback")
+                        .HasColumnType("bit");
+
                     b.Property<string>("MappingJson")
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("SchemaHash")
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
 
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
 
-                    b.Property<Guid?>("TemplateId")
-                        .HasColumnType("uniqueidentifier");
+                    b.Property<string>("TemplateId")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
 
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("datetime2");
 
                     b.Property<string>("UpdatedBy")
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("ValidatedBlobPath")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
 
                     b.HasKey("Id");
 
@@ -1220,10 +1331,32 @@ namespace StudioTechBI.Infrastructure.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("StudioTechBI.Domain.Entities.DataConnection", b =>
+                {
+                    b.HasOne("StudioTechBI.Domain.Entities.Client", "Client")
+                        .WithMany("DataConnections")
+                        .HasForeignKey("ClientId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Client");
+                });
+
             modelBuilder.Entity("StudioTechBI.Domain.Entities.InsightDataset", b =>
                 {
                     b.HasOne("StudioTechBI.Domain.Entities.InsightModel", "Model")
                         .WithMany("Datasets")
+                        .HasForeignKey("ModelId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Model");
+                });
+
+            modelBuilder.Entity("StudioTechBI.Domain.Entities.InsightJob", b =>
+                {
+                    b.HasOne("StudioTechBI.Domain.Entities.InsightModel", "Model")
+                        .WithMany("InsightJobs")
                         .HasForeignKey("ModelId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
@@ -1315,6 +1448,8 @@ namespace StudioTechBI.Infrastructure.Migrations
 
             modelBuilder.Entity("StudioTechBI.Domain.Entities.Client", b =>
                 {
+                    b.Navigation("DataConnections");
+
                     b.Navigation("InsightModels");
 
                     b.Navigation("ProcessingJobs");
@@ -1332,6 +1467,8 @@ namespace StudioTechBI.Infrastructure.Migrations
             modelBuilder.Entity("StudioTechBI.Domain.Entities.InsightModel", b =>
                 {
                     b.Navigation("Datasets");
+
+                    b.Navigation("InsightJobs");
                 });
 
             modelBuilder.Entity("StudioTechBI.Domain.Entities.Permission", b =>

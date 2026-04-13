@@ -12,6 +12,7 @@ public class InsightDatasetConfiguration : IEntityTypeConfiguration<InsightDatas
         builder.HasKey(e => e.Id);
         builder.Property(e => e.PowerBIDatasetId).IsRequired().HasMaxLength(200);
         builder.Property(e => e.ReportId).IsRequired().HasMaxLength(200);
+        builder.Property(e => e.Status).IsRequired().HasMaxLength(50);
         builder.HasIndex(e => e.ModelId);
     }
 }

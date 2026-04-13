@@ -12,4 +12,7 @@ public interface IBlobStorageService
     /// Returns the full blob name/path of the newest blob under <paramref name="pathPrefix"/> matching <paramref name="fileExtension"/> (e.g. ".xlsx"), or null if none.
     /// </summary>
     Task<string?> GetLatestBlobPathByPrefixAsync(string pathPrefix, string fileExtension, CancellationToken cancellationToken = default);
+
+    /// <summary>Uploads a blob into the clients container at the given path (overwrite).</summary>
+    Task UploadClientBlobAsync(string blobPath, Stream content, string? contentType = null, CancellationToken cancellationToken = default);
 }

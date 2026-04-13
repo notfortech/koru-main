@@ -127,4 +127,23 @@ public class BlobStorageService : IBlobStorageService
 
         return latestPath;
     }
+
+    public async Task UploadClientBlobAsync(string blobPath, Stream content, string? contentType = null, CancellationToken cancellationToken = default)
+    {
+        if (_containerClient == null)
+            throw new InvalidOperationException("Azure Blob is not configured (AzureBlob:ConnectionString).");
+
+        await _containerClient.CreateIfNotExistsAsync(cancellationToken: cancellationToken);
+        var path = (blobPath ?? "").Trim().Replace("\\", "/");
+        if (path.Length == 0)
+            throw new ArgumentException("Blob path is required.", nameof(blobPath));
+
+        var client = _containerClient.GetBlobClient(path);
+        var headers = new Azure.Storage.Blobs.Models.BlobHttpHeaders();
+        if (!string.IsNullOrWhiteSpace(contentType))
+            headers.ContentType = contentType;
+
+        await client.UploadAsync(content, new Azure.Storage.Blobs.Models.BlobUploadOptions { HttpHeaders = headers }, cancellationToken);
+        _logger.LogInformation("Uploaded client blob to {Path}", path);
+    }
 }

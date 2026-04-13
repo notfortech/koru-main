@@ -22,4 +22,5 @@ public class Client : BaseEntity
 
     public ICollection<ProcessingJob> ProcessingJobs { get; set; } = new List<ProcessingJob>();
     public ICollection<InsightModel> InsightModels { get; set; } = new List<InsightModel>();
+    public ICollection<DataConnection> DataConnections { get; set; } = new List<DataConnection>();
 }

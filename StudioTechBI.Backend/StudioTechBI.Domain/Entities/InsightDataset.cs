@@ -8,4 +8,14 @@ public class InsightDataset : BaseEntity
 
     public string PowerBIDatasetId { get; set; } = string.Empty;
     public string ReportId { get; set; } = string.Empty;
+
+    /// <summary>Pending, Active, Failed, …</summary>
+    public string Status { get; set; } = InsightDatasetStatuses.Pending;
+}
+
+public static class InsightDatasetStatuses
+{
+    public const string Pending = "Pending";
+    public const string Active = "Active";
+    public const string Failed = "Failed";
 }

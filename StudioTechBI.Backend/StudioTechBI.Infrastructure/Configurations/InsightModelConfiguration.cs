@@ -13,6 +13,10 @@ public class InsightModelConfiguration : IEntityTypeConfiguration<InsightModel>
         builder.Property(e => e.Status).IsRequired().HasMaxLength(100);
         builder.Property(e => e.MappingJson);
         builder.Property(e => e.ExcelSchemaJson);
+        builder.Property(e => e.TemplateId).HasMaxLength(200);
+        builder.Property(e => e.SchemaHash).HasMaxLength(128);
+        builder.Property(e => e.ValidatedBlobPath).HasMaxLength(2000);
+        builder.Property(e => e.Confidence).HasColumnType("float");
         builder.HasIndex(e => e.ClientId);
         builder.HasOne(e => e.Client)
             .WithMany(c => c.InsightModels)
@@ -21,6 +25,10 @@ public class InsightModelConfiguration : IEntityTypeConfiguration<InsightModel>
         builder.HasMany(e => e.Datasets)
             .WithOne(d => d.Model)
             .HasForeignKey(d => d.ModelId)
+            .OnDelete(DeleteBehavior.Cascade);
+        builder.HasMany(e => e.InsightJobs)
+            .WithOne(j => j.Model)
+            .HasForeignKey(j => j.ModelId)
             .OnDelete(DeleteBehavior.Cascade);
     }
 }

@@ -6,6 +6,7 @@ using StudioTechBI.Application.Interfaces;
 using StudioTechBI.Application.Models;
 using StudioTechBI.Domain.Interfaces;
 using StudioTechBI.Infrastructure.Clients;
+using StudioTechBI.Infrastructure.Connectors;
 using StudioTechBI.Infrastructure.Data;
 using StudioTechBI.Infrastructure.Repositories;
 using StudioTechBI.Infrastructure.Services;
@@ -70,6 +71,11 @@ public static class DependencyInjection
         });
         services.AddScoped<IModelRepository, ModelRepository>();
         services.AddScoped<IDatasetRepository, DatasetRepository>();
+        services.AddScoped<IDataConnectionRepository, DataConnectionRepository>();
+        services.AddScoped<GoogleDriveConnector>();
+        services.AddScoped<OneDriveConnector>();
+        services.AddScoped<SharePointConnector>();
+        services.AddScoped<IDataConnectorRegistry, DataConnectorRegistry>();
 
         return services;
     }

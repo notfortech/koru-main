@@ -1,10 +1,11 @@
 {
   "version": 2,
-  "dgSpecHash": "sTAXBpxJm4M=",
+  "dgSpecHash": "GXDbgujGFAk=",
   "success": true,
   "projectFilePath": "E:\\Kamakshi Projects\\STAR\\koru-main\\StudioTechBI.Backend\\StudioTechBI.Application\\StudioTechBI.Application.csproj",
   "expectedPackageFiles": [
     "C:\\Users\\Q tech\\.nuget\\packages\\bcrypt.net-next\\4.0.3\\bcrypt.net-next.4.0.3.nupkg.sha512",
+    "C:\\Users\\Q tech\\.nuget\\packages\\csvhelper\\33.0.1\\csvhelper.33.0.1.nupkg.sha512",
     "C:\\Users\\Q tech\\.nuget\\packages\\microsoft.extensions.configuration.abstractions\\8.0.0\\microsoft.extensions.configuration.abstractions.8.0.0.nupkg.sha512",
     "C:\\Users\\Q tech\\.nuget\\packages\\microsoft.extensions.configuration.binder\\8.0.0\\microsoft.extensions.configuration.binder.8.0.0.nupkg.sha512",
     "C:\\Users\\Q tech\\.nuget\\packages\\microsoft.extensions.dependencyinjection.abstractions\\8.0.0\\microsoft.extensions.dependencyinjection.abstractions.8.0.0.nupkg.sha512",
