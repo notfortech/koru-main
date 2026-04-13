@@ -4,9 +4,13 @@ on:
   push:
     branches:
       - main
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch: # Allows manual branch selection in GitHub UI
 
 jobs:
   build-and-deploy:
+    if: github.event_name != 'pull_request' || github.event.action != 'closed'
     runs-on: ubuntu-latest
 
     steps:
