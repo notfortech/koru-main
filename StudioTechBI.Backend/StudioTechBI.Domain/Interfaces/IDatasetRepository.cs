@@ -8,4 +8,9 @@ public interface IDatasetRepository : IRepository<InsightDataset>
 
     /// <summary>Completed dataset linked to Power BI (idempotent select).</summary>
     Task<InsightDataset?> GetActiveByModelIdAsync(Guid modelId, CancellationToken cancellationToken = default);
+
+    /// <summary>Active datasets keyed by model id (latest per model).</summary>
+    Task<IReadOnlyDictionary<Guid, InsightDataset>> GetActiveDatasetsByModelIdsAsync(
+        IEnumerable<Guid> modelIds,
+        CancellationToken cancellationToken = default);
 }

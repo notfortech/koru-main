@@ -16,6 +16,8 @@ public static class DependencyInjection
         services.AddScoped<IAdminUserService, AdminUserService>();
         services.AddScoped<IAdminMaintenanceService, AdminMaintenanceService>();
         services.AddScoped<IInsightService, InsightService>();
+        services.AddScoped<InsightSelectionPipeline>();
+        services.AddScoped<IInsightReportService, InsightReportService>();
         services.AddScoped<IDataConnectionService, DataConnectionService>();
 
         return services;

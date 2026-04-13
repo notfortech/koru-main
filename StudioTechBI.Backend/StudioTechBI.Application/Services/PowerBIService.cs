@@ -91,6 +91,50 @@ public class PowerBIService
         };
     }
 
+    /// <summary>Generate embed token for a specific report in a workspace (e.g. Insight orchestrator output).</summary>
+    public async Task<PowerBiEmbedTokenResult> GenerateEmbedForReportAsync(
+        string workspaceId,
+        string reportId,
+        string datasetId,
+        CancellationToken cancellationToken = default)
+    {
+        var ws = (workspaceId ?? "").Trim();
+        var rid = (reportId ?? "").Trim();
+        var dsId = (datasetId ?? "").Trim();
+        if (ws.Length == 0 || rid.Length == 0)
+            throw new InvalidOperationException("WorkspaceId and ReportId are required to generate an embed token.");
+
+        var aadToken = await GetAccessToken();
+        using var httpClient = new HttpClient();
+        httpClient.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", aadToken);
+
+        var embedUrl = $"https://app.powerbi.com/reportEmbed?reportId={rid}&groupId={ws}";
+        var embedTokenUrl = $"https://api.powerbi.com/v1.0/myorg/groups/{ws}/reports/{rid}/GenerateToken";
+
+        var tokenRequest = new StringContent(
+            JsonSerializer.Serialize(new { accessLevel = "view" }),
+            Encoding.UTF8,
+            "application/json");
+
+        var embedResponse = await httpClient.PostAsync(embedTokenUrl, tokenRequest, cancellationToken);
+        var embedJson = await embedResponse.Content.ReadAsStringAsync(cancellationToken);
+        if (!embedResponse.IsSuccessStatusCode)
+            throw new InvalidOperationException($"Power BI GenerateToken failed: {(int)embedResponse.StatusCode} {embedJson}");
+
+        var embed = JsonSerializer.Deserialize<JsonElement>(embedJson);
+        var embedToken = embed.GetProperty("token").GetString()
+            ?? throw new InvalidOperationException("Power BI response did not include token.");
+
+        return new PowerBiEmbedTokenResult
+        {
+            AccessToken = embedToken,
+            EmbedUrl = embedUrl,
+            ReportId = rid,
+            DatasetId = dsId
+        };
+    }
+
     private async Task<bool> MasterExcelExistsAsync(string clientCode)
     {
         // Python worker uses:

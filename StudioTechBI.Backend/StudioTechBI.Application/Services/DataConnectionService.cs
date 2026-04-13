@@ -38,6 +38,14 @@ public class DataConnectionService : BaseService, IDataConnectionService
         _logger = logger;
     }
 
+    public async Task<IReadOnlyList<DataConnectionSummaryDto>> ListConnectionsForClientAsync(Guid clientId, CancellationToken cancellationToken = default)
+    {
+        var list = await _connectionRepository.GetByClientIdAsync(clientId, cancellationToken);
+        return list
+            .Select(c => new DataConnectionSummaryDto { Id = c.Id, Type = c.Type })
+            .ToList();
+    }
+
     public async Task<DataConnectionDto> RegisterConnectionAsync(RegisterDataConnectionDto dto, CancellationToken cancellationToken = default)
     {
         if (dto.ClientId == Guid.Empty)
@@ -75,6 +83,12 @@ public class DataConnectionService : BaseService, IDataConnectionService
             Type = entity.Type,
             ExpiresAt = entity.ExpiresAt
         };
+    }
+
+    public async Task<Guid?> GetConnectionClientIdAsync(Guid connectionId, CancellationToken cancellationToken = default)
+    {
+        var connection = await _connectionRepository.GetByIdAsync(connectionId, cancellationToken);
+        return connection?.ClientId;
     }
 
     public async Task<IReadOnlyList<FileItem>> ListFilesAsync(Guid connectionId, CancellationToken cancellationToken = default)

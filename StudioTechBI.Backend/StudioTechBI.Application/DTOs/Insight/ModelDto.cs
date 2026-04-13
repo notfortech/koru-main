@@ -24,5 +24,11 @@ public class ModelDto
     public string? ValidatedBlobPath { get; set; }
     public bool? IsFallback { get; set; }
 
+    /// <summary>From active InsightDataset when present (client model list).</summary>
+    public string? DatasetId { get; set; }
+
+    /// <summary>From active InsightDataset when present (client model list).</summary>
+    public string? ReportId { get; set; }
+
     public double ResolveConfidence() => Confidence ?? ConfidenceScore ?? 0;
 }

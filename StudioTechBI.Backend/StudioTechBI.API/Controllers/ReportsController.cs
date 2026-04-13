@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using System.Diagnostics;
 using StudioTechBI.Application.Interfaces;
 using StudioTechBI.Application.Services;
+using StudioTechBI.Domain.Interfaces;
 
 namespace StudioTechBI.API.Controllers;
 
@@ -17,19 +18,25 @@ public class ReportsController : ControllerBase
     private readonly IClientService _clientService;
     private readonly IClientByCompanyQuery _clientByCompanyQuery;
     private readonly IPowerBiAssetQuery _powerBiAssetQuery;
+    private readonly IInsightReportService _insightReportService;
+    private readonly IModelRepository _insightModelRepository;
 
     public ReportsController(
         ReportWorkerService worker,
         ILogger<ReportsController> logger,
         IClientService clientService,
         IClientByCompanyQuery clientByCompanyQuery,
-        IPowerBiAssetQuery powerBiAssetQuery)
+        IPowerBiAssetQuery powerBiAssetQuery,
+        IInsightReportService insightReportService,
+        IModelRepository insightModelRepository)
     {
         _worker = worker;
         _logger = logger;
         _clientService = clientService;
         _clientByCompanyQuery = clientByCompanyQuery;
         _powerBiAssetQuery = powerBiAssetQuery;
+        _insightReportService = insightReportService;
+        _insightModelRepository = insightModelRepository;
     }
 
     /// <summary>Returns client codes and ids the current user can access (single client from claim + all from companies for accountant).</summary>
@@ -70,6 +77,53 @@ public class ReportsController : ControllerBase
         return null;
     }
 
+    private async Task<IActionResult?> EnsureInsightModelAccessAsync(Guid modelId, CancellationToken ct)
+    {
+        var model = await _insightModelRepository.GetByIdAsync(modelId, ct);
+        if (model == null)
+            return NotFound(new { success = false, message = "Model not found." });
+
+        var accessible = await GetAccessibleClientCodesAsync(ct);
+        if (accessible.Count == 0)
+            return StatusCode(403, new { success = false, message = "Your account is not linked to a client." });
+
+        if (!accessible.Any(a => a.Id == model.ClientId))
+        {
+            _logger.LogWarning("Reports 403: User cannot access insight model {ModelId}.", modelId);
+            return StatusCode(403, new { success = false, message = "You do not have access to this model." });
+        }
+
+        return null;
+    }
+
+    /// <summary>Power BI embed token for the report created for an insight model (after orchestration).</summary>
+    [HttpGet("{modelId:guid}")]
+    public async Task<IActionResult> GetInsightReportEmbed(Guid modelId, CancellationToken cancellationToken)
+    {
+        var access = await EnsureInsightModelAccessAsync(modelId, cancellationToken);
+        if (access != null)
+            return access;
+
+        try
+        {
+            var dto = await _insightReportService.GetInsightReportEmbedAsync(modelId, cancellationToken);
+            if (dto == null)
+                return NotFound(new { success = false, message = "Model not found." });
+
+            return Ok(new
+            {
+                datasetId = dto.DatasetId,
+                reportId = dto.ReportId,
+                embedUrl = dto.EmbedUrl,
+                accessToken = dto.AccessToken
+            });
+        }
+        catch (InvalidOperationException ex)
+        {
+            _logger.LogWarning(ex, "Insight report embed not available for model {ModelId}.", modelId);
+            return BadRequest(new { success = false, message = ex.Message });
+        }
+    }
 
     /// <summary>List of clients the current user can access (for accounting firm: multiple; for single-client user: one). Use clientCode when calling embed-token or reports/available/{clientCode}.</summary>
     [HttpGet("accountant-clients")]

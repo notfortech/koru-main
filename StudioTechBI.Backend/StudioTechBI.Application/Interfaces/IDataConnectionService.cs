@@ -4,6 +4,11 @@ namespace StudioTechBI.Application.Interfaces;
 
 public interface IDataConnectionService
 {
+    Task<IReadOnlyList<DataConnectionSummaryDto>> ListConnectionsForClientAsync(Guid clientId, CancellationToken cancellationToken = default);
+
+    /// <summary>Returns the client id for a connection, or null if missing.</summary>
+    Task<Guid?> GetConnectionClientIdAsync(Guid connectionId, CancellationToken cancellationToken = default);
+
     Task<IReadOnlyList<FileItem>> ListFilesAsync(Guid connectionId, CancellationToken cancellationToken = default);
 
     /// <summary>Downloads once from connector, uploads to accounting/created/, returns blob path. Reuses path if same fileId already imported.</summary>

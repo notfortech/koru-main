@@ -1,4 +1,4 @@
-using System.Net.Http;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using StudioTechBI.Application.DTOs.Insight;
@@ -19,6 +19,8 @@ public class InsightService : BaseService, IInsightService
     private readonly IRepository<Client> _clientRepository;
     private readonly IBlobStorageService _blobStorage;
     private readonly IOptions<InsightEngineOptions> _options;
+    private readonly InsightSelectionPipeline _selectionPipeline;
+    private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<InsightService> _logger;
 
     public InsightService(
@@ -30,6 +32,8 @@ public class InsightService : BaseService, IInsightService
         IRepository<Client> clientRepository,
         IBlobStorageService blobStorage,
         IOptions<InsightEngineOptions> options,
+        InsightSelectionPipeline selectionPipeline,
+        IServiceScopeFactory scopeFactory,
         ILogger<InsightService> logger)
         : base(unitOfWork)
     {
@@ -40,6 +44,8 @@ public class InsightService : BaseService, IInsightService
         _clientRepository = clientRepository;
         _blobStorage = blobStorage;
         _options = options;
+        _selectionPipeline = selectionPipeline;
+        _scopeFactory = scopeFactory;
         _logger = logger;
     }
 
@@ -145,7 +151,7 @@ public class InsightService : BaseService, IInsightService
         return models;
     }
 
-    public async Task<OrchestratorResultDto> SelectModelAsync(Guid modelId, CancellationToken cancellationToken = default)
+    public async Task<SelectModelResponseDto> SelectModelAsync(Guid modelId, bool queueAsync, CancellationToken cancellationToken = default)
     {
         EnsureEnabled();
 
@@ -156,12 +162,13 @@ public class InsightService : BaseService, IInsightService
         if (existingActive != null)
         {
             _logger.LogInformation("Select model {ModelId}: idempotent return (active dataset already exists).", modelId);
-            return new OrchestratorResultDto
+            return new SelectModelResponseDto
             {
-                Success = true,
-                PowerBIDatasetId = existingActive.PowerBIDatasetId,
+                DatasetId = existingActive.PowerBIDatasetId,
                 ReportId = existingActive.ReportId,
-                Message = "Already completed."
+                Queued = false,
+                JobId = null,
+                Message = "Report created successfully"
             };
         }
 
@@ -171,126 +178,129 @@ public class InsightService : BaseService, IInsightService
         var folder = (client.BlobFolderPath ?? client.ClientCode ?? client.Id.ToString()).Trim();
         var validatedDataBlobPath = $"{folder}/accounting/validated/{modelId:D}/data.xlsx";
         model.ValidatedBlobPath = validatedDataBlobPath;
+        model.Status = InsightWorkflowStatuses.Processing;
+        await _modelRepository.UpdateAsync(model, cancellationToken);
 
-        var job = new InsightJob
+        if (queueAsync)
+        {
+            var job = new InsightJob
+            {
+                Id = Guid.NewGuid(),
+                ModelId = modelId,
+                Status = InsightJobStatuses.Queued,
+                StartedAt = DateTime.UtcNow
+            };
+            await _jobRepository.AddAsync(job, cancellationToken);
+            await UnitOfWork.SaveChangesAsync(cancellationToken);
+
+            ScheduleBackgroundSelect(modelId, job.Id);
+
+            return new SelectModelResponseDto
+            {
+                Queued = true,
+                JobId = job.Id,
+                Message = "Processing started",
+                DatasetId = null,
+                ReportId = null
+            };
+        }
+
+        var syncJob = new InsightJob
         {
             Id = Guid.NewGuid(),
             ModelId = modelId,
             Status = InsightJobStatuses.Processing,
             StartedAt = DateTime.UtcNow
         };
-        await _jobRepository.AddAsync(job, cancellationToken);
-        model.Status = InsightWorkflowStatuses.Processing;
-        await _modelRepository.UpdateAsync(model, cancellationToken);
+        await _jobRepository.AddAsync(syncJob, cancellationToken);
         await UnitOfWork.SaveChangesAsync(cancellationToken);
 
-        OrchestratorResultDto result;
-        try
-        {
-            result = await _insightEngineClient.SelectModelAsync(modelId, validatedDataBlobPath, cancellationToken);
-        }
-        catch (HttpRequestException ex)
-        {
-            _logger.LogError(ex, "InsightEngine HTTP failure during select for model {ModelId}.", modelId);
-            await FailJobAndModelAsync(job, model, ex.Message ?? "HTTP error", cancellationToken);
-            throw;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "InsightEngine select failed for model {ModelId}.", modelId);
-            await FailJobAndModelAsync(job, model, ex.Message, cancellationToken);
-            throw;
-        }
+        var result = await _selectionPipeline.ExecuteAsync(modelId, syncJob.Id, cancellationToken);
+        return MapSelectResponse(result);
+    }
 
-        _logger.LogInformation(
-            "InsightEngine orchestrator for model {ModelId}: Success={Success}, DatasetId={DatasetId}, ReportId={ReportId}.",
-            modelId,
-            result.Success,
-            result.PowerBIDatasetId,
-            result.ReportId);
+    private void ScheduleBackgroundSelect(Guid modelId, Guid jobId)
+    {
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await using var scope = _scopeFactory.CreateAsyncScope();
+                var pipeline = scope.ServiceProvider.GetRequiredService<InsightSelectionPipeline>();
+                var logger = scope.ServiceProvider.GetRequiredService<ILogger<InsightService>>();
+                var result = await pipeline.ExecuteAsync(modelId, jobId, CancellationToken.None);
+                logger.LogInformation(
+                    "Background model select finished for {ModelId} job {JobId}: Success={Success}",
+                    modelId,
+                    jobId,
+                    result.Success);
+            }
+            catch (Exception ex)
+            {
+                try
+                {
+                    await using var scope = _scopeFactory.CreateAsyncScope();
+                    var logger = scope.ServiceProvider.GetRequiredService<ILogger<InsightService>>();
+                    logger.LogError(ex, "Background model select failed for {ModelId} job {JobId}.", modelId, jobId);
+                }
+                catch
+                {
+                    // ignored
+                }
+            }
+        });
+    }
 
-        job.CompletedAt = DateTime.UtcNow;
-
+    private static SelectModelResponseDto MapSelectResponse(OrchestratorResultDto result)
+    {
         if (result.Success
             && !string.IsNullOrWhiteSpace(result.PowerBIDatasetId)
             && !string.IsNullOrWhiteSpace(result.ReportId))
         {
-            job.Status = InsightJobStatuses.Completed;
-            job.ErrorMessage = null;
-            model.Status = InsightWorkflowStatuses.Active;
-            await _jobRepository.UpdateAsync(job, cancellationToken);
-            await _modelRepository.UpdateAsync(model, cancellationToken);
-
-            var dataset = await _datasetRepository.GetLatestByModelIdAsync(modelId, cancellationToken);
-            if (dataset != null)
+            return new SelectModelResponseDto
             {
-                dataset.PowerBIDatasetId = result.PowerBIDatasetId.Trim();
-                dataset.ReportId = result.ReportId.Trim();
-                dataset.Status = InsightDatasetStatuses.Active;
-                await _datasetRepository.UpdateAsync(dataset, cancellationToken);
-            }
-            else
-            {
-                await _datasetRepository.AddAsync(new InsightDataset
-                {
-                    Id = Guid.NewGuid(),
-                    ModelId = modelId,
-                    PowerBIDatasetId = result.PowerBIDatasetId.Trim(),
-                    ReportId = result.ReportId.Trim(),
-                    Status = InsightDatasetStatuses.Active
-                }, cancellationToken);
-            }
-
-            await UnitOfWork.SaveChangesAsync(cancellationToken);
+                DatasetId = result.PowerBIDatasetId.Trim(),
+                ReportId = result.ReportId.Trim(),
+                Queued = false,
+                JobId = null,
+                Message = "Report created successfully"
+            };
         }
-        else
+
+        return new SelectModelResponseDto
         {
-            job.Status = InsightJobStatuses.Failed;
-            job.ErrorMessage = result.Message ?? "Orchestrator did not return dataset/report identifiers.";
-            model.Status = InsightWorkflowStatuses.Failed;
-            await _jobRepository.UpdateAsync(job, cancellationToken);
-            await _modelRepository.UpdateAsync(model, cancellationToken);
-
-            var latest = await _datasetRepository.GetLatestByModelIdAsync(modelId, cancellationToken);
-            if (latest != null)
-            {
-                latest.Status = InsightDatasetStatuses.Failed;
-                await _datasetRepository.UpdateAsync(latest, cancellationToken);
-            }
-
-            await UnitOfWork.SaveChangesAsync(cancellationToken);
-        }
-
-        return result;
-    }
-
-    private async Task FailJobAndModelAsync(InsightJob job, InsightModel model, string error, CancellationToken cancellationToken)
-    {
-        job.Status = InsightJobStatuses.Failed;
-        job.CompletedAt = DateTime.UtcNow;
-        job.ErrorMessage = error;
-        model.Status = InsightWorkflowStatuses.Failed;
-        await _jobRepository.UpdateAsync(job, cancellationToken);
-        await _modelRepository.UpdateAsync(model, cancellationToken);
-        await UnitOfWork.SaveChangesAsync(cancellationToken);
+            DatasetId = null,
+            ReportId = null,
+            Queued = false,
+            JobId = null,
+            Message = result.Message ?? "Orchestration failed"
+        };
     }
 
     public async Task<IReadOnlyList<ModelDto>> GetModelsForClientAsync(Guid clientId, CancellationToken cancellationToken = default)
     {
         var entities = await _modelRepository.GetByClientIdAsync(clientId, cancellationToken);
-        return entities
-            .OrderByDescending(m => m.CreatedAt)
-            .Select(m => new ModelDto
+        var ordered = entities.OrderByDescending(m => m.CreatedAt).ToList();
+        var lookup = await _datasetRepository.GetActiveDatasetsByModelIdsAsync(ordered.Select(m => m.Id), cancellationToken);
+
+        return ordered
+            .Select(m =>
             {
-                Id = m.Id,
-                TemplateId = m.TemplateId,
-                Status = m.Status,
-                Confidence = m.Confidence,
-                MappingJson = m.MappingJson,
-                ExcelSchemaJson = m.ExcelSchemaJson,
-                SchemaHash = m.SchemaHash,
-                ValidatedBlobPath = m.ValidatedBlobPath,
-                IsFallback = m.IsFallback
+                lookup.TryGetValue(m.Id, out var ds);
+                return new ModelDto
+                {
+                    Id = m.Id,
+                    TemplateId = m.TemplateId,
+                    Status = m.Status,
+                    Confidence = m.Confidence,
+                    MappingJson = m.MappingJson,
+                    ExcelSchemaJson = m.ExcelSchemaJson,
+                    SchemaHash = m.SchemaHash,
+                    ValidatedBlobPath = m.ValidatedBlobPath,
+                    IsFallback = m.IsFallback,
+                    DatasetId = ds?.PowerBIDatasetId,
+                    ReportId = ds?.ReportId
+                };
             })
             .ToList();
     }
