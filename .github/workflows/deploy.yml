@@ -29,15 +29,15 @@ jobs:
 
     - name: Restore
       run: |
-        dotnet restore StudioTechBI.Backend/StudioTechBI.Backend.API/StudioTechBI.Backend.API.csproj || dotnet restore
+        dotnet restore StudioTechBI.Backend/StudioTechBI.API/StudioTechBI.API.csproj || dotnet restore
 
     - name: Build
       run: |
-        dotnet build StudioTechBI.Backend/StudioTechBI.Backend.API/StudioTechBI.Backend.API.csproj --configuration Release --no-restore || dotnet build --configuration Release --no-restore
+        dotnet build StudioTechBI.Backend/StudioTechBI.API/StudioTechBI.API.csproj --configuration Release --no-restore || dotnet build --configuration Release --no-restore
 
     - name: Publish
       run: |
-        dotnet publish StudioTechBI.Backend/StudioTechBI.Backend.API/StudioTechBI.Backend.API.csproj -c Release -o publish || dotnet publish --configuration Release -o publish
+        dotnet publish StudioTechBI.Backend/StudioTechBI.API/StudioTechBI.API.csproj -c Release -o publish || dotnet publish --configuration Release -o publish
 
     - name: Deploy to Azure
       if: github.event_name == 'workflow_dispatch'
