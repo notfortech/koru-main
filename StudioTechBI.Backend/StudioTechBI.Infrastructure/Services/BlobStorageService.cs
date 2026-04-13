@@ -30,11 +30,22 @@ public class BlobStorageService : IBlobStorageService
         try
         {
             await _containerClient.CreateIfNotExistsAsync(cancellationToken: cancellationToken);
-            var folders = new[] { "uploads", "validated", "errors", "master" };
+            var rootFolders = new[] { "uploads", "validated", "errors", "master" };
+            var accountingFolders = new[] { "uploads", "created", "validated" };
             var basePath = $"{clientId}/";
-            foreach (var folder in folders)
+            foreach (var folder in rootFolders)
             {
                 var path = $"{basePath}{folder}/";
+                var blob = _containerClient.GetBlobClient(path + ".keep");
+                await blob.UploadAsync(
+                    new BinaryData(Array.Empty<byte>()),
+                    overwrite: true,
+                    cancellationToken);
+            }
+
+            foreach (var folder in accountingFolders)
+            {
+                var path = $"{basePath}accounting/{folder}/";
                 var blob = _containerClient.GetBlobClient(path + ".keep");
                 await blob.UploadAsync(
                     new BinaryData(Array.Empty<byte>()),
@@ -77,5 +88,43 @@ public class BlobStorageService : IBlobStorageService
         if (_containerClient == null) return false;
         var client = _containerClient.GetBlobClient(path);
         return await client.ExistsAsync(cancellationToken);
+    }
+
+    public async Task<string?> GetLatestBlobPathByPrefixAsync(string pathPrefix, string fileExtension, CancellationToken cancellationToken = default)
+    {
+        if (_containerClient == null) return null;
+
+        var prefix = (pathPrefix ?? "").Trim().Replace("\\", "/");
+        if (prefix.Length == 0)
+            return null;
+
+        var ext = (fileExtension ?? "").Trim();
+        if (!ext.StartsWith(".", StringComparison.Ordinal))
+            ext = "." + ext;
+
+        var latestPath = (string?)null;
+        DateTimeOffset? latestModified = null;
+
+        await foreach (var item in _containerClient.GetBlobsAsync(prefix: prefix, cancellationToken: cancellationToken))
+        {
+            var name = item.Name;
+            if (!name.EndsWith(ext, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            var modified = item.Properties.LastModified;
+            if (!modified.HasValue)
+                continue;
+
+            if (latestModified == null || modified > latestModified)
+            {
+                latestModified = modified.Value;
+                latestPath = name;
+            }
+        }
+
+        if (latestPath != null)
+            _logger.LogDebug("Latest blob under prefix {Prefix}: {Path}", prefix, latestPath);
+
+        return latestPath;
     }
 }

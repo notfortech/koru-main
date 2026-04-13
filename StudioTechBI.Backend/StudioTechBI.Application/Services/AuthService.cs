@@ -1,7 +1,11 @@
 using System.Security.Claims;
+using System.Security.Cryptography;
+using System.Text;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using StudioTechBI.Application.DTOs.Auth;
 using StudioTechBI.Application.Interfaces;
+using StudioTechBI.Application.Models;
 using StudioTechBI.Domain.Entities;
 using StudioTechBI.Domain.Interfaces;
 
@@ -18,6 +22,7 @@ public class AuthService : BaseService, IAuthService
     private readonly IUnitOfWork _unitOfWork;
     private readonly ILogger<AuthService> _logger;
     private readonly IClientByCompanyQuery _clientByCompanyQuery;
+    private readonly PasswordResetOptions _passwordResetOptions;
 
     public AuthService(
         IRepository<User> userRepository,
@@ -28,7 +33,8 @@ public class AuthService : BaseService, IAuthService
         IJwtTokenService jwtTokenService,
         IUnitOfWork unitOfWork,
         ILogger<AuthService> logger,
-        IClientByCompanyQuery clientByCompanyQuery)
+        IClientByCompanyQuery clientByCompanyQuery,
+        IOptions<PasswordResetOptions> passwordResetOptions)
         : base(unitOfWork)
     {
         _userRepository = userRepository;
@@ -40,6 +46,7 @@ public class AuthService : BaseService, IAuthService
         _unitOfWork = unitOfWork;
         _logger = logger;
         _clientByCompanyQuery = clientByCompanyQuery;
+        _passwordResetOptions = passwordResetOptions.Value;
     }
 
     public async Task<LoginResponseDto> LoginAsync(LoginRequestDto request, CancellationToken cancellationToken = default)
@@ -254,6 +261,96 @@ public class AuthService : BaseService, IAuthService
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
         return true;
+    }
+
+    public async Task<ForgotPasswordResponseDto> RequestPasswordResetAsync(
+        ForgotPasswordRequestDto request,
+        CancellationToken cancellationToken = default)
+    {
+        const string genericMessage =
+            "If an account exists for this email, password reset instructions have been processed.";
+
+        var email = request.Email.Trim().ToLowerInvariant();
+        var user = await _userRepository.GetByPredicateAsync(
+            u => u.Email == email && !u.IsDeleted,
+            cancellationToken);
+
+        if (user == null || !user.IsActive)
+        {
+            _logger.LogInformation("Password reset requested for unknown or inactive email (no user enumeration).");
+            return new ForgotPasswordResponseDto { Message = genericMessage };
+        }
+
+        var rawToken = GeneratePasswordResetToken();
+        user.PasswordResetTokenHash = HashResetToken(rawToken);
+        var hours = Math.Clamp(_passwordResetOptions.TokenExpiryHours, 1, 72);
+        user.PasswordResetTokenExpiry = DateTime.UtcNow.AddHours(hours);
+
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation("Password reset token issued for user {UserId}.", user.Id);
+
+        var response = new ForgotPasswordResponseDto { Message = genericMessage };
+        if (_passwordResetOptions.ExposeTokenInResponse)
+            response.ResetToken = rawToken;
+
+        return response;
+    }
+
+    public async Task ResetPasswordAsync(ResetPasswordRequestDto request, CancellationToken cancellationToken = default)
+    {
+        if (!string.Equals(request.NewPassword, request.ConfirmPassword, StringComparison.Ordinal))
+            throw new InvalidOperationException("Passwords do not match.");
+
+        var email = request.Email.Trim().ToLowerInvariant();
+        var user = await _userRepository.GetByPredicateAsync(
+            u => u.Email == email && !u.IsDeleted,
+            cancellationToken);
+
+        if (user == null
+            || string.IsNullOrEmpty(user.PasswordResetTokenHash)
+            || !user.PasswordResetTokenExpiry.HasValue)
+        {
+            throw new InvalidOperationException("Invalid or expired reset request.");
+        }
+
+        if (user.PasswordResetTokenExpiry.Value < DateTime.UtcNow)
+            throw new InvalidOperationException("Invalid or expired reset request.");
+
+        var presentedHash = HashResetToken(request.Token.Trim());
+        if (!FixedTimeEqualsHex(user.PasswordResetTokenHash, presentedHash))
+            throw new InvalidOperationException("Invalid or expired reset request.");
+
+        user.PasswordHash = HashPassword(request.NewPassword);
+        user.PasswordResetTokenHash = null;
+        user.PasswordResetTokenExpiry = null;
+        user.RefreshToken = null;
+        user.RefreshTokenExpiryTime = null;
+
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+        _logger.LogInformation("Password reset completed for user {UserId}.", user.Id);
+    }
+
+    private static string GeneratePasswordResetToken()
+    {
+        var bytes = RandomNumberGenerator.GetBytes(32);
+        return Convert.ToBase64String(bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+    }
+
+    private static string HashResetToken(string token)
+    {
+        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(token));
+        return Convert.ToHexString(hash).ToLowerInvariant();
+    }
+
+    private static bool FixedTimeEqualsHex(string a, string b)
+    {
+        if (a.Length != b.Length || a.Length != 64)
+            return false;
+        var result = 0;
+        for (var i = 0; i < a.Length; i++)
+            result |= char.ToLowerInvariant(a[i]) ^ char.ToLowerInvariant(b[i]);
+        return result == 0;
     }
 
     private async Task<List<string>> GetUserRolesAsync(Guid userId, CancellationToken cancellationToken)

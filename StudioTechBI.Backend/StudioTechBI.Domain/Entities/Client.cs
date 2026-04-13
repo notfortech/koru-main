@@ -21,4 +21,5 @@ public class Client : BaseEntity
     public string? PowerBIReportId { get; set; }
 
     public ICollection<ProcessingJob> ProcessingJobs { get; set; } = new List<ProcessingJob>();
+    public ICollection<InsightModel> InsightModels { get; set; } = new List<InsightModel>();
 }

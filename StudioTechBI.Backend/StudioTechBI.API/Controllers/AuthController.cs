@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using StudioTechBI.Application.DTOs.Auth;
@@ -96,6 +97,64 @@ public class AuthController : BaseApiController
         {
             _logger.LogError(ex, "Unhandled exception during registration.");
             return StatusCode(500, ApiResponse<object>.ErrorResponse("An error occurred during registration"));
+        }
+    }
+
+    /// <summary>Request a password reset. Response is generic (no email enumeration). In Development, reset token may be returned when PasswordReset:ExposeTokenInResponse is true.</summary>
+    [HttpPost("forgot-password")]
+    [AllowAnonymous]
+    [ProducesResponseType(typeof(ApiResponse<ForgotPasswordResponseDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> ForgotPassword(
+        [FromBody] ForgotPasswordRequestDto request,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            if (!ModelState.IsValid)
+            {
+                var errors = ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage).ToList();
+                return BadRequest(ApiResponse<object>.ErrorResponse("Invalid request", errors));
+            }
+
+            var result = await _authService.RequestPasswordResetAsync(request, cancellationToken);
+            return Ok(ApiResponse<ForgotPasswordResponseDto>.SuccessResponse(result, result.Message));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Unhandled exception during forgot-password.");
+            return StatusCode(500, ApiResponse<object>.ErrorResponse("An error occurred."));
+        }
+    }
+
+    /// <summary>Confirm new password using the token from email (or dev response).</summary>
+    [HttpPost("reset-password")]
+    [AllowAnonymous]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> ResetPassword(
+        [FromBody] ResetPasswordRequestDto request,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            if (!ModelState.IsValid)
+            {
+                var errors = ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage).ToList();
+                return BadRequest(ApiResponse<object>.ErrorResponse("Invalid request", errors));
+            }
+
+            await _authService.ResetPasswordAsync(request, cancellationToken);
+            return Ok(ApiResponse<object>.SuccessResponse(null!, "Password has been updated. You can sign in with your new password."));
+        }
+        catch (InvalidOperationException)
+        {
+            return BadRequest(ApiResponse<object>.ErrorResponse("Reset failed", new List<string> { "Invalid or expired token, or passwords do not match." }));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Unhandled exception during reset-password.");
+            return StatusCode(500, ApiResponse<object>.ErrorResponse("An error occurred."));
         }
     }
 

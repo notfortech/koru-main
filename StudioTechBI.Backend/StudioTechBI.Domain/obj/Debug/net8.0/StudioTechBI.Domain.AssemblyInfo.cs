@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("StudioTechBI.Domain")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+eea6c41f30bcf8ba76266bf07f962b924996e477")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+b9a91d321973d443a03909fbe35883d05a190cfe")]
 [assembly: System.Reflection.AssemblyProductAttribute("StudioTechBI.Domain")]
 [assembly: System.Reflection.AssemblyTitleAttribute("StudioTechBI.Domain")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

@@ -39,6 +39,9 @@ MapEnvOverride("POWERBI_DATASET_ID", "PowerBI:DatasetId");
 MapEnvOverride("AZURE_AD_TENANT_ID", "AzureAd:TenantId");
 MapEnvOverride("AZURE_AD_CLIENT_ID", "AzureAd:ClientId");
 MapEnvOverride("AZURE_AD_CLIENT_SECRET", "AzureAd:ClientSecret");
+MapEnvOverride("INSIGHT_ENGINE_ENABLED", "InsightEngine:Enabled");
+MapEnvOverride("INSIGHT_ENGINE_BASE_URL", "InsightEngine:BaseUrl");
+MapEnvOverride("INSIGHT_ENGINE_API_KEY", "InsightEngine:ApiKey");
 
 if (envOverrides.Count > 0)
 {
@@ -215,6 +218,10 @@ builder.Services.AddCors(options =>
 
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
+builder.Services.Configure<PasswordResetOptions>(
+    builder.Configuration.GetSection(PasswordResetOptions.SectionName));
+builder.Services.Configure<InsightEngineOptions>(
+    builder.Configuration.GetSection(InsightEngineOptions.SectionName));
 builder.Services.Configure<PowerBISettings>(
     builder.Configuration.GetSection("PowerBI"));
 

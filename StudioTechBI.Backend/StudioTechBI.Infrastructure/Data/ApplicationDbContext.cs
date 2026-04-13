@@ -33,6 +33,8 @@ public class ApplicationDbContext : DbContext
     public DbSet<DatasetRefreshLog> DatasetRefreshLogs => Set<DatasetRefreshLog>();
     public DbSet<ReportingTechnicalLog> ReportingTechnicalLogs => Set<ReportingTechnicalLog>();
     public DbSet<ReportingProcessingJob> ReportingProcessingJobs => Set<ReportingProcessingJob>();
+    public DbSet<InsightModel> InsightModels => Set<InsightModel>();
+    public DbSet<InsightDataset> InsightDatasets => Set<InsightDataset>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
