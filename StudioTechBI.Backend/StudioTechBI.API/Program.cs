@@ -42,6 +42,11 @@ MapEnvOverride("AZURE_AD_CLIENT_SECRET", "AzureAd:ClientSecret");
 MapEnvOverride("INSIGHT_ENGINE_ENABLED", "InsightEngine:Enabled");
 MapEnvOverride("INSIGHT_ENGINE_BASE_URL", "InsightEngine:BaseUrl");
 MapEnvOverride("INSIGHT_ENGINE_API_KEY", "InsightEngine:ApiKey");
+MapEnvOverride("MICROSOFT_AUTH_CLIENT_ID", "MicrosoftAuth:ClientId");
+MapEnvOverride("MICROSOFT_AUTH_CLIENT_SECRET", "MicrosoftAuth:ClientSecret");
+MapEnvOverride("MICROSOFT_AUTH_TENANT_ID", "MicrosoftAuth:TenantId");
+MapEnvOverride("MICROSOFT_AUTH_REDIRECT_URI", "MicrosoftAuth:RedirectUri");
+MapEnvOverride("MICROSOFT_AUTH_SUCCESS_REDIRECT_URI", "MicrosoftAuth:SuccessRedirectUri");
 
 if (envOverrides.Count > 0)
 {
@@ -68,6 +73,7 @@ builder.Host.UseSerilog();
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddMemoryCache();
 builder.Services.AddHttpClient<AIInsightsService>();
 builder.Services.AddScoped<AllInsightsService>();
 builder.Services.AddScoped<ReportWorkerService>();
@@ -224,6 +230,8 @@ builder.Services.Configure<InsightEngineOptions>(
     builder.Configuration.GetSection(InsightEngineOptions.SectionName));
 builder.Services.Configure<PowerBISettings>(
     builder.Configuration.GetSection("PowerBI"));
+builder.Services.Configure<MicrosoftAuthOptions>(
+    builder.Configuration.GetSection(MicrosoftAuthOptions.SectionName));
 
 builder.Services.AddScoped<PowerBIService>();
 
@@ -240,6 +248,8 @@ if (app.Environment.IsDevelopment() || enableSwaggerInAzure)
 {
     app.UseSwagger();
     app.UseSwaggerUI();
+    // Root URL has no controller; send browsers to Swagger (launchUrl is often just the base URL).
+    app.MapGet("/", () => Results.Redirect("/swagger")).AllowAnonymous().ExcludeFromDescription();
 }
 
 app.UseMiddleware<ExceptionHandlingMiddleware>();
