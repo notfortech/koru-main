@@ -1,43 +1,43 @@
-name: Deploy .NET API to Azure
+name: Build & Optional Deploy API
 
 on:
   push:
     branches:
       - main
+      - develop   # optional
   pull_request:
     branches:
       - main
   workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch to deploy'
+        required: true
+        default: 'main'
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout correct branch
+    - name: Checkout code
       uses: actions/checkout@v3
       with:
-        ref: ${{ github.event_name == 'pull_request' && github.head_ref || github.ref }}
+        ref: ${{ github.event.inputs.branch || github.ref }}
 
     - name: Setup .NET
       uses: actions/setup-dotnet@v3
       with:
         dotnet-version: '8.0.x'
 
-    - name: Debug - list files
-      run: ls -R
-
     - name: Restore
-      run: |
-        dotnet restore StudioTechBI.Backend/StudioTechBI.API/StudioTechBI.API.csproj || dotnet restore
+      run: dotnet restore StudioTechBI.Backend/StudioTechBI.API/StudioTechBI.API.csproj
 
     - name: Build
-      run: |
-        dotnet build StudioTechBI.Backend/StudioTechBI.API/StudioTechBI.API.csproj --configuration Release --no-restore || dotnet build --configuration Release --no-restore
+      run: dotnet build StudioTechBI.Backend/StudioTechBI.API/StudioTechBI.API.csproj --configuration Release --no-restore
 
     - name: Publish
-      run: |
-        dotnet publish StudioTechBI.Backend/StudioTechBI.API/StudioTechBI.API.csproj -c Release -o publish || dotnet publish --configuration Release -o publish
+      run: dotnet publish StudioTechBI.Backend/StudioTechBI.API/StudioTechBI.API.csproj -c Release -o publish
 
     - name: Deploy to Azure
       if: github.event_name == 'workflow_dispatch'
