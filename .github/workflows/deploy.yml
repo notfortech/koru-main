@@ -39,6 +39,12 @@ jobs:
     - name: Publish
       run: dotnet publish StudioTechBI.Backend/StudioTechBI.API/StudioTechBI.API.csproj -c Release -o publish
 
+    - name: Azure Login
+      if: github.event_name == 'workflow_dispatch'
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+
     - name: Deploy to Azure
       if: github.event_name == 'workflow_dispatch'
       uses: azure/webapps-deploy@v2
