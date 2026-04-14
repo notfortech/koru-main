@@ -72,6 +72,7 @@ public static class DependencyInjection
         services.AddScoped<IModelRepository, ModelRepository>();
         services.AddScoped<IDatasetRepository, DatasetRepository>();
         services.AddScoped<IDataConnectionRepository, DataConnectionRepository>();
+        services.AddSingleton<MicrosoftGraphClientFactory>();
         services.AddScoped<GoogleDriveConnector>();
         services.AddScoped<OneDriveConnector>();
         services.AddScoped<SharePointConnector>();
