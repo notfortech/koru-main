@@ -19,6 +19,9 @@ public static class DependencyInjection
         services.AddScoped<InsightSelectionPipeline>();
         services.AddScoped<IInsightReportService, InsightReportService>();
         services.AddScoped<IDataConnectionService, DataConnectionService>();
+        services.AddScoped<IClientResolver, ClientResolver>();
+        services.AddScoped<IOAuthService, OAuthService>();
+        services.AddScoped<IConnectionService, ConnectionService>();
 
         return services;
     }

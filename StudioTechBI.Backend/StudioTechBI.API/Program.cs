@@ -47,6 +47,10 @@ MapEnvOverride("MICROSOFT_AUTH_CLIENT_SECRET", "MicrosoftAuth:ClientSecret");
 MapEnvOverride("MICROSOFT_AUTH_TENANT_ID", "MicrosoftAuth:TenantId");
 MapEnvOverride("MICROSOFT_AUTH_REDIRECT_URI", "MicrosoftAuth:RedirectUri");
 MapEnvOverride("MICROSOFT_AUTH_SUCCESS_REDIRECT_URI", "MicrosoftAuth:SuccessRedirectUri");
+MapEnvOverride("GOOGLE_AUTH_CLIENT_ID", "GoogleAuth:ClientId");
+MapEnvOverride("GOOGLE_AUTH_CLIENT_SECRET", "GoogleAuth:ClientSecret");
+MapEnvOverride("GOOGLE_AUTH_REDIRECT_URI", "GoogleAuth:RedirectUri");
+MapEnvOverride("GOOGLE_AUTH_SUCCESS_REDIRECT_URI", "GoogleAuth:SuccessRedirectUri");
 
 if (envOverrides.Count > 0)
 {
@@ -232,6 +236,16 @@ builder.Services.Configure<PowerBISettings>(
     builder.Configuration.GetSection("PowerBI"));
 builder.Services.Configure<MicrosoftAuthOptions>(
     builder.Configuration.GetSection(MicrosoftAuthOptions.SectionName));
+
+// Google OAuth: Azure App Settings / env as GOOGLE_AUTH_* first, then GoogleAuth:* (appsettings, Key Vault, MapEnvOverride).
+builder.Services.Configure<GoogleAuthOptions>(options =>
+{
+    var cfg = builder.Configuration;
+    options.ClientId = cfg["GOOGLE_AUTH_CLIENT_ID"] ?? cfg["GoogleAuth:ClientId"] ?? string.Empty;
+    options.ClientSecret = cfg["GOOGLE_AUTH_CLIENT_SECRET"] ?? cfg["GoogleAuth:ClientSecret"] ?? string.Empty;
+    options.RedirectUri = cfg["GOOGLE_AUTH_REDIRECT_URI"] ?? cfg["GoogleAuth:RedirectUri"] ?? string.Empty;
+    options.SuccessRedirectUri = cfg["GOOGLE_AUTH_SUCCESS_REDIRECT_URI"] ?? cfg["GoogleAuth:SuccessRedirectUri"];
+});
 
 builder.Services.AddScoped<PowerBIService>();
 

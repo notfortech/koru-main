@@ -37,6 +37,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<InsightDataset> InsightDatasets => Set<InsightDataset>();
     public DbSet<InsightJob> InsightJobs => Set<InsightJob>();
     public DbSet<DataConnection> DataConnections => Set<DataConnection>();
+    public DbSet<OAuthConnectionState> OAuthConnectionStates => Set<OAuthConnectionState>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

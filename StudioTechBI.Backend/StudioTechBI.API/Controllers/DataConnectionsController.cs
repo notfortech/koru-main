@@ -12,17 +12,23 @@ namespace StudioTechBI.API.Controllers;
 public class DataConnectionsController : ControllerBase
 {
     private readonly IDataConnectionService _dataConnectionService;
+    private readonly IConnectionService _connectionService;
+    private readonly IClientResolver _clientResolver;
     private readonly IClientByCompanyQuery _clientByCompanyQuery;
     private readonly IClientService _clientService;
     private readonly ILogger<DataConnectionsController> _logger;
 
     public DataConnectionsController(
         IDataConnectionService dataConnectionService,
+        IConnectionService connectionService,
+        IClientResolver clientResolver,
         IClientByCompanyQuery clientByCompanyQuery,
         IClientService clientService,
         ILogger<DataConnectionsController> logger)
     {
         _dataConnectionService = dataConnectionService;
+        _connectionService = connectionService;
+        _clientResolver = clientResolver;
         _clientByCompanyQuery = clientByCompanyQuery;
         _clientService = clientService;
         _logger = logger;
@@ -54,28 +60,39 @@ public class DataConnectionsController : ControllerBase
     }
 
     [HttpGet("~/api/data-connections")]
-    public async Task<IActionResult> ListForClient([FromQuery] Guid clientId, CancellationToken cancellationToken)
+    public async Task<IActionResult> ListForClient([FromQuery] string clientId, CancellationToken cancellationToken)
     {
-        if (clientId == Guid.Empty)
+        if (string.IsNullOrWhiteSpace(clientId))
             return BadRequest(new { success = false, message = "clientId is required." });
 
-        if (!await CanAccessClientAsync(clientId, cancellationToken))
+        var client = await _clientResolver.ResolveAsync(clientId, cancellationToken);
+        if (client == null)
+            return NotFound(new { success = false, message = "Client not found." });
+
+        if (!await CanAccessClientAsync(client.Id, cancellationToken))
         {
-            _logger.LogWarning("User denied listing data connections for client {ClientId}.", clientId);
+            _logger.LogWarning("User denied listing data connections for client {ClientId}.", client.Id);
             return StatusCode(403, new { success = false, message = "You do not have access to this client." });
         }
 
-        var items = await _dataConnectionService.ListConnectionsForClientAsync(clientId, cancellationToken);
-        return Ok(items.Select(x => new { id = x.Id, type = x.Type }).ToList());
+        var items = await _connectionService.ListActiveConnectionsAsync(clientId, cancellationToken);
+        return Ok(items.Select(x => new { id = x.Id, provider = x.Type, isActive = true }).ToList());
     }
 
-    [HttpPost("~/api/clients/{clientId:guid}/data-connections")]
-    public async Task<IActionResult> Register(Guid clientId, [FromBody] RegisterDataConnectionDto body, CancellationToken cancellationToken)
+    [HttpPost("~/api/clients/{clientId}/data-connections")]
+    public async Task<IActionResult> Register(string clientId, [FromBody] RegisterDataConnectionDto body, CancellationToken cancellationToken)
     {
-        if (!await CanAccessClientAsync(clientId, cancellationToken))
+        if (string.IsNullOrWhiteSpace(clientId))
+            return BadRequest(new { success = false, message = "clientId is required." });
+
+        var client = await _clientResolver.ResolveAsync(clientId, cancellationToken);
+        if (client == null)
+            return NotFound(new { success = false, message = "Client not found." });
+
+        if (!await CanAccessClientAsync(client.Id, cancellationToken))
             return StatusCode(403, new { success = false, message = "You do not have access to this client." });
 
-        body.ClientId = clientId;
+        body.ClientId = client.Id;
         try
         {
             var dto = await _dataConnectionService.RegisterConnectionAsync(body, cancellationToken);
@@ -83,7 +100,7 @@ public class DataConnectionsController : ControllerBase
         }
         catch (InvalidOperationException ex)
         {
-            _logger.LogWarning(ex, "Register data connection failed for client {ClientId}.", clientId);
+            _logger.LogWarning(ex, "Register data connection failed for client {ClientId}.", client.Id);
             return BadRequest(ApiResponse<object>.ErrorResponse(ex.Message));
         }
     }
@@ -140,5 +157,22 @@ public class DataConnectionsController : ControllerBase
             _logger.LogWarning(ex, "Connector not supported for connection {ConnectionId}.", connectionId);
             return BadRequest(new ConnectorImportResponseDto { Success = false, BlobPath = "" });
         }
+    }
+
+    [HttpDelete("~/api/data-connections/{connectionId:guid}")]
+    public async Task<IActionResult> Remove(Guid connectionId, CancellationToken cancellationToken)
+    {
+        var ownerClientId = await _dataConnectionService.GetConnectionClientIdAsync(connectionId, cancellationToken);
+        if (ownerClientId == null)
+            return NotFound(new { success = false, message = "Connection not found." });
+
+        if (!await CanAccessClientAsync(ownerClientId.Value, cancellationToken))
+            return StatusCode(403, new { success = false, message = "You do not have access to this client." });
+
+        var ok = await _connectionService.DeactivateConnectionAsync(connectionId, cancellationToken);
+        if (!ok)
+            return NotFound(new { success = false, message = "Connection not found." });
+
+        return Ok(new { success = true });
     }
 }

@@ -1,104 +1,223 @@
-using System.Net.Http.Headers;
 using System.Security.Claims;
-using System.Text.Json;
-using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
-using StudioTechBI.Application.DTOs.Connectors;
+using StudioTechBI.Application.Exceptions;
 using StudioTechBI.Application.Interfaces;
 using StudioTechBI.Application.Models;
 using StudioTechBI.Domain.Entities;
 
 namespace StudioTechBI.API.Controllers;
 
-/// <summary>Browser OAuth redirects for Microsoft Graph–backed connectors (OneDrive).</summary>
+/// <summary>OAuth endpoints for external connector providers.</summary>
 [ApiController]
 public class ConnectionsOAuthController : ControllerBase
 {
-    private const string OneDriveStateCachePrefix = "onedrive_oauth_state:";
-    private static readonly string[] OneDriveScopes =
-    [
-        "offline_access",
-        "Files.Read",
-        "User.Read"
-    ];
-
-    private static readonly JsonSerializerOptions TokenJsonOptions = new()
-    {
-        PropertyNameCaseInsensitive = true
-    };
-
-    private readonly IOptions<MicrosoftAuthOptions> _authOptions;
-    private readonly IMemoryCache _cache;
+    private readonly IClientResolver _clientResolver;
+    private readonly IOAuthService _oauthService;
     private readonly IDataConnectionService _dataConnectionService;
     private readonly IClientByCompanyQuery _clientByCompanyQuery;
     private readonly IClientService _clientService;
-    private readonly IHttpClientFactory _httpClientFactory;
+    private readonly IOptions<MicrosoftAuthOptions> _microsoftAuthOptions;
+    private readonly IOptions<GoogleAuthOptions> _googleAuthOptions;
     private readonly ILogger<ConnectionsOAuthController> _logger;
 
     public ConnectionsOAuthController(
-        IOptions<MicrosoftAuthOptions> authOptions,
-        IMemoryCache cache,
+        IClientResolver clientResolver,
+        IOAuthService oauthService,
         IDataConnectionService dataConnectionService,
         IClientByCompanyQuery clientByCompanyQuery,
         IClientService clientService,
-        IHttpClientFactory httpClientFactory,
+        IOptions<MicrosoftAuthOptions> microsoftAuthOptions,
+        IOptions<GoogleAuthOptions> googleAuthOptions,
         ILogger<ConnectionsOAuthController> logger)
     {
-        _authOptions = authOptions;
-        _cache = cache;
+        _clientResolver = clientResolver;
+        _oauthService = oauthService;
         _dataConnectionService = dataConnectionService;
         _clientByCompanyQuery = clientByCompanyQuery;
         _clientService = clientService;
-        _httpClientFactory = httpClientFactory;
+        _microsoftAuthOptions = microsoftAuthOptions;
+        _googleAuthOptions = googleAuthOptions;
         _logger = logger;
     }
 
-    /// <summary>Starts OAuth: redirects the browser to Microsoft login. Requires JWT and <c>clientId</c> query.</summary>
+    /// <summary>Starts OAuth: redirects the browser to Microsoft login. Requires JWT and <c>clientId</c> query (GUID or code like AU-004).</summary>
     [Authorize]
     [HttpGet("~/api/connections/oauth/onedrive")]
-    public async Task<IActionResult> StartOneDriveOAuth([FromQuery] Guid clientId, CancellationToken cancellationToken)
+    public async Task<IActionResult> StartOneDriveOAuth([FromQuery] string clientId, CancellationToken cancellationToken)
     {
-        if (clientId == Guid.Empty)
-            return BadRequest(new { success = false, message = "clientId query parameter is required." });
+        var client = await ResolveClientAsync(clientId, cancellationToken);
+        if (client == null)
+            return NotFound(new { success = false, message = "Client not found." });
 
-        if (!await CanAccessClientAsync(clientId, cancellationToken))
-        {
-            _logger.LogWarning("User denied OneDrive OAuth start for client {ClientId}.", clientId);
+        if (!await CanAccessClientAsync(client.Id, cancellationToken))
             return StatusCode(403, new { success = false, message = "You do not have access to this client." });
-        }
 
-        var opt = _authOptions.Value;
-        if (string.IsNullOrWhiteSpace(opt.ClientId) || string.IsNullOrWhiteSpace(opt.RedirectUri))
-        {
-            _logger.LogError("MicrosoftAuth:ClientId or MicrosoftAuth:RedirectUri is not configured.");
-            return StatusCode(500, new { success = false, message = "Microsoft OAuth is not configured on the server." });
-        }
-
-        var state = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32));
-        var userIdRaw = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (!Guid.TryParse(userIdRaw, out var userId))
+        if (!TryGetUserId(out var userId))
             return Unauthorized(new { success = false, message = "Invalid user token." });
 
-        _cache.Set(
-            OneDriveStateCachePrefix + state,
-            new OneDriveOAuthState(clientId, userId),
-            new MemoryCacheEntryOptions { AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(10) });
+        try
+        {
+            var authorizeUrl = await _oauthService.CreateAuthorizeUrlAsync(DataConnectionTypes.OneDrive, client.Id, userId, cancellationToken);
+            _logger.LogInformation("Redirecting user {UserId} to OneDrive OAuth for client {ClientId}.", userId, client.Id);
+            return Redirect(authorizeUrl);
+        }
+        catch (InvalidOperationException ex)
+        {
+            _logger.LogError(ex, "OneDrive OAuth is not configured.");
+            return StatusCode(500, new { success = false, message = "Microsoft OAuth is not configured on the server." });
+        }
+    }
 
-        var tenant = string.IsNullOrWhiteSpace(opt.TenantId) ? "common" : opt.TenantId.Trim();
-        var authorizeUrl =
-            $"https://login.microsoftonline.com/{Uri.EscapeDataString(tenant)}/oauth2/v2.0/authorize" +
-            $"?client_id={Uri.EscapeDataString(opt.ClientId.Trim())}" +
-            "&response_type=code" +
-            $"&redirect_uri={Uri.EscapeDataString(opt.RedirectUri.Trim())}" +
-            "&response_mode=query" +
-            $"&scope={Uri.EscapeDataString(string.Join(' ', OneDriveScopes))}" +
-            $"&state={Uri.EscapeDataString(state)}";
+    /// <summary>
+    /// Returns OAuth URL (no redirect) so the frontend can set <c>window.location.href</c>.
+    /// Requires JWT and <c>clientId</c> query (GUID or code like AU-004).
+    /// </summary>
+    [Authorize]
+    [HttpGet("~/api/connections/oauth/onedrive-url")]
+    public async Task<IActionResult> GetOneDriveOAuthUrl([FromQuery] string clientId, CancellationToken cancellationToken)
+    {
+        var client = await ResolveClientAsync(clientId, cancellationToken);
+        if (client == null)
+            return NotFound(new { success = false, message = "Client not found." });
 
-        _logger.LogInformation("Redirecting user {UserId} to Microsoft OAuth for client {ClientId}.", userId, clientId);
-        return Redirect(authorizeUrl);
+        if (!await CanAccessClientAsync(client.Id, cancellationToken))
+            return StatusCode(403, new { success = false, message = "You do not have access to this client." });
+
+        if (!TryGetUserId(out var userId))
+            return Unauthorized(new { success = false, message = "Invalid user token." });
+
+        try
+        {
+            var url = await _oauthService.CreateAuthorizeUrlAsync(DataConnectionTypes.OneDrive, client.Id, userId, cancellationToken);
+            return Ok(new { url });
+        }
+        catch (InvalidOperationException ex)
+        {
+            _logger.LogError(ex, "OneDrive OAuth is not configured.");
+            return StatusCode(500, new { success = false, message = "Microsoft OAuth is not configured on the server." });
+        }
+    }
+
+    /// <summary>Starts Google OAuth: redirects the browser to Google login. Requires JWT and <c>clientId</c> query (GUID or code like AU-004).</summary>
+    [Authorize]
+    [HttpGet("~/api/connections/oauth/google")]
+    public async Task<IActionResult> StartGoogleOAuth([FromQuery] string clientId, CancellationToken cancellationToken)
+    {
+        var client = await ResolveClientAsync(clientId, cancellationToken);
+        if (client == null)
+            return NotFound(new { success = false, message = "Client not found." });
+
+        if (!await CanAccessClientAsync(client.Id, cancellationToken))
+            return StatusCode(403, new { success = false, message = "You do not have access to this client." });
+
+        if (!TryGetUserId(out var userId))
+            return Unauthorized(new { success = false, message = "Invalid user token." });
+
+        try
+        {
+            var url = await _oauthService.CreateAuthorizeUrlAsync(DataConnectionTypes.GoogleDrive, client.Id, userId, cancellationToken);
+            _logger.LogInformation("Redirecting user {UserId} to Google OAuth for client {ClientId}.", userId, client.Id);
+            return Redirect(url);
+        }
+        catch (OAuthConfigurationException ex)
+        {
+            _logger.LogWarning(ex, "Google OAuth is not configured for this environment.");
+            return BadRequest(ex.Message);
+        }
+        catch (InvalidOperationException ex)
+        {
+            _logger.LogError(ex, "Google OAuth failed.");
+            return StatusCode(500, new { success = false, message = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// Returns Google OAuth URL (no redirect) so the frontend can set <c>window.location.href</c>.
+    /// Requires JWT and <c>clientId</c> query (GUID or code like AU-004).
+    /// </summary>
+    [Authorize]
+    [HttpGet("~/api/connections/oauth/google-url")]
+    public async Task<IActionResult> GetGoogleOAuthUrl([FromQuery] string clientId, CancellationToken cancellationToken)
+    {
+        var client = await ResolveClientAsync(clientId, cancellationToken);
+        if (client == null)
+            return NotFound(new { success = false, message = "Client not found." });
+
+        if (!await CanAccessClientAsync(client.Id, cancellationToken))
+            return StatusCode(403, new { success = false, message = "You do not have access to this client." });
+
+        if (!TryGetUserId(out var userId))
+            return Unauthorized(new { success = false, message = "Invalid user token." });
+
+        try
+        {
+            var url = await _oauthService.CreateAuthorizeUrlAsync(DataConnectionTypes.GoogleDrive, client.Id, userId, cancellationToken);
+            return Ok(new { url });
+        }
+        catch (OAuthConfigurationException ex)
+        {
+            _logger.LogWarning(ex, "Google OAuth is not configured for this environment.");
+            return BadRequest(ex.Message);
+        }
+        catch (InvalidOperationException ex)
+        {
+            _logger.LogError(ex, "Google OAuth failed.");
+            return StatusCode(500, new { success = false, message = ex.Message });
+        }
+    }
+
+    /// <summary>OAuth callback from Google (no JWT). Exchanges code and registers a Google Drive <see cref="DataConnection"/>.</summary>
+    [AllowAnonymous]
+    [HttpGet("~/api/connections/oauth/google/callback")]
+    public async Task<IActionResult> GoogleOAuthCallback(
+        [FromQuery] string? code,
+        [FromQuery] string? state,
+        [FromQuery] string? error,
+        [FromQuery(Name = "error_description")] string? errorDescription,
+        CancellationToken cancellationToken)
+    {
+        if (!string.IsNullOrEmpty(error))
+        {
+            _logger.LogWarning("Google OAuth error: {Error} {Description}", error, errorDescription);
+            return BadRequest(new { success = false, message = $"Google sign-in failed: {error}. {errorDescription}".Trim() });
+        }
+
+        if (string.IsNullOrWhiteSpace(code) || string.IsNullOrWhiteSpace(state))
+            return BadRequest(new { success = false, message = "Missing code or state from OAuth callback." });
+
+        try
+        {
+            var (clientId, _) = await _oauthService.ConsumeStateAsync(DataConnectionTypes.GoogleDrive, state.Trim(), cancellationToken);
+            var (accessToken, refreshToken, expiresAt) = await _oauthService.ExchangeCodeForTokensAsync(DataConnectionTypes.GoogleDrive, code.Trim(), cancellationToken);
+
+            var dto = await _dataConnectionService.RegisterConnectionAsync(
+                new StudioTechBI.Application.DTOs.Connectors.RegisterDataConnectionDto
+                {
+                    ClientId = clientId,
+                    Type = DataConnectionTypes.GoogleDrive,
+                    AccessToken = accessToken,
+                    RefreshToken = refreshToken,
+                    ExpiresAt = expiresAt
+                },
+                cancellationToken);
+
+            var target = AppendQuery(_googleAuthOptions.Value.SuccessRedirectUri, "connected", "google");
+            return target != null
+                ? Redirect(target)
+                : Ok(new { success = true, connectionId = dto.Id, connected = "google" });
+        }
+        catch (OAuthConfigurationException ex)
+        {
+            _logger.LogWarning(ex, "Google OAuth configuration error on callback.");
+            return BadRequest(ex.Message);
+        }
+        catch (InvalidOperationException ex)
+        {
+            _logger.LogWarning(ex, "Google OAuth callback failed.");
+            return BadRequest(new { success = false, message = ex.Message });
+        }
     }
 
     /// <summary>OAuth callback from Microsoft (no JWT). Exchanges code and registers a OneDrive <see cref="DataConnection"/>.</summary>
@@ -111,131 +230,41 @@ public class ConnectionsOAuthController : ControllerBase
         [FromQuery(Name = "error_description")] string? errorDescription,
         CancellationToken cancellationToken)
     {
-        var opt = _authOptions.Value;
-
         if (!string.IsNullOrEmpty(error))
         {
             _logger.LogWarning("OneDrive OAuth error from Microsoft: {Error} {Description}", error, errorDescription);
-            return RedirectOrMessage(opt, success: false, message: $"Microsoft sign-in failed: {error}. {errorDescription}".Trim());
+            return BadRequest(new { success = false, message = $"Microsoft sign-in failed: {error}. {errorDescription}".Trim() });
         }
 
         if (string.IsNullOrWhiteSpace(code) || string.IsNullOrWhiteSpace(state))
             return BadRequest(new { success = false, message = "Missing code or state from OAuth callback." });
 
-        if (!_cache.TryGetValue(OneDriveStateCachePrefix + state, out OneDriveOAuthState? oauthState) || oauthState == null)
-        {
-            _logger.LogWarning("OneDrive OAuth callback with unknown or expired state.");
-            return BadRequest(new { success = false, message = "OAuth state is invalid or expired. Start the connection again." });
-        }
-
-        _cache.Remove(OneDriveStateCachePrefix + state);
-
-        if (string.IsNullOrWhiteSpace(opt.ClientId)
-            || string.IsNullOrWhiteSpace(opt.ClientSecret)
-            || string.IsNullOrWhiteSpace(opt.RedirectUri))
-        {
-            _logger.LogError("Microsoft OAuth token exchange misconfiguration.");
-            return StatusCode(500, new { success = false, message = "Microsoft OAuth is not fully configured on the server." });
-        }
-
-        var tenant = string.IsNullOrWhiteSpace(opt.TenantId) ? "common" : opt.TenantId.Trim();
-        var tokenUrl = $"https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token";
-
-        using var request = new HttpRequestMessage(HttpMethod.Post, tokenUrl);
-        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-
-        var form = new Dictionary<string, string>
-        {
-            ["client_id"] = opt.ClientId.Trim(),
-            ["client_secret"] = opt.ClientSecret.Trim(),
-            ["grant_type"] = "authorization_code",
-            ["code"] = code.Trim(),
-            ["redirect_uri"] = opt.RedirectUri.Trim()
-        };
-        request.Content = new FormUrlEncodedContent(form);
-
-        var http = _httpClientFactory.CreateClient();
-        using var tokenResponse = await http.SendAsync(request, cancellationToken);
-        var tokenBody = await tokenResponse.Content.ReadAsStringAsync(cancellationToken);
-
-        if (!tokenResponse.IsSuccessStatusCode)
-        {
-            _logger.LogError(
-                "OneDrive token exchange failed: {Status} {Body}",
-                (int)tokenResponse.StatusCode,
-                tokenBody.Length > 2000 ? tokenBody[..2000] : tokenBody);
-            return RedirectOrMessage(opt, success: false, message: "Token exchange with Microsoft failed.");
-        }
-
-        MicrosoftOAuthTokenResponse? tokens;
         try
         {
-            tokens = JsonSerializer.Deserialize<MicrosoftOAuthTokenResponse>(tokenBody, TokenJsonOptions);
-        }
-        catch (JsonException ex)
-        {
-            _logger.LogError(ex, "Failed to parse Microsoft token response.");
-            return RedirectOrMessage(opt, success: false, message: "Invalid token response from Microsoft.");
-        }
+            var (clientId, _) = await _oauthService.ConsumeStateAsync(DataConnectionTypes.OneDrive, state.Trim(), cancellationToken);
+            var (accessToken, refreshToken, expiresAt) = await _oauthService.ExchangeCodeForTokensAsync(DataConnectionTypes.OneDrive, code.Trim(), cancellationToken);
 
-        if (string.IsNullOrWhiteSpace(tokens?.AccessToken))
-            return RedirectOrMessage(opt, success: false, message: "Microsoft did not return an access token.");
-
-        DateTime? expiresAt = null;
-        if (tokens.ExpiresIn > 0)
-            expiresAt = DateTime.UtcNow.AddSeconds(tokens.ExpiresIn);
-
-        try
-        {
             var dto = await _dataConnectionService.RegisterConnectionAsync(
-                new RegisterDataConnectionDto
+                new StudioTechBI.Application.DTOs.Connectors.RegisterDataConnectionDto
                 {
-                    ClientId = oauthState.ClientId,
+                    ClientId = clientId,
                     Type = DataConnectionTypes.OneDrive,
-                    AccessToken = tokens.AccessToken,
-                    RefreshToken = tokens.RefreshToken,
+                    AccessToken = accessToken,
+                    RefreshToken = refreshToken,
                     ExpiresAt = expiresAt
                 },
                 cancellationToken);
 
-            _logger.LogInformation(
-                "Registered OneDrive data connection {ConnectionId} for client {ClientId} (OAuth user {UserId}).",
-                dto.Id,
-                oauthState.ClientId,
-                oauthState.InitiatingUserId);
-
-            return RedirectOrMessage(opt, success: true, message: null, connectionId: dto.Id);
+            var target = AppendQuery(_microsoftAuthOptions.Value.SuccessRedirectUri, "connected", "onedrive");
+            return target != null
+                ? Redirect(target)
+                : Ok(new { success = true, connectionId = dto.Id, connected = "onedrive" });
         }
         catch (InvalidOperationException ex)
         {
-            _logger.LogWarning(ex, "Register OneDrive connection failed after OAuth.");
-            return RedirectOrMessage(opt, success: false, message: ex.Message);
+            _logger.LogWarning(ex, "OneDrive OAuth callback failed.");
+            return BadRequest(new { success = false, message = ex.Message });
         }
-    }
-
-    private IActionResult RedirectOrMessage(MicrosoftAuthOptions opt, bool success, string? message, Guid? connectionId = null)
-    {
-        if (!string.IsNullOrWhiteSpace(opt.SuccessRedirectUri))
-        {
-            var baseUri = opt.SuccessRedirectUri.Trim();
-            var q = new List<string>
-            {
-                "oauth=onedrive",
-                success ? "success=1" : "success=0"
-            };
-            if (connectionId.HasValue)
-                q.Add($"connectionId={Uri.EscapeDataString(connectionId.Value.ToString())}");
-            if (!string.IsNullOrEmpty(message))
-                q.Add($"message={Uri.EscapeDataString(message)}");
-
-            var sep = baseUri.Contains('?', StringComparison.Ordinal) ? "&" : "?";
-            return Redirect($"{baseUri}{sep}{string.Join('&', q)}");
-        }
-
-        if (!success)
-            return BadRequest(new { success = false, message });
-
-        return Ok(new { success = true, connectionId, message = "OneDrive connected. You can close this window or return to the app." });
     }
 
     private async Task<IReadOnlyList<(string Code, Guid Id)>> GetAccessibleClientsAsync(CancellationToken ct)
@@ -263,17 +292,28 @@ public class ConnectionsOAuthController : ControllerBase
         return accessible.Any(a => a.Id == clientId);
     }
 
-    private sealed record OneDriveOAuthState(Guid ClientId, Guid InitiatingUserId);
-}
+    private bool TryGetUserId(out Guid userId)
+    {
+        var userIdRaw = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        return Guid.TryParse(userIdRaw, out userId);
+    }
 
-internal sealed class MicrosoftOAuthTokenResponse
-{
-    [JsonPropertyName("access_token")]
-    public string? AccessToken { get; set; }
+    private async Task<Client?> ResolveClientAsync(string clientIdOrCode, CancellationToken ct)
+    {
+        var value = (clientIdOrCode ?? "").Trim();
+        if (value.Length == 0)
+            return null;
 
-    [JsonPropertyName("refresh_token")]
-    public string? RefreshToken { get; set; }
+        return await _clientResolver.ResolveAsync(value, ct);
+    }
 
-    [JsonPropertyName("expires_in")]
-    public int ExpiresIn { get; set; }
+    private static string? AppendQuery(string? baseUrl, string key, string value)
+    {
+        if (string.IsNullOrWhiteSpace(baseUrl))
+            return null;
+
+        var u = baseUrl.Trim();
+        var sep = u.Contains('?', StringComparison.Ordinal) ? "&" : "?";
+        return $"{u}{sep}{Uri.EscapeDataString(key)}={Uri.EscapeDataString(value)}";
+    }
 }
