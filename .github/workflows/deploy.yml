@@ -1,9 +1,10 @@
-name: Deploy .NET API to Azure
+name: Build & Optional Deploy API
 
 on:
   push:
     branches:
       - main
+
   pull_request:
     branches: [ main ]
   workflow_dispatch: # Allows manual branch selection in GitHub UI
@@ -16,6 +17,8 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v3
+      with:
+        ref: ${{ github.event.inputs.branch || github.ref }}
 
     - name: Setup .NET
       uses: actions/setup-dotnet@v3
@@ -23,15 +26,16 @@ jobs:
         dotnet-version: '8.0.x'
 
     - name: Restore
-      run: dotnet restore StudioTechBI.Backend/StudioTechBI.Backend.API
+      run: dotnet restore StudioTechBI.Backend/StudioTechBI.API/StudioTechBI.API.csproj
 
     - name: Build
-      run: dotnet build StudioTechBI.Backend/StudioTechBI.Backend.API --configuration Release --no-restore
+      run: dotnet build StudioTechBI.Backend/StudioTechBI.API/StudioTechBI.API.csproj --configuration Release --no-restore
 
     - name: Publish
-      run: dotnet publish StudioTechBI.Backend/StudioTechBI.Backend.API -c Release -o publish
+      run: dotnet publish StudioTechBI.Backend/StudioTechBI.API/StudioTechBI.API.csproj -c Release -o publish
 
     - name: Deploy to Azure
+      if: github.event_name == 'workflow_dispatch'
       uses: azure/webapps-deploy@v2
       with:
         app-name: studiotechbi-api

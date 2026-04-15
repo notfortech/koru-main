@@ -11,6 +11,11 @@ public class User : BaseEntity
     public DateTime? LastLoginAt { get; set; }
     public string? RefreshToken { get; set; }
     public DateTime? RefreshTokenExpiryTime { get; set; }
+
+    /// <summary>SHA-256 hex (64 chars) of the raw reset token; null when no reset is pending.</summary>
+    public string? PasswordResetTokenHash { get; set; }
+
+    public DateTime? PasswordResetTokenExpiry { get; set; }
     /// <summary>0 = general client (single-tenant login; no client picker). 1 = accountant (may be assigned a client folder).</summary>
     public int UserType { get; set; }
 

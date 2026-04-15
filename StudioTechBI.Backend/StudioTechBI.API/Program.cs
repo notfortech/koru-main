@@ -39,6 +39,18 @@ MapEnvOverride("POWERBI_DATASET_ID", "PowerBI:DatasetId");
 MapEnvOverride("AZURE_AD_TENANT_ID", "AzureAd:TenantId");
 MapEnvOverride("AZURE_AD_CLIENT_ID", "AzureAd:ClientId");
 MapEnvOverride("AZURE_AD_CLIENT_SECRET", "AzureAd:ClientSecret");
+MapEnvOverride("INSIGHT_ENGINE_ENABLED", "InsightEngine:Enabled");
+MapEnvOverride("INSIGHT_ENGINE_BASE_URL", "InsightEngine:BaseUrl");
+MapEnvOverride("INSIGHT_ENGINE_API_KEY", "InsightEngine:ApiKey");
+MapEnvOverride("MICROSOFT_AUTH_CLIENT_ID", "MicrosoftAuth:ClientId");
+MapEnvOverride("MICROSOFT_AUTH_CLIENT_SECRET", "MicrosoftAuth:ClientSecret");
+MapEnvOverride("MICROSOFT_AUTH_TENANT_ID", "MicrosoftAuth:TenantId");
+MapEnvOverride("MICROSOFT_AUTH_REDIRECT_URI", "MicrosoftAuth:RedirectUri");
+MapEnvOverride("MICROSOFT_AUTH_SUCCESS_REDIRECT_URI", "MicrosoftAuth:SuccessRedirectUri");
+MapEnvOverride("GOOGLE_AUTH_CLIENT_ID", "GoogleAuth:ClientId");
+MapEnvOverride("GOOGLE_AUTH_CLIENT_SECRET", "GoogleAuth:ClientSecret");
+MapEnvOverride("GOOGLE_AUTH_REDIRECT_URI", "GoogleAuth:RedirectUri");
+MapEnvOverride("GOOGLE_AUTH_SUCCESS_REDIRECT_URI", "GoogleAuth:SuccessRedirectUri");
 
 if (envOverrides.Count > 0)
 {
@@ -65,6 +77,7 @@ builder.Host.UseSerilog();
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddMemoryCache();
 builder.Services.AddHttpClient<AIInsightsService>();
 builder.Services.AddScoped<AllInsightsService>();
 builder.Services.AddScoped<ReportWorkerService>();
@@ -215,8 +228,24 @@ builder.Services.AddCors(options =>
 
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
+builder.Services.Configure<PasswordResetOptions>(
+    builder.Configuration.GetSection(PasswordResetOptions.SectionName));
+builder.Services.Configure<InsightEngineOptions>(
+    builder.Configuration.GetSection(InsightEngineOptions.SectionName));
 builder.Services.Configure<PowerBISettings>(
     builder.Configuration.GetSection("PowerBI"));
+builder.Services.Configure<MicrosoftAuthOptions>(
+    builder.Configuration.GetSection(MicrosoftAuthOptions.SectionName));
+
+// Google OAuth: Azure App Settings / env as GOOGLE_AUTH_* first, then GoogleAuth:* (appsettings, Key Vault, MapEnvOverride).
+builder.Services.Configure<GoogleAuthOptions>(options =>
+{
+    var cfg = builder.Configuration;
+    options.ClientId = cfg["GOOGLE_AUTH_CLIENT_ID"] ?? cfg["GoogleAuth:ClientId"] ?? string.Empty;
+    options.ClientSecret = cfg["GOOGLE_AUTH_CLIENT_SECRET"] ?? cfg["GoogleAuth:ClientSecret"] ?? string.Empty;
+    options.RedirectUri = cfg["GOOGLE_AUTH_REDIRECT_URI"] ?? cfg["GoogleAuth:RedirectUri"] ?? string.Empty;
+    options.SuccessRedirectUri = cfg["GOOGLE_AUTH_SUCCESS_REDIRECT_URI"] ?? cfg["GoogleAuth:SuccessRedirectUri"];
+});
 
 builder.Services.AddScoped<PowerBIService>();
 
@@ -233,6 +262,8 @@ if (app.Environment.IsDevelopment() || enableSwaggerInAzure)
 {
     app.UseSwagger();
     app.UseSwaggerUI();
+    // Root URL has no controller; send browsers to Swagger (launchUrl is often just the base URL).
+    app.MapGet("/", () => Results.Redirect("/swagger")).AllowAnonymous().ExcludeFromDescription();
 }
 
 app.UseMiddleware<ExceptionHandlingMiddleware>();

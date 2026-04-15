@@ -15,6 +15,13 @@ public static class DependencyInjection
         services.AddScoped<ITenantService, TenantService>();
         services.AddScoped<IAdminUserService, AdminUserService>();
         services.AddScoped<IAdminMaintenanceService, AdminMaintenanceService>();
+        services.AddScoped<IInsightService, InsightService>();
+        services.AddScoped<InsightSelectionPipeline>();
+        services.AddScoped<IInsightReportService, InsightReportService>();
+        services.AddScoped<IDataConnectionService, DataConnectionService>();
+        services.AddScoped<IClientResolver, ClientResolver>();
+        services.AddScoped<IOAuthService, OAuthService>();
+        services.AddScoped<IConnectionService, ConnectionService>();
 
         return services;
     }

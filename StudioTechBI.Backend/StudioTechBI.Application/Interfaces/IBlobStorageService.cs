@@ -7,4 +7,12 @@ public interface IBlobStorageService
     Task<Stream?> DownloadBlobAsync(string path, CancellationToken cancellationToken = default);
     /// <summary>Checks whether a blob exists (no download).</summary>
     Task<bool> BlobExistsAsync(string path, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Returns the full blob name/path of the newest blob under <paramref name="pathPrefix"/> matching <paramref name="fileExtension"/> (e.g. ".xlsx"), or null if none.
+    /// </summary>
+    Task<string?> GetLatestBlobPathByPrefixAsync(string pathPrefix, string fileExtension, CancellationToken cancellationToken = default);
+
+    /// <summary>Uploads a blob into the clients container at the given path (overwrite).</summary>
+    Task UploadClientBlobAsync(string blobPath, Stream content, string? contentType = null, CancellationToken cancellationToken = default);
 }
