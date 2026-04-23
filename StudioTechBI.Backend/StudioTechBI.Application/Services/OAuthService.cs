@@ -171,28 +171,35 @@ public class OAuthService : IOAuthService
         if (_hostEnvironment.IsDevelopment())
             return;
 
-        static void RequireHttpsNoLocalhost(string name, string? uri)
+        static void RequireHttpsNoLocalhost(string name, string? uri, bool isRedirectUri)
         {
             if (string.IsNullOrWhiteSpace(uri))
                 return;
             var u = uri.Trim();
             if (!u.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
-                throw new OAuthConfigurationException($"{name} must use HTTPS in production.");
+                throw new OAuthConfigurationException(isRedirectUri
+                    ? "Google RedirectUri must use HTTPS in production."
+                    : $"{name} must use HTTPS in production.");
             if (u.Contains("localhost", StringComparison.OrdinalIgnoreCase))
-                throw new OAuthConfigurationException($"{name} cannot use localhost in production.");
+                throw new OAuthConfigurationException(
+                    $"Google redirect URI mismatch. Current: {u}. Check Google Console.");
         }
 
-        RequireHttpsNoLocalhost("Google OAuth RedirectUri", opt.RedirectUri);
-        RequireHttpsNoLocalhost("Google OAuth SuccessRedirectUri", opt.SuccessRedirectUri);
+        RequireHttpsNoLocalhost("Google OAuth RedirectUri", opt.RedirectUri, isRedirectUri: true);
+        RequireHttpsNoLocalhost("Google OAuth SuccessRedirectUri", opt.SuccessRedirectUri, isRedirectUri: false);
     }
 
     /// <summary>Logs effective Google options (no secrets) and throws with a specific message if anything required is missing.</summary>
     private void EnsureGoogleOAuthConfigured(GoogleAuthOptions opt)
     {
+        opt.RedirectUri = opt.RedirectUri.Trim();
+
         _logger.LogWarning(
             "Google Config Debug → ClientId: {ClientId}, RedirectUri: {RedirectUri}",
             opt.ClientId,
             opt.RedirectUri);
+
+        _logger.LogWarning("Google Redirect URI being used: {RedirectUri}", opt.RedirectUri);
 
         if (string.IsNullOrWhiteSpace(opt.ClientId))
             throw new OAuthConfigurationException("Google ClientId is missing (check Azure env)");
