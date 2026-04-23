@@ -85,6 +85,42 @@ public class ModelController : ControllerBase
         }
     }
 
+    [HttpPost("generate-from-blob")]
+    public async Task<IActionResult> GenerateFromBlob([FromBody] GenerateFromBlobRequest req, CancellationToken cancellationToken)
+    {
+        if (req.ClientId == Guid.Empty)
+            return BadRequest(ApiResponse<object>.ErrorResponse("ClientId is required."));
+
+        if (string.IsNullOrWhiteSpace(req.BlobPath))
+            return BadRequest(ApiResponse<object>.ErrorResponse("BlobPath is required."));
+
+        if (!await CanAccessClientAsync(req.ClientId, cancellationToken))
+            return StatusCode(403, ApiResponse<object>.ErrorResponse("You do not have access to this client."));
+
+        try
+        {
+            var list = await _insightService.GenerateModelSuggestionsFromBlobAsync(req.ClientId, req.BlobPath, cancellationToken);
+            return Ok(ApiResponse<List<ModelRecommendationDto>>.SuccessResponse(list.ToList(), "Recommendations generated."));
+        }
+        catch (InvalidOperationException ex)
+        {
+            _logger.LogWarning(ex, "Insight model recommendation rejected.");
+            return BadRequest(ApiResponse<object>.ErrorResponse(ex.Message));
+        }
+        catch (NotSupportedException ex)
+        {
+            _logger.LogWarning(ex, "Unsupported file type for sampling.");
+            return BadRequest(ApiResponse<object>.ErrorResponse(ex.Message));
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogError(ex, "InsightEngine HTTP error during recommend.");
+            return StatusCode(
+                StatusCodes.Status502BadGateway,
+                ApiResponse<object>.ErrorResponse("InsightEngine request failed. See server logs for details."));
+        }
+    }
+
     [HttpPost("{modelId:guid}/select")]
     public async Task<IActionResult> Select(
         Guid modelId,

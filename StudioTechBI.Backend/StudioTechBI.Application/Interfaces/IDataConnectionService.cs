@@ -14,5 +14,10 @@ public interface IDataConnectionService
     /// <summary>Downloads once from connector, uploads to accounting/created/, returns blob path. Reuses path if same fileId already imported.</summary>
     Task<string> ImportFileToCreatedBlobAsync(Guid connectionId, string fileId, string? preferredFileName, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Imports the file to Blob, generates a small sample for AI, requests model suggestions, persists them, and returns them.
+    /// </summary>
+    Task<ConnectorImportResponseDto> ImportFileAndRecommendModelsAsync(Guid connectionId, string fileId, string? preferredFileName, CancellationToken cancellationToken = default);
+
     Task<DataConnectionDto> RegisterConnectionAsync(RegisterDataConnectionDto dto, CancellationToken cancellationToken = default);
 }

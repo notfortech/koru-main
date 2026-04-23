@@ -10,6 +10,10 @@ public sealed class DisabledInsightEngineClient : IInsightEngineClient
         Task.FromException<IReadOnlyList<ModelDto>>(
             new InvalidOperationException("Insight Engine integration is disabled (InsightEngine:Enabled=false)."));
 
+    public Task<IReadOnlyList<ModelRecommendationDto>> RecommendModelsAsync(SampleRequest request, CancellationToken cancellationToken = default) =>
+        Task.FromException<IReadOnlyList<ModelRecommendationDto>>(
+            new InvalidOperationException("Insight Engine integration is disabled (InsightEngine:Enabled=false)."));
+
     public Task<OrchestratorResultDto> SelectModelAsync(Guid modelId, string? validatedDataBlobPath, CancellationToken cancellationToken = default) =>
         Task.FromException<OrchestratorResultDto>(
             new InvalidOperationException("Insight Engine integration is disabled (InsightEngine:Enabled=false)."));

@@ -55,6 +55,10 @@
               "target": "Package",
               "version": "[33.0.1, )"
             },
+            "ExcelDataReader": {
+              "target": "Package",
+              "version": "[3.7.0, )"
+            },
             "Microsoft.Extensions.DependencyInjection.Abstractions": {
               "target": "Package",
               "version": "[8.0.0, )"
@@ -266,9 +270,21 @@
               "target": "Package",
               "version": "[8.0.0, )"
             },
+            "Microsoft.Extensions.Http.Polly": {
+              "target": "Package",
+              "version": "[8.0.0, )"
+            },
             "Microsoft.Graph": {
               "target": "Package",
               "version": "[5.56.0, )"
+            },
+            "Polly": {
+              "target": "Package",
+              "version": "[7.2.4, )"
+            },
+            "Polly.Extensions.Http": {
+              "target": "Package",
+              "version": "[3.0.0, )"
             }
           },
           "imports": [

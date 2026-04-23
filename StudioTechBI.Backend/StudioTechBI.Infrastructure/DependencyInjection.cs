@@ -2,6 +2,8 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using Polly.Extensions.Http;
+using Polly;
 using StudioTechBI.Application.Interfaces;
 using StudioTechBI.Application.Models;
 using StudioTechBI.Domain.Interfaces;
@@ -69,6 +71,32 @@ public static class DependencyInjection
                 return new DisabledInsightEngineClient();
             return sp.GetRequiredService<InsightEngineClient>();
         });
+
+        // External InsightsEngine transformations suggestion API (separate from InsightEngine models/orchestration API).
+        services.Configure<InsightsEngineOptions>(configuration.GetSection(InsightsEngineOptions.SectionName));
+        services.AddHttpClient<InsightsEngineClient>()
+            .ConfigureHttpClient((sp, client) =>
+            {
+                var o = sp.GetRequiredService<IOptionsMonitor<InsightsEngineOptions>>().CurrentValue;
+                if (!string.IsNullOrWhiteSpace(o.BaseUrl))
+                    client.BaseAddress = new Uri(o.BaseUrl.TrimEnd('/') + "/");
+
+                client.Timeout = TimeSpan.FromSeconds(30);
+                client.DefaultRequestHeaders.Accept.Clear();
+                client.DefaultRequestHeaders.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
+
+                client.DefaultRequestHeaders.Remove("X-Api-Key");
+                var key = o.ApiKey?.Trim();
+                if (!string.IsNullOrEmpty(key))
+                    client.DefaultRequestHeaders.Add("X-Api-Key", key);
+            })
+            .AddPolicyHandler(
+                HttpPolicyExtensions
+                    .HandleTransientHttpError() // 5xx, 408, network
+                    .OrResult(r => (int)r.StatusCode == 429)
+                    .WaitAndRetryAsync(
+                        retryCount: 3,
+                        sleepDurationProvider: attempt => TimeSpan.FromSeconds(Math.Pow(2, attempt))));
         services.AddScoped<IModelRepository, ModelRepository>();
         services.AddScoped<IDatasetRepository, DatasetRepository>();
         services.AddScoped<IDataConnectionRepository, DataConnectionRepository>();

@@ -53,6 +53,37 @@ public class InsightEngineClient : IInsightEngineClient
         return ParseModelList(body);
     }
 
+    public async Task<IReadOnlyList<ModelRecommendationDto>> RecommendModelsAsync(SampleRequest request, CancellationToken cancellationToken = default)
+    {
+        var columns = request.Columns?.Where(c => !string.IsNullOrWhiteSpace(c)).Select(c => c.Trim()).ToList() ?? new List<string>();
+        var preview = new List<Dictionary<string, string>>();
+        foreach (var row in request.SampleRows ?? new List<Dictionary<string, object>>())
+        {
+            var dict = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var kv in row)
+                dict[kv.Key] = kv.Value?.ToString() ?? "";
+            preview.Add(dict);
+        }
+
+        var gen = new GenerateModelRequest
+        {
+            ClientId = request.ClientId,
+            BlobPath = request.BlobPath?.Trim() ?? string.Empty,
+            SchemaColumns = columns,
+            PreviewRows = preview.Count > 0 ? preview : null
+        };
+
+        var models = await GenerateModelsAsync(gen, cancellationToken);
+        return models
+            .Select(m => new ModelRecommendationDto
+            {
+                ModelId = m.Id,
+                TemplateId = m.TemplateId,
+                Confidence = m.ResolveConfidence()
+            })
+            .ToList();
+    }
+
     public async Task<OrchestratorResultDto> SelectModelAsync(Guid modelId, string? validatedDataBlobPath, CancellationToken cancellationToken = default)
     {
         ApplyAuthHeader();

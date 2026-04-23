@@ -18,6 +18,7 @@ public class InsightService : BaseService, IInsightService
     private readonly IRepository<InsightJob> _jobRepository;
     private readonly IRepository<Client> _clientRepository;
     private readonly IBlobStorageService _blobStorage;
+    private readonly DataSamplingService _samplingService;
     private readonly IOptions<InsightEngineOptions> _options;
     private readonly InsightSelectionPipeline _selectionPipeline;
     private readonly IServiceScopeFactory _scopeFactory;
@@ -31,6 +32,7 @@ public class InsightService : BaseService, IInsightService
         IRepository<InsightJob> jobRepository,
         IRepository<Client> clientRepository,
         IBlobStorageService blobStorage,
+        DataSamplingService samplingService,
         IOptions<InsightEngineOptions> options,
         InsightSelectionPipeline selectionPipeline,
         IServiceScopeFactory scopeFactory,
@@ -43,10 +45,121 @@ public class InsightService : BaseService, IInsightService
         _jobRepository = jobRepository;
         _clientRepository = clientRepository;
         _blobStorage = blobStorage;
+        _samplingService = samplingService;
         _options = options;
         _selectionPipeline = selectionPipeline;
         _scopeFactory = scopeFactory;
         _logger = logger;
+    }
+
+    public async Task<IReadOnlyList<ModelRecommendationDto>> GenerateModelSuggestionsFromBlobAsync(
+        Guid clientId,
+        string blobPath,
+        CancellationToken cancellationToken = default)
+    {
+        EnsureEnabled();
+
+        if (clientId == Guid.Empty)
+            throw new InvalidOperationException("ClientId is required.");
+
+        var path = (blobPath ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(path))
+            throw new InvalidOperationException("BlobPath is required.");
+
+        var client = await _clientRepository.GetByIdAsync(clientId, cancellationToken)
+            ?? throw new InvalidOperationException($"Client {clientId} was not found.");
+
+        var folder = (client.BlobFolderPath ?? client.ClientCode ?? client.Id.ToString()).Trim();
+
+        var sample = await _samplingService.CreateSampleAsync(path, clientId, CsvSampleExtractor.DefaultMaxRows, cancellationToken);
+        var schemaHash = SchemaHashHelper.ComputeSchemaHash(sample.Columns);
+
+        // Idempotency: if we already suggested models for the same schema, return those.
+        var existing = await _modelRepository.GetByClientIdAsync(clientId, cancellationToken);
+        var existingSuggested = existing
+            .Where(m => !m.IsDeleted
+                        && (string.Equals(m.Status, InsightWorkflowStatuses.Suggested, StringComparison.OrdinalIgnoreCase)
+                            || string.Equals(m.Status, InsightWorkflowStatuses.ReadyForSelection, StringComparison.OrdinalIgnoreCase))
+                        && !string.IsNullOrWhiteSpace(m.SchemaHash)
+                        && string.Equals(m.SchemaHash, schemaHash, StringComparison.Ordinal))
+            .OrderByDescending(m => m.Confidence)
+            .ToList();
+
+        if (existingSuggested.Count > 0)
+        {
+            _logger.LogInformation(
+                "Generate suggestions idempotent return for client {ClientId} schemaHash={SchemaHash}: {Count} model(s).",
+                clientId,
+                schemaHash,
+                existingSuggested.Count);
+
+            return existingSuggested
+                .Select(m => new ModelRecommendationDto { ModelId = m.Id, TemplateId = m.TemplateId, Confidence = m.Confidence })
+                .ToList();
+        }
+
+        var previewRows = sample.SampleRows
+            .Select(r => r.ToDictionary(k => k.Key, v => v.Value?.ToString() ?? "", StringComparer.OrdinalIgnoreCase))
+            .ToList();
+
+        var request = new GenerateModelRequest
+        {
+            BlobPath = path,
+            ClientId = clientId,
+            SchemaHash = schemaHash,
+            SchemaColumns = sample.Columns,
+            PreviewRows = previewRows
+        };
+
+        var models = await _insightEngineClient.GenerateModelsAsync(request, cancellationToken);
+
+        foreach (var dto in models)
+        {
+            var validatedPath = $"{folder}/accounting/validated/{dto.Id:D}/data.xlsx";
+            var entity = await _modelRepository.GetByIdAsync(dto.Id, cancellationToken);
+            if (entity == null)
+            {
+                entity = new InsightModel
+                {
+                    Id = dto.Id,
+                    ClientId = clientId,
+                    TemplateId = dto.TemplateId?.Trim(),
+                    Confidence = dto.ResolveConfidence(),
+                    Status = InsightWorkflowStatuses.Suggested,
+                    MappingJson = dto.MappingJson,
+                    ExcelSchemaJson = dto.ExcelSchemaJson,
+                    SchemaHash = schemaHash,
+                    ValidatedBlobPath = validatedPath,
+                    IsFallback = dto.IsFallback ?? false
+                };
+                await _modelRepository.AddAsync(entity, cancellationToken);
+            }
+            else
+            {
+                entity.TemplateId = string.IsNullOrWhiteSpace(dto.TemplateId) ? entity.TemplateId : dto.TemplateId.Trim();
+                entity.Confidence = dto.ResolveConfidence();
+                entity.Status = InsightWorkflowStatuses.Suggested;
+                entity.MappingJson = dto.MappingJson ?? entity.MappingJson;
+                entity.ExcelSchemaJson = dto.ExcelSchemaJson ?? entity.ExcelSchemaJson;
+                entity.SchemaHash = schemaHash;
+                entity.ValidatedBlobPath = validatedPath;
+                if (dto.IsFallback.HasValue)
+                    entity.IsFallback = dto.IsFallback.Value;
+
+                await _modelRepository.UpdateAsync(entity, cancellationToken);
+            }
+        }
+
+        await UnitOfWork.SaveChangesAsync(cancellationToken);
+
+        return models
+            .Select(m => new ModelRecommendationDto
+            {
+                ModelId = m.Id,
+                TemplateId = m.TemplateId,
+                Confidence = m.ResolveConfidence()
+            })
+            .ToList();
     }
 
     public async Task<IReadOnlyList<ModelDto>> GenerateModelsAsync(Guid clientId, string? blobPathOverride, CancellationToken cancellationToken = default)

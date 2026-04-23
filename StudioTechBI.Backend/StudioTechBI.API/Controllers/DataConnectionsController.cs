@@ -140,12 +140,12 @@ public class DataConnectionsController : ControllerBase
 
         try
         {
-            var path = await _dataConnectionService.ImportFileToCreatedBlobAsync(
+            var result = await _dataConnectionService.ImportFileAndRecommendModelsAsync(
                 connectionId,
                 body.FileId,
                 body.FileName,
                 cancellationToken);
-            return Ok(new ConnectorImportResponseDto { Success = true, BlobPath = path });
+            return Ok(result);
         }
         catch (InvalidOperationException ex)
         {

@@ -4,6 +4,7 @@ namespace StudioTechBI.Domain.Entities;
 public static class InsightWorkflowStatuses
 {
     public const string Draft = "Draft";
+    public const string Suggested = "Suggested";
     public const string ReadyForSelection = "ReadyForSelection";
     public const string Selected = "Selected";
     public const string Processing = "Processing";

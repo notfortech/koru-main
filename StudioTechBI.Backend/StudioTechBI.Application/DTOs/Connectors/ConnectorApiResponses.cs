@@ -1,5 +1,7 @@
 namespace StudioTechBI.Application.DTOs.Connectors;
 
+using StudioTechBI.Application.DTOs.Insight;
+
 public class ConnectorFilesResponseDto
 {
     public bool Success { get; set; } = true;
@@ -10,4 +12,5 @@ public class ConnectorImportResponseDto
 {
     public bool Success { get; set; } = true;
     public string BlobPath { get; set; } = string.Empty;
+    public List<ModelRecommendationDto>? Recommendations { get; set; }
 }

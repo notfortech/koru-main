@@ -1,11 +1,12 @@
 {
   "version": 2,
-  "dgSpecHash": "qN73fhOdLBA=",
+  "dgSpecHash": "/bk8e1ejt2g=",
   "success": true,
   "projectFilePath": "E:\\Kamakshi Projects\\STAR\\koru-main\\StudioTechBI.Backend\\StudioTechBI.Application\\StudioTechBI.Application.csproj",
   "expectedPackageFiles": [
     "C:\\Users\\Q tech\\.nuget\\packages\\bcrypt.net-next\\4.0.3\\bcrypt.net-next.4.0.3.nupkg.sha512",
     "C:\\Users\\Q tech\\.nuget\\packages\\csvhelper\\33.0.1\\csvhelper.33.0.1.nupkg.sha512",
+    "C:\\Users\\Q tech\\.nuget\\packages\\exceldatareader\\3.7.0\\exceldatareader.3.7.0.nupkg.sha512",
     "C:\\Users\\Q tech\\.nuget\\packages\\microsoft.extensions.configuration\\8.0.0\\microsoft.extensions.configuration.8.0.0.nupkg.sha512",
     "C:\\Users\\Q tech\\.nuget\\packages\\microsoft.extensions.configuration.abstractions\\8.0.0\\microsoft.extensions.configuration.abstractions.8.0.0.nupkg.sha512",
     "C:\\Users\\Q tech\\.nuget\\packages\\microsoft.extensions.configuration.binder\\8.0.0\\microsoft.extensions.configuration.binder.8.0.0.nupkg.sha512",
