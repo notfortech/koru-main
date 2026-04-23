@@ -42,6 +42,9 @@ MapEnvOverride("AZURE_AD_CLIENT_SECRET", "AzureAd:ClientSecret");
 MapEnvOverride("INSIGHT_ENGINE_ENABLED", "InsightEngine:Enabled");
 MapEnvOverride("INSIGHT_ENGINE_BASE_URL", "InsightEngine:BaseUrl");
 MapEnvOverride("INSIGHT_ENGINE_API_KEY", "InsightEngine:ApiKey");
+// Transformations suggest API (InsightsEngine.Api) — different section from InsightEngine (model generation).
+MapEnvOverride("INSIGHTS_ENGINE_BASE_URL", "InsightsEngine:BaseUrl");
+MapEnvOverride("INSIGHTS_ENGINE_API_KEY", "InsightsEngine:ApiKey");
 MapEnvOverride("MICROSOFT_AUTH_CLIENT_ID", "MicrosoftAuth:ClientId");
 MapEnvOverride("MICROSOFT_AUTH_CLIENT_SECRET", "MicrosoftAuth:ClientSecret");
 MapEnvOverride("MICROSOFT_AUTH_TENANT_ID", "MicrosoftAuth:TenantId");
