@@ -23,6 +23,7 @@ public static class DependencyInjection
         services.AddScoped<IClientResolver, ClientResolver>();
         services.AddScoped<IOAuthService, OAuthService>();
         services.AddScoped<IConnectionService, ConnectionService>();
+        services.AddScoped<IInsightTemplateVerificationService, InsightTemplateVerificationService>();
 
         return services;
     }
