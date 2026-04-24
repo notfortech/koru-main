@@ -6,8 +6,9 @@ namespace StudioTechBI.Application.Utilities;
 public static class ExcelSampleExtractor
 {
     public const int DefaultMaxRows = 100;
+    private const int MaxBufferedBytes = 25 * 1024 * 1024; // 25 MB safety cap for non-seekable XLSX streams
 
-    public static Task<(List<string> Columns, List<Dictionary<string, string>> Rows)> ExtractAsync(
+    public static async Task<(List<string> Columns, List<Dictionary<string, string>> Rows)> ExtractAsync(
         Stream stream,
         int maxDataRows = DefaultMaxRows,
         CancellationToken cancellationToken = default)
@@ -15,11 +16,17 @@ public static class ExcelSampleExtractor
         if (maxDataRows < 1)
             maxDataRows = DefaultMaxRows;
 
+        // XLSX is a zip container and many readers require a seekable stream.
+        // Azure blob download streams are often non-seekable, so we buffer with a cap.
+        await using var buffered = !stream.CanSeek
+            ? await BufferToMemoryAsync(stream, MaxBufferedBytes, cancellationToken)
+            : null;
+
         if (stream.CanSeek)
             stream.Position = 0;
 
-        // ExcelDataReader reads XLS/XLSX from a forward-only stream.
-        using var reader = ExcelReaderFactory.CreateReader(stream);
+        // ExcelDataReader reads XLS/XLSX from a stream.
+        using var reader = ExcelReaderFactory.CreateReader(buffered ?? stream);
 
         if (!reader.Read())
             throw new InvalidOperationException("Excel is empty.");
@@ -54,7 +61,7 @@ public static class ExcelSampleExtractor
             count++;
         }
 
-        return Task.FromResult((columns, rows));
+        return (columns, rows);
     }
 
     private static List<string> NormalizeHeaders(List<string> raw)
@@ -79,6 +86,25 @@ public static class ExcelSampleExtractor
             result.Add(name);
         }
         return result;
+    }
+
+    private static async Task<MemoryStream> BufferToMemoryAsync(Stream input, int maxBytes, CancellationToken ct)
+    {
+        var ms = new MemoryStream();
+        var buffer = new byte[81920];
+        var total = 0;
+        while (true)
+        {
+            ct.ThrowIfCancellationRequested();
+            var read = await input.ReadAsync(buffer.AsMemory(0, buffer.Length), ct);
+            if (read <= 0) break;
+            total += read;
+            if (total > maxBytes)
+                throw new NotSupportedException($"Excel file is too large to sample safely (> {maxBytes / (1024 * 1024)} MB).");
+            await ms.WriteAsync(buffer.AsMemory(0, read), ct);
+        }
+        ms.Position = 0;
+        return ms;
     }
 }
 
