@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("StudioTechBI.Application")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+b1f8f4f7dba456a10af375ce48832c88266ea4b0")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+da47179c229d09030196ecda55cefa85cd2c3461")]
 [assembly: System.Reflection.AssemblyProductAttribute("StudioTechBI.Application")]
 [assembly: System.Reflection.AssemblyTitleAttribute("StudioTechBI.Application")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

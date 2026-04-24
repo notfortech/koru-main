@@ -61,6 +61,46 @@ public sealed class InsightsEngineController : ControllerBase
         return fromClaim != null && fromClaim.ClientId == clientId;
     }
 
+    public sealed class ResolveBlobResponse
+    {
+        public Guid ClientId { get; set; }
+        public string ClientCode { get; set; } = "";
+        public string BlobPath { get; set; } = "";
+    }
+
+    /// <summary>
+    /// Resolves the latest uploaded report blob under <c>{client}/accounting/created/</c> for a given client code/id.
+    /// Used by the UI to attach blobPath when requesting AI suggestions.
+    /// </summary>
+    [HttpGet("resolve-blob")]
+    public async Task<IActionResult> ResolveBlob([FromQuery] string clientCode, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(clientCode))
+            return BadRequest(ApiResponse<object>.ErrorResponse("clientCode is required."));
+
+        var client = await _clientResolver.ResolveAsync(clientCode.Trim(), ct);
+        if (client == null)
+            return NotFound(ApiResponse<object>.ErrorResponse("Client not found."));
+
+        if (!await CanAccessClientAsync(client.Id, ct))
+            return StatusCode(StatusCodes.Status403Forbidden, ApiResponse<object>.ErrorResponse("You do not have access to this client."));
+
+        var folder = (client.BlobFolderPath ?? client.ClientCode ?? client.Id.ToString()).Trim();
+        var prefix = $"{folder}/accounting/created/";
+        var blobPath = await _blobStorage.GetLatestBlobPathByPrefixAsync(prefix, ".xlsx", ct)
+            ?? await _blobStorage.GetLatestBlobPathByPrefixAsync(prefix, ".csv", ct);
+
+        if (string.IsNullOrWhiteSpace(blobPath))
+            return NotFound(ApiResponse<object>.ErrorResponse($"No .xlsx or .csv found under '{prefix}'."));
+
+        return Ok(ApiResponse<ResolveBlobResponse>.SuccessResponse(new ResolveBlobResponse
+        {
+            ClientId = client.Id,
+            ClientCode = client.ClientCode ?? clientCode.Trim(),
+            BlobPath = blobPath
+        }, "Blob resolved."));
+    }
+
     /// <summary>
     /// Returns a small tabular sample from the latest CSV/XLSX under <c>{client}/accounting/created/</c> (same source as report/model flows).
     /// </summary>
