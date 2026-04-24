@@ -14,10 +14,14 @@ public class InsightModelConfiguration : IEntityTypeConfiguration<InsightModel>
         builder.Property(e => e.MappingJson);
         builder.Property(e => e.ExcelSchemaJson);
         builder.Property(e => e.TemplateId).HasMaxLength(200);
+        builder.Property(e => e.ExternalModelId).HasMaxLength(200);
+        builder.Property(e => e.TomJson);
+        builder.Property(e => e.ApprovedAt);
         builder.Property(e => e.SchemaHash).HasMaxLength(128);
         builder.Property(e => e.ValidatedBlobPath).HasMaxLength(2000);
         builder.Property(e => e.Confidence).HasColumnType("float");
         builder.HasIndex(e => e.ClientId);
+        builder.HasIndex(e => new { e.ClientId, e.ExternalModelId });
         builder.HasOne(e => e.Client)
             .WithMany(c => c.InsightModels)
             .HasForeignKey(e => e.ClientId)

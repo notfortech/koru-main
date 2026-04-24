@@ -36,6 +36,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<InsightModel> InsightModels => Set<InsightModel>();
     public DbSet<InsightDataset> InsightDatasets => Set<InsightDataset>();
     public DbSet<InsightJob> InsightJobs => Set<InsightJob>();
+    public DbSet<ModelConsent> ModelConsents => Set<ModelConsent>();
     public DbSet<DataConnection> DataConnections => Set<DataConnection>();
     public DbSet<OAuthConnectionState> OAuthConnectionStates => Set<OAuthConnectionState>();
 

@@ -52,7 +52,10 @@ public class ModelController : ControllerBase
 
     public sealed class GenerateModelsApiRequest
     {
-        public Guid ClientId { get; set; }
+        /// <summary>
+        /// Client identifier. Accepts a GUID (ClientId) or a client code (e.g. AU-004).
+        /// </summary>
+        public string ClientId { get; set; } = "";
         /// <summary>Optional full blob path; otherwise the latest file under accounting/created/ is used.</summary>
         public string? BlobPath { get; set; }
     }
@@ -60,15 +63,24 @@ public class ModelController : ControllerBase
     [HttpPost("generate")]
     public async Task<IActionResult> Generate([FromBody] GenerateModelsApiRequest request, CancellationToken cancellationToken)
     {
-        if (request.ClientId == Guid.Empty)
+        var raw = (request.ClientId ?? "").Trim();
+        if (raw.Length == 0)
             return BadRequest(ApiResponse<object>.ErrorResponse("ClientId is required."));
 
-        if (!await CanAccessClientAsync(request.ClientId, cancellationToken))
+        var resolved = await _clientService.GetByClientCodeOrIdAsync(raw, cancellationToken);
+        if (resolved == null)
+            return NotFound(ApiResponse<object>.ErrorResponse("Client not found."));
+
+        var clientGuid = resolved.ClientId;
+        if (clientGuid == Guid.Empty)
+            return BadRequest(ApiResponse<object>.ErrorResponse("ClientId is invalid."));
+
+        if (!await CanAccessClientAsync(clientGuid, cancellationToken))
             return StatusCode(403, ApiResponse<object>.ErrorResponse("You do not have access to this client."));
 
         try
         {
-            var list = await _insightService.GenerateModelsAsync(request.ClientId, request.BlobPath, cancellationToken);
+            var list = await _insightService.GenerateModelsAsync(clientGuid, request.BlobPath, cancellationToken);
             return Ok(ApiResponse<List<ModelDto>>.SuccessResponse(list.ToList(), "Models generated."));
         }
         catch (InvalidOperationException ex)
@@ -183,5 +195,72 @@ public class ModelController : ControllerBase
             datasetId = m.DatasetId,
             reportId = m.ReportId
         }).ToList());
+    }
+
+    public sealed class StoreAiDraftRequest
+    {
+        public Guid ClientId { get; set; }
+        public AiModelResponse Ai { get; set; } = new();
+    }
+
+    /// <summary>
+    /// Receives an AI model generation response, stores a DRAFT model (summary + TOM server-side), and returns UI-safe summary (no TOM).
+    /// </summary>
+    [HttpPost("ai/draft")]
+    public async Task<IActionResult> StoreAiDraft([FromBody] StoreAiDraftRequest req, CancellationToken cancellationToken)
+    {
+        if (req.ClientId == Guid.Empty)
+            return BadRequest(ApiResponse<object>.ErrorResponse("ClientId is required."));
+        if (!await CanAccessClientAsync(req.ClientId, cancellationToken))
+            return StatusCode(403, ApiResponse<object>.ErrorResponse("You do not have access to this client."));
+
+        try
+        {
+            var dto = await _insightService.StoreAiDraftModelAsync(req.ClientId, req.Ai, cancellationToken);
+            return Ok(ApiResponse<AiModelDraftSummaryDto>.SuccessResponse(dto, "Draft stored."));
+        }
+        catch (InvalidOperationException ex)
+        {
+            _logger.LogWarning(ex, "AI draft store rejected.");
+            return BadRequest(ApiResponse<object>.ErrorResponse(ex.Message));
+        }
+    }
+
+    public sealed class ApproveRequest
+    {
+        public Guid ModelId { get; set; }
+        public Guid ClientId { get; set; }
+    }
+
+    /// <summary>
+    /// Approves a model once (idempotent), stores consent, then triggers report generation.
+    /// </summary>
+    [HttpPost("approve")]
+    public async Task<IActionResult> ApproveModel([FromBody] ApproveRequest req, CancellationToken cancellationToken)
+    {
+        if (req.ModelId == Guid.Empty)
+            return BadRequest(ApiResponse<object>.ErrorResponse("ModelId is required."));
+        if (req.ClientId == Guid.Empty)
+            return BadRequest(ApiResponse<object>.ErrorResponse("ClientId is required."));
+        if (!await CanAccessClientAsync(req.ClientId, cancellationToken))
+            return StatusCode(403, ApiResponse<object>.ErrorResponse("You do not have access to this client."));
+
+        try
+        {
+            var result = await _insightService.ApproveAiModelAsync(req.ModelId, req.ClientId, cancellationToken);
+            return Ok(ApiResponse<SelectModelResponseDto>.SuccessResponse(result, "Approved."));
+        }
+        catch (InvalidOperationException ex)
+        {
+            _logger.LogWarning(ex, "Model approval rejected.");
+            return BadRequest(ApiResponse<object>.ErrorResponse(ex.Message));
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogError(ex, "Report generation failed (InsightEngine HTTP).");
+            return StatusCode(
+                StatusCodes.Status502BadGateway,
+                ApiResponse<object>.ErrorResponse("Report generation request failed. See server logs for details."));
+        }
     }
 }

@@ -7,6 +7,7 @@ using StudioTechBI.Application.Models;
 using StudioTechBI.Application.Utilities;
 using StudioTechBI.Domain.Entities;
 using StudioTechBI.Domain.Interfaces;
+using System.Text.Json;
 
 namespace StudioTechBI.Application.Services;
 
@@ -19,6 +20,7 @@ public class InsightService : BaseService, IInsightService
     private readonly IRepository<Client> _clientRepository;
     private readonly IBlobStorageService _blobStorage;
     private readonly DataSamplingService _samplingService;
+    private readonly IRepository<ModelConsent> _consentRepository;
     private readonly IOptions<InsightEngineOptions> _options;
     private readonly InsightSelectionPipeline _selectionPipeline;
     private readonly IServiceScopeFactory _scopeFactory;
@@ -31,6 +33,7 @@ public class InsightService : BaseService, IInsightService
         IDatasetRepository datasetRepository,
         IRepository<InsightJob> jobRepository,
         IRepository<Client> clientRepository,
+        IRepository<ModelConsent> consentRepository,
         IBlobStorageService blobStorage,
         DataSamplingService samplingService,
         IOptions<InsightEngineOptions> options,
@@ -44,12 +47,158 @@ public class InsightService : BaseService, IInsightService
         _datasetRepository = datasetRepository;
         _jobRepository = jobRepository;
         _clientRepository = clientRepository;
+        _consentRepository = consentRepository;
         _blobStorage = blobStorage;
         _samplingService = samplingService;
         _options = options;
         _selectionPipeline = selectionPipeline;
         _scopeFactory = scopeFactory;
         _logger = logger;
+    }
+
+    public async Task<AiModelDraftSummaryDto> StoreAiDraftModelAsync(Guid clientId, AiModelResponse ai, CancellationToken cancellationToken = default)
+    {
+        if (clientId == Guid.Empty)
+            throw new InvalidOperationException("ClientId is required.");
+        if (ai == null)
+            throw new InvalidOperationException("AI response is required.");
+        if (string.IsNullOrWhiteSpace(ai.ModelId))
+            throw new InvalidOperationException("AI ModelId is required.");
+
+        // Idempotent: reuse existing draft by external model id.
+        var existing = (await _modelRepository.GetByClientIdAsync(clientId, cancellationToken))
+            .FirstOrDefault(m => !m.IsDeleted
+                                 && !string.IsNullOrWhiteSpace(m.ExternalModelId)
+                                 && string.Equals(m.ExternalModelId, ai.ModelId.Trim(), StringComparison.Ordinal));
+        if (existing != null)
+        {
+            return ExtractSummary(existing);
+        }
+
+        var summaryJson = JsonSerializer.Serialize(new
+        {
+            modelId = ai.ModelId,
+            templateId = ai.TemplateId,
+            confidence = ai.Confidence,
+            transformations = ai.Transformations ?? new List<string>(),
+            relationships = ai.Relationships ?? new List<RelationshipDto>()
+        });
+
+        var model = new InsightModel
+        {
+            Id = Guid.NewGuid(),
+            ClientId = clientId,
+            ExternalModelId = ai.ModelId.Trim(),
+            TemplateId = string.IsNullOrWhiteSpace(ai.TemplateId) ? null : ai.TemplateId.Trim(),
+            Confidence = ai.Confidence,
+            Status = InsightWorkflowStatuses.Draft,
+            MappingJson = summaryJson,
+            TomJson = string.IsNullOrWhiteSpace(ai.TomJson) ? null : ai.TomJson,
+            ApprovedAt = null
+        };
+
+        await _modelRepository.AddAsync(model, cancellationToken);
+        await UnitOfWork.SaveChangesAsync(cancellationToken);
+
+        return new AiModelDraftSummaryDto
+        {
+            Id = model.Id,
+            ClientId = model.ClientId,
+            TemplateId = model.TemplateId,
+            Confidence = model.Confidence,
+            Transformations = ai.Transformations ?? new List<string>(),
+            Relationships = ai.Relationships ?? new List<RelationshipDto>(),
+            Status = model.Status
+        };
+    }
+
+    public async Task<SelectModelResponseDto> ApproveAiModelAsync(Guid modelId, Guid clientId, CancellationToken cancellationToken = default)
+    {
+        if (modelId == Guid.Empty)
+            throw new InvalidOperationException("ModelId is required.");
+        if (clientId == Guid.Empty)
+            throw new InvalidOperationException("ClientId is required.");
+
+        var model = await _modelRepository.GetByIdAsync(modelId, cancellationToken)
+            ?? throw new InvalidOperationException("Model not found.");
+        if (model.ClientId != clientId)
+            throw new InvalidOperationException("Model does not belong to this client.");
+
+        // Idempotent: if already approved, do not create a second consent or re-trigger generation.
+        if (string.Equals(model.Status, "Approved", StringComparison.OrdinalIgnoreCase) && model.ApprovedAt.HasValue)
+        {
+            // Still ensure report generation has happened or is queued by delegating to select (idempotent in pipeline).
+            return await SelectModelAsync(modelId, queueAsync: true, cancellationToken);
+        }
+
+        model.Status = "Approved";
+        model.ApprovedAt = DateTime.UtcNow;
+        await _modelRepository.UpdateAsync(model, cancellationToken);
+
+        // Store consent BEFORE generation (single event).
+        var existingConsent = await _consentRepository.FirstOrDefaultAsync(c => !c.IsDeleted && c.ModelId == modelId, cancellationToken);
+        if (existingConsent == null)
+        {
+            await _consentRepository.AddAsync(new ModelConsent
+            {
+                Id = Guid.NewGuid(),
+                ModelId = modelId,
+                ClientId = clientId,
+                ApprovedAt = model.ApprovedAt.Value,
+                SummaryJson = model.MappingJson ?? "{}"
+            }, cancellationToken);
+        }
+
+        await UnitOfWork.SaveChangesAsync(cancellationToken);
+
+        // Trigger report generation (existing orchestrator pipeline is idempotent for active datasets).
+        return await SelectModelAsync(modelId, queueAsync: true, cancellationToken);
+    }
+
+    private static AiModelDraftSummaryDto ExtractSummary(InsightModel model)
+    {
+        var transformations = new List<string>();
+        var relationships = new List<RelationshipDto>();
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(model.MappingJson))
+            {
+                using var doc = JsonDocument.Parse(model.MappingJson);
+                var root = doc.RootElement;
+                if (root.TryGetProperty("transformations", out var t) && t.ValueKind == JsonValueKind.Array)
+                    transformations = t.EnumerateArray().Where(e => e.ValueKind == JsonValueKind.String).Select(e => e.GetString() ?? "").Where(s => s.Length > 0).ToList();
+                if (root.TryGetProperty("relationships", out var r) && r.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var el in r.EnumerateArray())
+                    {
+                        if (el.ValueKind != JsonValueKind.Object) continue;
+                        relationships.Add(new RelationshipDto
+                        {
+                            FromTable = el.TryGetProperty("fromTable", out var ft) ? ft.GetString() ?? "" : "",
+                            FromColumn = el.TryGetProperty("fromColumn", out var fc) ? fc.GetString() ?? "" : "",
+                            ToTable = el.TryGetProperty("toTable", out var tt) ? tt.GetString() ?? "" : "",
+                            ToColumn = el.TryGetProperty("toColumn", out var tc) ? tc.GetString() ?? "" : "",
+                            Cardinality = el.TryGetProperty("cardinality", out var ca) ? ca.GetString() : null
+                        });
+                    }
+                }
+            }
+        }
+        catch
+        {
+            // best-effort; keep empty lists
+        }
+
+        return new AiModelDraftSummaryDto
+        {
+            Id = model.Id,
+            ClientId = model.ClientId,
+            TemplateId = model.TemplateId,
+            Confidence = model.Confidence,
+            Transformations = transformations,
+            Relationships = relationships,
+            Status = model.Status
+        };
     }
 
     public async Task<IReadOnlyList<ModelRecommendationDto>> GenerateModelSuggestionsFromBlobAsync(
