@@ -7,6 +7,7 @@ using StudioTechBI.Application.DTOs.InsightsEngine;
 using StudioTechBI.Application.Interfaces;
 using StudioTechBI.Application.Services;
 using StudioTechBI.Application.Utilities;
+using StudioTechBI.Domain.Entities;
 using StudioTechBI.Infrastructure.Clients;
 
 namespace StudioTechBI.API.Controllers;
@@ -61,6 +62,45 @@ public sealed class InsightsEngineController : ControllerBase
         return fromClaim != null && fromClaim.ClientId == clientId;
     }
 
+    /// <summary>
+    /// Resolves the target client: either from JWT <c>client_code</c> (when <paramref name="useSelectedClient"/>) or from <paramref name="clientCodeOrId"/>.
+    /// </summary>
+    private async Task<(Client? client, IActionResult? error)> ResolveTargetClientAsync(
+        string? clientCodeOrId,
+        bool useSelectedClient,
+        CancellationToken ct)
+    {
+        string? key;
+        if (useSelectedClient)
+        {
+            var claim = User.FindFirstValue("client_code");
+            if (string.IsNullOrEmpty(claim))
+            {
+                return (null, BadRequest(ApiResponse<object>.ErrorResponse(
+                    "useSelectedClient is true but the access token has no client_code claim.")));
+            }
+            key = claim.Trim();
+        }
+        else
+        {
+            if (string.IsNullOrWhiteSpace(clientCodeOrId))
+            {
+                return (null, BadRequest(ApiResponse<object>.ErrorResponse(
+                    "clientCode is required when useSelectedClient is false.")));
+            }
+            key = clientCodeOrId.Trim();
+        }
+
+        var client = await _clientResolver.ResolveAsync(key, ct);
+        if (client == null)
+            return (null, NotFound(ApiResponse<object>.ErrorResponse("Client not found.")));
+
+        if (!await CanAccessClientAsync(client.Id, ct))
+            return (null, StatusCode(StatusCodes.Status403Forbidden, ApiResponse<object>.ErrorResponse("You do not have access to this client.")));
+
+        return (client, null);
+    }
+
     public sealed class ResolveBlobResponse
     {
         public Guid ClientId { get; set; }
@@ -68,22 +108,26 @@ public sealed class InsightsEngineController : ControllerBase
         public string BlobPath { get; set; } = "";
     }
 
+    /// <summary>Primary path for the SPA: JSON body, no GET fallback required.</summary>
+    [HttpPost("resolve-blob")]
+    public Task<IActionResult> PostResolveBlob([FromBody] ResolveBlobRequest? body, CancellationToken ct) =>
+        ExecuteResolveBlobCore(body?.ClientCode, body?.UseSelectedClient == true, ct);
+
     /// <summary>
     /// Resolves the latest uploaded report blob under <c>{client}/accounting/created/</c> for a given client code/id.
-    /// Used by the UI to attach blobPath when requesting AI suggestions.
     /// </summary>
     [HttpGet("resolve-blob")]
-    public async Task<IActionResult> ResolveBlob([FromQuery] string clientCode, CancellationToken ct = default)
+    public Task<IActionResult> GetResolveBlob([FromQuery] string clientCode, CancellationToken ct) =>
+        ExecuteResolveBlobCore(clientCode, useSelectedClient: false, ct);
+
+    private async Task<IActionResult> ExecuteResolveBlobCore(
+        string? clientCode,
+        bool useSelectedClient,
+        CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(clientCode))
-            return BadRequest(ApiResponse<object>.ErrorResponse("clientCode is required."));
-
-        var client = await _clientResolver.ResolveAsync(clientCode.Trim(), ct);
-        if (client == null)
-            return NotFound(ApiResponse<object>.ErrorResponse("Client not found."));
-
-        if (!await CanAccessClientAsync(client.Id, ct))
-            return StatusCode(StatusCodes.Status403Forbidden, ApiResponse<object>.ErrorResponse("You do not have access to this client."));
+        var (client, err) = await ResolveTargetClientAsync(clientCode, useSelectedClient, ct);
+        if (err != null) return err;
+        if (client == null) return NotFound();
 
         var folder = (client.BlobFolderPath ?? client.ClientCode ?? client.Id.ToString()).Trim();
         var prefix = $"{folder}/accounting/created/";
@@ -96,31 +140,37 @@ public sealed class InsightsEngineController : ControllerBase
         return Ok(ApiResponse<ResolveBlobResponse>.SuccessResponse(new ResolveBlobResponse
         {
             ClientId = client.Id,
-            ClientCode = client.ClientCode ?? clientCode.Trim(),
+            ClientCode = (client.ClientCode ?? clientCode)?.Trim() ?? string.Empty,
             BlobPath = blobPath
         }, "Blob resolved."));
     }
 
+    /// <summary>Primary path for the SPA: JSON body.</summary>
+    [HttpPost("report-data-sample")]
+    public Task<IActionResult> PostReportDataSample([FromBody] ReportDataSampleRequest? body, CancellationToken ct) =>
+        ExecuteReportDataSampleCore(body?.ClientCode, body?.MaxRows ?? 100, body?.UseSelectedClient == true, ct);
+
     /// <summary>
-    /// Returns a small tabular sample from the latest CSV/XLSX under <c>{client}/accounting/created/</c> (same source as report/model flows).
+    /// Returns a small tabular sample from the latest CSV/XLSX under <c>{client}/accounting/created/</c>.
     /// </summary>
     [HttpGet("report-data-sample")]
-    public async Task<IActionResult> GetReportDataSample(
+    public Task<IActionResult> GetReportDataSample(
         [FromQuery] string clientCode,
         [FromQuery] int maxRows = 100,
-        CancellationToken ct = default)
+        CancellationToken ct = default) =>
+        ExecuteReportDataSampleCore(clientCode, maxRows, useSelectedClient: false, ct);
+
+    private async Task<IActionResult> ExecuteReportDataSampleCore(
+        string? clientCode,
+        int maxRows,
+        bool useSelectedClient,
+        CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(clientCode))
-            return BadRequest(ApiResponse<object>.ErrorResponse("clientCode is required."));
+        var (client, err) = await ResolveTargetClientAsync(clientCode, useSelectedClient, ct);
+        if (err != null) return err;
+        if (client == null) return NotFound();
 
         var mr = maxRows <= 0 ? 100 : Math.Min(maxRows, CsvSampleExtractor.DefaultMaxRows);
-
-        var client = await _clientResolver.ResolveAsync(clientCode.Trim(), ct);
-        if (client == null)
-            return NotFound(ApiResponse<object>.ErrorResponse("Client not found."));
-
-        if (!await CanAccessClientAsync(client.Id, ct))
-            return StatusCode(StatusCodes.Status403Forbidden, ApiResponse<object>.ErrorResponse("You do not have access to this client."));
 
         var folder = (client.BlobFolderPath ?? client.ClientCode ?? client.Id.ToString()).Trim();
         var prefix = $"{folder}/accounting/created/";
