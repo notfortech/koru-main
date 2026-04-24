@@ -49,6 +49,32 @@ public sealed class InsightsEngineClient
         return JsonSerializer.Deserialize<TransformSuggestResponse>(body, JsonOptions) ?? new TransformSuggestResponse();
     }
 
+    public async Task<ModelSuggestResponse> SuggestModelsAsync(
+        ModelSuggestRequest request,
+        CancellationToken ct = default)
+    {
+        using var response = await _httpClient.PostAsJsonAsync(
+            "api/ai/models/suggest",
+            request,
+            JsonOptions,
+            ct);
+
+        var body = await response.Content.ReadAsStringAsync(ct);
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger.LogWarning(
+                "InsightsEngine model suggest failed: {StatusCode} {Body}",
+                (int)response.StatusCode,
+                Truncate(body, 2000));
+            response.EnsureSuccessStatusCode();
+        }
+
+        if (string.IsNullOrWhiteSpace(body))
+            return new ModelSuggestResponse();
+
+        return JsonSerializer.Deserialize<ModelSuggestResponse>(body, JsonOptions) ?? new ModelSuggestResponse();
+    }
+
     private static string Truncate(string? s, int max)
     {
         if (string.IsNullOrEmpty(s) || s.Length <= max)

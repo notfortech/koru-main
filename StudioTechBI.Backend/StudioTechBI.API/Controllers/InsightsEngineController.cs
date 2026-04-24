@@ -276,5 +276,63 @@ public sealed class InsightsEngineController : ControllerBase
             ct);
         return Ok(ApiResponse<InsightsWithTemplatesResponse>.SuccessResponse(enriched, "Suggestions generated."));
     }
+
+    /// <summary>
+    /// Samples up to 100 rows from a blob (CSV/XLSX) and asks InsightsEngine.Api to propose dashboard/data models.
+    /// </summary>
+    [HttpPost("models/suggest-from-blob")]
+    public async Task<IActionResult> SuggestModelsFromBlob([FromBody] ModelSuggestFromBlobRequest? body, CancellationToken ct)
+    {
+        var (client, err) = await ResolveTargetClientAsync(body?.ClientCode, body?.UseSelectedClient == true, ct);
+        if (err != null) return err;
+        if (client == null) return NotFound();
+
+        var maxRows = body?.MaxRows <= 0 ? 100 : Math.Min(body!.MaxRows, 100);
+
+        var blobPath = (body?.BlobPath ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(blobPath))
+        {
+            var folder = (client.BlobFolderPath ?? client.ClientCode ?? client.Id.ToString()).Trim();
+            var prefix = $"{folder}/accounting/created/";
+            blobPath = await _blobStorage.GetLatestBlobPathByPrefixAsync(prefix, ".xlsx", ct)
+                ?? await _blobStorage.GetLatestBlobPathByPrefixAsync(prefix, ".csv", ct)
+                ?? string.Empty;
+
+            if (string.IsNullOrWhiteSpace(blobPath))
+                return NotFound(ApiResponse<object>.ErrorResponse($"No .xlsx or .csv found under '{prefix}'."));
+        }
+
+        var sample = await _sampling.CreateSampleAsync(blobPath, client.Id, maxRows, ct);
+        var element = JsonSerializer.SerializeToElement(sample.SampleRows);
+
+        var req = new ModelSuggestRequest
+        {
+            ClientId = client.Id.ToString(),
+            MaxRows = maxRows,
+            UserPrompt = string.IsNullOrWhiteSpace(body?.UserPrompt) ? null : body!.UserPrompt!.Trim(),
+            Sample = element
+        };
+
+        var resp = await _client.SuggestModelsAsync(req, ct);
+
+        // Reuse our deterministic verification logic by projecting detected schema -> column profiles.
+        var projected = new TransformSuggestResponse
+        {
+            Provider = resp.Provider,
+            Summary = resp.AnalysisSummary,
+            Columns = resp.DetectedSchema
+                .Where(c => !string.IsNullOrWhiteSpace(c.Name))
+                .Select(c => new ColumnProfile { Name = c.Name, InferredType = c.InferredType })
+                .ToList()
+        };
+
+        var verified = await _templateVerification.EnrichWithVerifiedTemplatesAsync(projected, req.UserPrompt, ct);
+
+        return Ok(ApiResponse<ModelSuggestionsWithTemplatesResponse>.SuccessResponse(new ModelSuggestionsWithTemplatesResponse
+        {
+            Suggestions = resp,
+            VerifiedTemplates = verified.VerifiedTemplates
+        }, "Model suggestions generated."));
+    }
 }
 

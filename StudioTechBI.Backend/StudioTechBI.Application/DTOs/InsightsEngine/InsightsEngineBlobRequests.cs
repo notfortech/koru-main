@@ -15,3 +15,13 @@ public sealed class ResolveBlobRequest
     public string? ClientCode { get; set; }
     public bool UseSelectedClient { get; set; }
 }
+
+/// <summary>POST body for proposing dashboard/data models from a blob sample.</summary>
+public sealed class ModelSuggestFromBlobRequest
+{
+    public string? ClientCode { get; set; }
+    public string? BlobPath { get; set; }
+    public int MaxRows { get; set; } = 100;
+    public string? UserPrompt { get; set; }
+    public bool UseSelectedClient { get; set; }
+}
