@@ -25,3 +25,15 @@ public sealed class ModelSuggestFromBlobRequest
     public string? UserPrompt { get; set; }
     public bool UseSelectedClient { get; set; }
 }
+
+/// <summary>POST body to generate canonical plans from a blob sample.</summary>
+public sealed class PlansGenerateFromBlobRequest
+{
+    public string? ClientCode { get; set; }
+    public string? BlobPath { get; set; }
+    public int MaxRows { get; set; } = 100;
+    public string? UserPrompt { get; set; }
+    public bool UseSelectedClient { get; set; }
+    /// <summary>PredictScenarios or ScenarioFocused (passed to external AI as a string).</summary>
+    public string? Mode { get; set; }
+}

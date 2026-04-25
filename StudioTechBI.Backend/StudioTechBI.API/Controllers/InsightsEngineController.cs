@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using StudioTechBI.Application.DTOs.Common;
 using StudioTechBI.Application.DTOs.InsightsEngine;
+using StudioTechBI.Application.DTOs.InsightsEngine.Canonical;
 using StudioTechBI.Application.Interfaces;
 using StudioTechBI.Application.Services;
 using StudioTechBI.Application.Utilities;
@@ -333,6 +334,49 @@ public sealed class InsightsEngineController : ControllerBase
             Suggestions = resp,
             VerifiedTemplates = verified.VerifiedTemplates
         }, "Model suggestions generated."));
+    }
+
+    /// <summary>
+    /// Canonical contract: samples ≤100 rows from CSV/XLSX and returns DashboardTemplatePlan(s) for AI → UI → Validation → TMDL → PBIP.
+    /// </summary>
+    [HttpPost("plans/generate-from-blob")]
+    public async Task<IActionResult> GeneratePlansFromBlob([FromBody] PlansGenerateFromBlobRequest? body, CancellationToken ct)
+    {
+        var (client, err) = await ResolveTargetClientAsync(body?.ClientCode, body?.UseSelectedClient == true, ct);
+        if (err != null) return err;
+        if (client == null) return NotFound();
+
+        var maxRows = body?.MaxRows <= 0 ? 100 : Math.Min(body!.MaxRows, 100);
+
+        var blobPath = (body?.BlobPath ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(blobPath))
+        {
+            var folder = (client.BlobFolderPath ?? client.ClientCode ?? client.Id.ToString()).Trim();
+            var prefix = $"{folder}/accounting/created/";
+            blobPath = await _blobStorage.GetLatestBlobPathByPrefixAsync(prefix, ".xlsx", ct)
+                ?? await _blobStorage.GetLatestBlobPathByPrefixAsync(prefix, ".csv", ct)
+                ?? string.Empty;
+
+            if (string.IsNullOrWhiteSpace(blobPath))
+                return NotFound(ApiResponse<object>.ErrorResponse($"No .xlsx or .csv found under '{prefix}'."));
+        }
+
+        var sample = await _sampling.CreateSampleAsync(blobPath, client.Id, maxRows, ct);
+        var element = JsonSerializer.SerializeToElement(sample.SampleRows);
+
+        var mode = (body?.Mode ?? "PredictScenarios").Trim();
+        if (mode.Length == 0) mode = "PredictScenarios";
+
+        var req = new PlansGenerateRequest
+        {
+            ClientId = client.Id.ToString(),
+            Mode = mode,
+            UserScenario = string.IsNullOrWhiteSpace(body?.UserPrompt) ? null : body!.UserPrompt!.Trim(),
+            Sample = element
+        };
+
+        var resp = await _client.GeneratePlansAsync(req, ct);
+        return Ok(ApiResponse<PlansGenerateResponse>.SuccessResponse(resp, "Plans generated."));
     }
 }
 

@@ -2,6 +2,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using StudioTechBI.Application.DTOs.InsightsEngine;
+using StudioTechBI.Application.DTOs.InsightsEngine.Canonical;
 
 namespace StudioTechBI.Infrastructure.Clients;
 
@@ -73,6 +74,32 @@ public sealed class InsightsEngineClient
             return new ModelSuggestResponse();
 
         return JsonSerializer.Deserialize<ModelSuggestResponse>(body, JsonOptions) ?? new ModelSuggestResponse();
+    }
+
+    public async Task<PlansGenerateResponse> GeneratePlansAsync(
+        PlansGenerateRequest request,
+        CancellationToken ct = default)
+    {
+        using var response = await _httpClient.PostAsJsonAsync(
+            "api/ai/plans/generate",
+            request,
+            JsonOptions,
+            ct);
+
+        var body = await response.Content.ReadAsStringAsync(ct);
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger.LogWarning(
+                "InsightsEngine plans generate failed: {StatusCode} {Body}",
+                (int)response.StatusCode,
+                Truncate(body, 2000));
+            response.EnsureSuccessStatusCode();
+        }
+
+        if (string.IsNullOrWhiteSpace(body))
+            return new PlansGenerateResponse();
+
+        return JsonSerializer.Deserialize<PlansGenerateResponse>(body, JsonOptions) ?? new PlansGenerateResponse();
     }
 
     private static string Truncate(string? s, int max)
