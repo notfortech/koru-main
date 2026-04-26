@@ -12,8 +12,8 @@ using StudioTechBI.Infrastructure.Data;
 namespace StudioTechBI.Infrastructure.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    [Migration("20260414142817_AddOAuthConnectionStates")]
-    partial class AddOAuthConnectionStates
+    [Migration("20260426054601_AddTemplateColumnMetadata")]
+    partial class AddTemplateColumnMetadata
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -579,6 +579,9 @@ namespace StudioTechBI.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<DateTime?>("ApprovedAt")
+                        .HasColumnType("datetime2");
+
                     b.Property<Guid>("ClientId")
                         .HasColumnType("uniqueidentifier");
 
@@ -593,6 +596,10 @@ namespace StudioTechBI.Infrastructure.Migrations
 
                     b.Property<string>("ExcelSchemaJson")
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("ExternalModelId")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
 
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
@@ -616,6 +623,9 @@ namespace StudioTechBI.Infrastructure.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
+                    b.Property<string>("TomJson")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("datetime2");
 
@@ -630,7 +640,53 @@ namespace StudioTechBI.Infrastructure.Migrations
 
                     b.HasIndex("ClientId");
 
+                    b.HasIndex("ClientId", "ExternalModelId");
+
                     b.ToTable("InsightModels", (string)null);
+                });
+
+            modelBuilder.Entity("StudioTechBI.Domain.Entities.ModelConsent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("ApprovedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("ClientId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<Guid>("ModelId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("SummaryJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClientId");
+
+                    b.HasIndex("ModelId")
+                        .IsUnique();
+
+                    b.ToTable("ModelConsents", (string)null);
                 });
 
             modelBuilder.Entity("StudioTechBI.Domain.Entities.OAuthConnectionState", b =>
@@ -1135,6 +1191,20 @@ namespace StudioTechBI.Infrastructure.Migrations
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
 
+                    b.Property<string>("ModelId")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("OptionalColumnsJson")
+                        .IsRequired()
+                        .HasMaxLength(8000)
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("RequiredColumnsJson")
+                        .IsRequired()
+                        .HasMaxLength(8000)
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("TemplateName")
                         .IsRequired()
                         .HasMaxLength(300)
@@ -1430,6 +1500,25 @@ namespace StudioTechBI.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("Client");
+                });
+
+            modelBuilder.Entity("StudioTechBI.Domain.Entities.ModelConsent", b =>
+                {
+                    b.HasOne("StudioTechBI.Domain.Entities.Client", "Client")
+                        .WithMany()
+                        .HasForeignKey("ClientId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("StudioTechBI.Domain.Entities.InsightModel", "Model")
+                        .WithMany()
+                        .HasForeignKey("ModelId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Client");
+
+                    b.Navigation("Model");
                 });
 
             modelBuilder.Entity("StudioTechBI.Domain.Entities.ProcessingJob", b =>
