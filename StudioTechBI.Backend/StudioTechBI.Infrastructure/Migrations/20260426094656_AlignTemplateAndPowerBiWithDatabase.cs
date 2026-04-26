@@ -41,65 +41,41 @@ namespace StudioTechBI.Infrastructure.Migrations
                     ALTER TABLE [dbo].[InsightModels] ADD [TomJson] nvarchar(max) NULL;
                 """);
 
-            // reporting.PowerBIAssets: align with snapshot (dev DBs that started from prior migrations)
-            migrationBuilder.AlterColumn<string>(
-                name: "WorkspaceId",
-                schema: "reporting",
-                table: "PowerBiAssets",
-                type: "nvarchar(100)",
-                maxLength: 100,
-                nullable: false,
-                defaultValue: "",
-                oldClrType: typeof(string),
-                oldType: "nvarchar(100)",
-                oldMaxLength: 100,
-                oldNullable: true);
+            // reporting.PowerBiAssets: use idempotent T-SQL (EF AlterColumn can fail on Azure if DB already
+            // matches production schema, or if redundant ALTER is rejected; avoids startup crash on MigrateAsync)
+            migrationBuilder.Sql(
+                """
+                DECLARE @oid int = OBJECT_ID(N'reporting.PowerBiAssets');
+                IF @oid IS NULL RETURN;
 
-            migrationBuilder.AlterColumn<Guid>(
-                name: "TenantId",
-                schema: "reporting",
-                table: "PowerBiAssets",
-                type: "uniqueidentifier",
-                nullable: false,
-                defaultValue: new Guid("00000000-0000-0000-0000-000000000000"),
-                oldClrType: typeof(Guid),
-                oldType: "uniqueidentifier",
-                oldNullable: true);
+                -- nvarchar(100) NOT NULL (fill NULLs for safe ALTER)
+                IF EXISTS (SELECT 1 FROM sys.columns WHERE object_id = @oid AND name = N'WorkspaceId' AND is_nullable = 1)
+                BEGIN
+                    UPDATE [reporting].[PowerBIAssets] SET [WorkspaceId] = N'' WHERE [WorkspaceId] IS NULL;
+                    ALTER TABLE [reporting].[PowerBIAssets] ALTER COLUMN [WorkspaceId] nvarchar(100) NOT NULL;
+                END
+                IF EXISTS (SELECT 1 FROM sys.columns WHERE object_id = @oid AND name = N'DatasetId' AND is_nullable = 1)
+                BEGIN
+                    UPDATE [reporting].[PowerBIAssets] SET [DatasetId] = N'' WHERE [DatasetId] IS NULL;
+                    ALTER TABLE [reporting].[PowerBIAssets] ALTER COLUMN [DatasetId] nvarchar(100) NOT NULL;
+                END
+                IF EXISTS (SELECT 1 FROM sys.columns WHERE object_id = @oid AND name = N'ReportId' AND is_nullable = 1)
+                BEGIN
+                    UPDATE [reporting].[PowerBIAssets] SET [ReportId] = N'' WHERE [ReportId] IS NULL;
+                    ALTER TABLE [reporting].[PowerBIAssets] ALTER COLUMN [ReportId] nvarchar(100) NOT NULL;
+                END
 
-            migrationBuilder.AlterColumn<string>(
-                name: "ReportId",
-                schema: "reporting",
-                table: "PowerBiAssets",
-                type: "nvarchar(100)",
-                maxLength: 100,
-                nullable: false,
-                defaultValue: "",
-                oldClrType: typeof(string),
-                oldType: "nvarchar(100)",
-                oldMaxLength: 100,
-                oldNullable: true);
+                -- TenantId NOT NULL
+                IF EXISTS (SELECT 1 FROM sys.columns WHERE object_id = @oid AND name = N'TenantId' AND is_nullable = 1)
+                BEGIN
+                    UPDATE [reporting].[PowerBIAssets] SET [TenantId] = '00000000-0000-0000-0000-000000000000' WHERE [TenantId] IS NULL;
+                    ALTER TABLE [reporting].[PowerBIAssets] ALTER COLUMN [TenantId] uniqueidentifier NOT NULL;
+                END
 
-            migrationBuilder.AlterColumn<bool>(
-                name: "IsActive",
-                schema: "reporting",
-                table: "PowerBiAssets",
-                type: "bit",
-                nullable: true,
-                oldClrType: typeof(bool),
-                oldType: "bit");
-
-            migrationBuilder.AlterColumn<string>(
-                name: "DatasetId",
-                schema: "reporting",
-                table: "PowerBiAssets",
-                type: "nvarchar(100)",
-                maxLength: 100,
-                nullable: false,
-                defaultValue: "",
-                oldClrType: typeof(string),
-                oldType: "nvarchar(100)",
-                oldMaxLength: 100,
-                oldNullable: true);
+                -- IsActive: nullable bit (was modelled non-nullable in older snapshot)
+                IF EXISTS (SELECT 1 FROM sys.columns WHERE object_id = @oid AND name = N'IsActive' AND is_nullable = 0)
+                    ALTER TABLE [reporting].[PowerBIAssets] ALTER COLUMN [IsActive] bit NULL;
+                """);
 
             migrationBuilder.Sql(
                 """
