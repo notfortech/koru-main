@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("StudioTechBI.Infrastructure")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+145acc6b4235cefe3b729b17e3e920de8415b566")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+7058adf526be4018256eb991eec5065537d67dcc")]
 [assembly: System.Reflection.AssemblyProductAttribute("StudioTechBI.Infrastructure")]
 [assembly: System.Reflection.AssemblyTitleAttribute("StudioTechBI.Infrastructure")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
