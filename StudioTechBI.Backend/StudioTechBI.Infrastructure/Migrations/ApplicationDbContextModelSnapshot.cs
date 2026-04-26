@@ -850,9 +850,9 @@ namespace StudioTechBI.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<string>("CapacityId")
+                    b.Property<Guid?>("CapacityId")
                         .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
+                        .HasColumnType("uniqueidentifier");
 
                     b.Property<Guid?>("ClientId")
                         .HasColumnType("uniqueidentifier");
@@ -860,23 +860,24 @@ namespace StudioTechBI.Infrastructure.Migrations
                     b.Property<DateTime?>("CreatedAt")
                         .HasColumnType("datetime2");
 
-                    b.Property<string>("DatasetId")
+                    b.Property<Guid?>("DatasetId")
                         .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
+                        .HasColumnType("uniqueidentifier");
 
                     b.Property<bool>("IsActive")
                         .HasColumnType("bit");
 
-                    b.Property<string>("ReportId")
+                    b.Property<Guid?>("ReportId")
                         .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
+                        .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("ReportType")
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
 
-                    b.Property<Guid?>("TemplateId")
-                        .HasColumnType("uniqueidentifier");
+                    b.Property<string>("TemplateId")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
 
                     b.Property<Guid?>("TenantId")
                         .HasColumnType("uniqueidentifier");
@@ -884,9 +885,9 @@ namespace StudioTechBI.Infrastructure.Migrations
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("datetime2");
 
-                    b.Property<string>("WorkspaceId")
+                    b.Property<Guid?>("WorkspaceId")
                         .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
+                        .HasColumnType("uniqueidentifier");
 
                     b.HasKey("AssetId");
 
@@ -1187,18 +1188,16 @@ namespace StudioTechBI.Infrastructure.Migrations
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
 
-                    b.Property<string>("ModelId")
+                    b.Property<Guid?>("ModelId")
                         .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
+                        .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("OptionalColumnsJson")
                         .IsRequired()
-                        .HasMaxLength(8000)
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("RequiredColumnsJson")
                         .IsRequired()
-                        .HasMaxLength(8000)
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("TemplateName")

@@ -769,8 +769,9 @@ namespace StudioTechBI.Infrastructure.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
 
-                    b.Property<Guid?>("TemplateId")
-                        .HasColumnType("uniqueidentifier");
+                    b.Property<string>("TemplateId")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
 
                     b.Property<Guid?>("TenantId")
                         .HasColumnType("uniqueidentifier");

@@ -18,7 +18,8 @@ public class PowerBiAsset
     public string? DatasetId { get; set; }
     public string? ReportId { get; set; }
 
-    public Guid? TemplateId { get; set; }
+    // Some environments may store a GUID; others may store an opaque string identifier (e.g. template name/code used for routing).
+    public string? TemplateId { get; set; }
     public string? CapacityId { get; set; }
 
     public string? ReportType { get; set; }

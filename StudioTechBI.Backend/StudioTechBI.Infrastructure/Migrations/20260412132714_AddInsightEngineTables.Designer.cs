@@ -506,8 +506,9 @@ namespace StudioTechBI.Infrastructure.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
 
-                    b.Property<Guid?>("TemplateId")
-                        .HasColumnType("uniqueidentifier");
+                    b.Property<string>("TemplateId")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
 
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("datetime2");
@@ -658,8 +659,9 @@ namespace StudioTechBI.Infrastructure.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
 
-                    b.Property<Guid?>("TemplateId")
-                        .HasColumnType("uniqueidentifier");
+                    b.Property<string>("TemplateId")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
 
                     b.Property<Guid?>("TenantId")
                         .HasColumnType("uniqueidentifier");
