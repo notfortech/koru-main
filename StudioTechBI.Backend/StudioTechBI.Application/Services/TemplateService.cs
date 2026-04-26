@@ -47,7 +47,7 @@ public class TemplateService : BaseService, ITemplateService
             TemplateName = dto.TemplateName.Trim(),
             Industry = dto.Industry?.Trim(),
             Version = dto.Version.Trim(),
-            ModelId = string.IsNullOrWhiteSpace(dto.ModelId) ? null : dto.ModelId.Trim(),
+            ModelId = ParseModelId(dto.ModelId),
             RequiredColumnsJson = JsonSerializer.Serialize(Normalize(dto.RequiredColumns), JsonOptions),
             OptionalColumnsJson = JsonSerializer.Serialize(Normalize(dto.OptionalColumns), JsonOptions),
             CreatedDate = DateTime.UtcNow
@@ -79,7 +79,7 @@ public class TemplateService : BaseService, ITemplateService
             Industry = t.Industry,
             Version = t.Version,
             BlobPath = t.BlobPath,
-            ModelId = t.ModelId,
+            ModelId = t.ModelId?.ToString(),
             RequiredColumns = DeserializeColumns(t.RequiredColumnsJson),
             OptionalColumns = DeserializeColumns(t.OptionalColumnsJson),
             CreatedDate = t.CreatedDate
@@ -97,6 +97,12 @@ public class TemplateService : BaseService, ITemplateService
         {
             return new List<string>();
         }
+    }
+
+    private static Guid? ParseModelId(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        return Guid.TryParse(value.Trim(), out var g) ? g : null;
     }
 
     private static List<string> Normalize(IEnumerable<string>? cols)

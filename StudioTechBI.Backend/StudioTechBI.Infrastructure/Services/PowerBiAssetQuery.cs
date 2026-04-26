@@ -46,7 +46,7 @@ public class PowerBiAssetQuery : IPowerBiAssetQuery
 
         var assetQuery = _db.PowerBiAssets
             .AsNoTracking()
-            .Where(a => a.IsActive);
+            .Where(a => a.IsActive == true);
 
         // Candidate assets: either template-scoped or client-scoped.
         assetQuery = assetQuery.Where(a =>

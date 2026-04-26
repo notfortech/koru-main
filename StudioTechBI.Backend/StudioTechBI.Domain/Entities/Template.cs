@@ -1,3 +1,5 @@
+using System;
+
 namespace StudioTechBI.Domain.Entities;
 
 public class Template : BaseEntity
@@ -8,9 +10,9 @@ public class Template : BaseEntity
     public string? BlobPath { get; set; }
 
     /// <summary>
-    /// External semantic model identifier associated with this template (if applicable).
+    /// External semantic model identifier (matches dbo.Templates.ModelId, uniqueidentifier in SQL).
     /// </summary>
-    public string? ModelId { get; set; }
+    public Guid? ModelId { get; set; }
 
     /// <summary>
     /// JSON array of required column names used to match client schemas.

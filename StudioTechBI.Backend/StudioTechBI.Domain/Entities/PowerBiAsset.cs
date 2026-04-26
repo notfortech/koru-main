@@ -6,7 +6,8 @@ public class PowerBiAsset
 {
     public Guid AssetId { get; set; }
 
-    public Guid? TenantId { get; set; }
+    /// <summary>SQL: NOT NULL uniqueidentifier (reporting.PowerBIAssets).</summary>
+    public Guid TenantId { get; set; }
     public Guid? ClientId { get; set; }
 
     // reporting.PowerBiAssets table currently does not expose a Name column (based on your screenshot),
@@ -22,7 +23,8 @@ public class PowerBiAsset
     public string? CapacityId { get; set; }
 
     public string? ReportType { get; set; }
-    public bool IsActive { get; set; } = true;
+    /// <summary>SQL: nullable bit; treat null as inactive.</summary>
+    public bool? IsActive { get; set; }
 
     public DateTime? CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }

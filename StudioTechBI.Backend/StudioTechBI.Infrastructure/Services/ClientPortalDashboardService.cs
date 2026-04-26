@@ -188,7 +188,7 @@ public class ClientPortalDashboardService : IClientPortalDashboardService
         }
 
         return await _db.PowerBiAssets.AsNoTracking()
-            .Where(a => a.IsActive && a.ClientId != null && clientIds.Contains(a.ClientId!.Value))
+            .Where(a => a.IsActive == true && a.ClientId != null && clientIds.Contains(a.ClientId!.Value))
             .CountAsync(cancellationToken);
     }
 

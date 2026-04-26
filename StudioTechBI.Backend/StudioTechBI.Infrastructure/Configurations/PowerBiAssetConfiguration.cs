@@ -11,14 +11,16 @@ public class PowerBiAssetConfiguration : IEntityTypeConfiguration<PowerBiAsset>
         builder.ToTable("PowerBiAssets", "reporting");
         builder.HasKey(e => e.AssetId);
 
-        builder.Property(e => e.WorkspaceId).HasMaxLength(100);
-        builder.Property(e => e.DatasetId).HasMaxLength(100);
-        builder.Property(e => e.ReportId).HasMaxLength(100);
+        builder.Property(e => e.TenantId).IsRequired();
+        // SQL: nvarchar(100) NOT NULL
+        builder.Property(e => e.WorkspaceId).IsRequired().HasMaxLength(100);
+        builder.Property(e => e.DatasetId).IsRequired().HasMaxLength(100);
+        builder.Property(e => e.ReportId).IsRequired().HasMaxLength(100);
         builder.Property(e => e.CapacityId).HasMaxLength(100);
 
         builder.Property(e => e.ReportType).HasMaxLength(100);
-
-        builder.Property(e => e.IsActive).IsRequired();
+        // SQL: bit NULL — not required in DB
+        builder.Property(e => e.IsActive);
 
         builder.HasIndex(e => e.ClientId);
         builder.HasIndex(e => new { e.ClientId, e.ReportType, e.IsActive });
