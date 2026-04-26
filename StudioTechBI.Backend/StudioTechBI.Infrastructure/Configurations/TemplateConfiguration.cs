@@ -14,6 +14,9 @@ public class TemplateConfiguration : IEntityTypeConfiguration<Template>
         builder.Property(e => e.Industry).HasMaxLength(200);
         builder.Property(e => e.Version).IsRequired().HasMaxLength(50);
         builder.Property(e => e.BlobPath).HasMaxLength(1000);
+        builder.Property(e => e.ModelId).HasMaxLength(200);
+        builder.Property(e => e.RequiredColumnsJson).IsRequired().HasMaxLength(8000);
+        builder.Property(e => e.OptionalColumnsJson).IsRequired().HasMaxLength(8000);
         builder.Property(e => e.CreatedDate).IsRequired();
     }
 }

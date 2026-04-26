@@ -24,6 +24,7 @@ public static class DependencyInjection
         services.AddScoped<IOAuthService, OAuthService>();
         services.AddScoped<IConnectionService, ConnectionService>();
         services.AddScoped<IInsightTemplateVerificationService, InsightTemplateVerificationService>();
+        services.AddScoped<ITemplateMatchingService, TemplateMatchingService>();
 
         return services;
     }

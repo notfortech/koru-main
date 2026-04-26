@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 using StudioTechBI.Application.DTOs.Common;
 using StudioTechBI.Application.DTOs.InsightsEngine;
 using StudioTechBI.Application.DTOs.InsightsEngine.Canonical;
+using StudioTechBI.Application.DTOs.Templates;
 using StudioTechBI.Application.Interfaces;
 using StudioTechBI.Application.Services;
 using StudioTechBI.Application.Utilities;
@@ -25,6 +26,7 @@ public sealed class InsightsEngineController : ControllerBase
     private readonly IClientResolver _clientResolver;
     private readonly IClientByCompanyQuery _clientByCompanyQuery;
     private readonly IClientService _clientService;
+    private readonly ITemplateMatchingService _templateMatching;
     private readonly ILogger<InsightsEngineController> _logger;
 
     public InsightsEngineController(
@@ -35,6 +37,7 @@ public sealed class InsightsEngineController : ControllerBase
         IClientResolver clientResolver,
         IClientByCompanyQuery clientByCompanyQuery,
         IClientService clientService,
+        ITemplateMatchingService templateMatching,
         ILogger<InsightsEngineController> logger)
     {
         _client = client;
@@ -44,6 +47,7 @@ public sealed class InsightsEngineController : ControllerBase
         _clientResolver = clientResolver;
         _clientByCompanyQuery = clientByCompanyQuery;
         _clientService = clientService;
+        _templateMatching = templateMatching;
         _logger = logger;
     }
 
@@ -150,6 +154,32 @@ public sealed class InsightsEngineController : ControllerBase
     [HttpPost("report-data-sample")]
     public Task<IActionResult> PostReportDataSample([FromBody] ReportDataSampleRequest? body, CancellationToken ct) =>
         ExecuteReportDataSampleCore(body?.ClientCode, body?.MaxRows ?? 100, body?.UseSelectedClient == true, ct);
+
+    /// <summary>
+    /// Matches the client's report data schema to known dashboard templates using metadata (no PBIX parsing).
+    /// AI (if enabled) refines column mapping after deterministic selection.
+    /// </summary>
+    [HttpPost("templates/match-from-blob")]
+    public async Task<IActionResult> MatchTemplatesFromBlob([FromBody] TemplateMatchRequest? body, CancellationToken ct)
+    {
+        var useSelected = body?.UseSelectedClient == true;
+        var key = useSelected ? User.FindFirstValue("client_code") : body?.ClientCode;
+        if (useSelected && string.IsNullOrWhiteSpace(key))
+        {
+            return BadRequest(ApiResponse<object>.ErrorResponse(
+                "useSelectedClient is true but the access token has no client_code claim."));
+        }
+
+        var resp = await _templateMatching.MatchFromBlobAsync(
+            clientCodeOrId: key,
+            useSelectedClient: useSelected,
+            blobPath: body?.BlobPath,
+            maxRows: body?.MaxRows ?? 100,
+            useAiRefinement: body?.UseAiRefinement != false,
+            cancellationToken: ct);
+
+        return Ok(ApiResponse<TemplateMatchResponse>.SuccessResponse(resp, "Templates matched."));
+    }
 
     /// <summary>
     /// Returns a small tabular sample from the latest CSV/XLSX under <c>{client}/accounting/created/</c>.

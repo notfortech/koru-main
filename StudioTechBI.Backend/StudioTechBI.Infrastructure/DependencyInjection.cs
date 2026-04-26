@@ -78,15 +78,27 @@ public static class DependencyInjection
             .ConfigureHttpClient((sp, client) =>
             {
                 var o = sp.GetRequiredService<IOptionsMonitor<InsightsEngineOptions>>().CurrentValue;
-                if (!string.IsNullOrWhiteSpace(o.BaseUrl))
-                    client.BaseAddress = new Uri(o.BaseUrl.TrimEnd('/') + "/");
+                // Back-compat: allow using InsightEngine:* settings if InsightsEngine:* is not set.
+                var baseUrl = (o.BaseUrl ?? "").Trim();
+                if (string.IsNullOrWhiteSpace(baseUrl))
+                {
+                    var legacy = sp.GetRequiredService<IOptionsMonitor<InsightEngineOptions>>().CurrentValue.BaseUrl;
+                    baseUrl = (legacy ?? "").Trim();
+                }
+                if (!string.IsNullOrWhiteSpace(baseUrl))
+                    client.BaseAddress = new Uri(baseUrl.TrimEnd('/') + "/");
 
-                client.Timeout = TimeSpan.FromSeconds(30);
+                client.Timeout = TimeSpan.FromSeconds(o.TimeoutSeconds > 0 ? o.TimeoutSeconds : 120);
                 client.DefaultRequestHeaders.Accept.Clear();
                 client.DefaultRequestHeaders.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
 
                 client.DefaultRequestHeaders.Remove("X-Api-Key");
-                var key = o.ApiKey?.Trim();
+                var key = (o.ApiKey ?? "").Trim();
+                if (string.IsNullOrEmpty(key))
+                {
+                    var legacyKey = sp.GetRequiredService<IOptionsMonitor<InsightEngineOptions>>().CurrentValue.ApiKey;
+                    key = (legacyKey ?? "").Trim();
+                }
                 if (!string.IsNullOrEmpty(key))
                     client.DefaultRequestHeaders.Add("X-Api-Key", key);
             })
@@ -97,6 +109,7 @@ public static class DependencyInjection
                     .WaitAndRetryAsync(
                         retryCount: 3,
                         sleepDurationProvider: attempt => TimeSpan.FromSeconds(Math.Pow(2, attempt))));
+        services.AddScoped<IInsightsEngineTemplateMappingClient>(sp => sp.GetRequiredService<InsightsEngineClient>());
         services.AddScoped<IModelRepository, ModelRepository>();
         services.AddScoped<IDatasetRepository, DatasetRepository>();
         services.AddScoped<IDataConnectionRepository, DataConnectionRepository>();

@@ -6,5 +6,20 @@ public class Template : BaseEntity
     public string? Industry { get; set; }
     public string Version { get; set; } = string.Empty;
     public string? BlobPath { get; set; }
+
+    /// <summary>
+    /// External semantic model identifier associated with this template (if applicable).
+    /// </summary>
+    public string? ModelId { get; set; }
+
+    /// <summary>
+    /// JSON array of required column names used to match client schemas.
+    /// </summary>
+    public string RequiredColumnsJson { get; set; } = "[]";
+
+    /// <summary>
+    /// JSON array of optional column names used to boost match score.
+    /// </summary>
+    public string OptionalColumnsJson { get; set; } = "[]";
     public DateTime CreatedDate { get; set; } = DateTime.UtcNow;
 }

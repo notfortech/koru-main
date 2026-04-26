@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using System.Text.Json;
 using StudioTechBI.Application.DTOs.Admin;
 using StudioTechBI.Application.Interfaces;
 using StudioTechBI.Domain.Entities;
@@ -8,6 +9,8 @@ namespace StudioTechBI.Application.Services;
 
 public class TemplateService : BaseService, ITemplateService
 {
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+
     private readonly IRepository<Template> _templateRepository;
     private readonly IBlobStorageService _blobStorage;
     private readonly ILogger<TemplateService> _logger;
@@ -44,6 +47,9 @@ public class TemplateService : BaseService, ITemplateService
             TemplateName = dto.TemplateName.Trim(),
             Industry = dto.Industry?.Trim(),
             Version = dto.Version.Trim(),
+            ModelId = string.IsNullOrWhiteSpace(dto.ModelId) ? null : dto.ModelId.Trim(),
+            RequiredColumnsJson = JsonSerializer.Serialize(Normalize(dto.RequiredColumns), JsonOptions),
+            OptionalColumnsJson = JsonSerializer.Serialize(Normalize(dto.OptionalColumns), JsonOptions),
             CreatedDate = DateTime.UtcNow
         };
 
@@ -73,7 +79,34 @@ public class TemplateService : BaseService, ITemplateService
             Industry = t.Industry,
             Version = t.Version,
             BlobPath = t.BlobPath,
+            ModelId = t.ModelId,
+            RequiredColumns = DeserializeColumns(t.RequiredColumnsJson),
+            OptionalColumns = DeserializeColumns(t.OptionalColumnsJson),
             CreatedDate = t.CreatedDate
         };
+    }
+
+    private static List<string> DeserializeColumns(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return new List<string>();
+        try
+        {
+            return JsonSerializer.Deserialize<List<string>>(json, JsonOptions) ?? new List<string>();
+        }
+        catch
+        {
+            return new List<string>();
+        }
+    }
+
+    private static List<string> Normalize(IEnumerable<string>? cols)
+    {
+        if (cols == null) return new List<string>();
+        return cols
+            .Where(c => !string.IsNullOrWhiteSpace(c))
+            .Select(c => c.Trim())
+            .Where(c => c.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
     }
 }
