@@ -104,7 +104,27 @@ builder.Services.AddSwaggerGen(c =>
         }
     });
 
-    c.AddServer(new OpenApiServer { Url = "https://localhost:5001", Description = "HTTPS" });
+    // "Try it out" uses OpenAPI `servers` — do NOT hardcode localhost or Azure will still show localhost
+    // when the spec is downloaded. Use same-origin, or set Swagger:OpenApiServerUrl (e.g. public API URL).
+    {
+        var serverUrl = (builder.Configuration["Swagger:OpenApiServerUrl"] ?? string.Empty).Trim();
+        if (string.IsNullOrEmpty(serverUrl))
+        {
+            c.AddServer(new OpenApiServer
+            {
+                Url = "/",
+                Description = "Same host as this Swagger page (local or Azure)"
+            });
+        }
+        else
+        {
+            c.AddServer(new OpenApiServer
+            {
+                Url = serverUrl.TrimEnd('/'),
+                Description = "Swagger:OpenApiServerUrl"
+            });
+        }
+    }
 
     c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
