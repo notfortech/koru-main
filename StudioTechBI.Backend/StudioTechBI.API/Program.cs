@@ -20,6 +20,11 @@ using StudioTechBI.Domain.Interfaces;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Azure App Service (Linux) listens on the PORT environment variable.
+// Bind explicitly so warmup/health probes can reach Kestrel.
+var port = Environment.GetEnvironmentVariable("PORT") ?? "8080";
+builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
+
 // Local config: credentials and demo users (no database file required for demo)
 builder.Configuration.AddJsonFile("appsettings.Local.json", optional: true, reloadOnChange: true);
 builder.Configuration.AddJsonFile("DemoUsers.json", optional: true, reloadOnChange: true);
@@ -208,6 +213,16 @@ builder.Services.AddAuthorizationPolicies();
 
 builder.Services.AddCors(options =>
 {
+    // Azure warmup + browser preflight should never block startup.
+    // For production, tighten origins once the app is stable.
+    options.AddPolicy("AllowAll", policy =>
+    {
+        policy
+            .AllowAnyOrigin()
+            .AllowAnyMethod()
+            .AllowAnyHeader();
+    });
+
     options.AddPolicy("RestrictedCors", policy =>
     {
         var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
@@ -258,6 +273,9 @@ builder.Services.AddHealthChecks()
         failureStatus: HealthStatus.Unhealthy,
         tags: new[] { "db", "ready" });
 
+// Do not block startup on DB work; run migrations/seeding after the app is listening.
+builder.Services.AddHostedService<StudioTechBI.API.Services.StartupDbTasksHostedService>();
+
 var app = builder.Build();
 
 var enableSwaggerInAzure = app.Configuration.GetValue<bool>("Swagger:Enabled");
@@ -267,6 +285,11 @@ if (app.Environment.IsDevelopment() || enableSwaggerInAzure)
     app.UseSwaggerUI();
     // Root URL has no controller; send browsers to Swagger (launchUrl is often just the base URL).
     app.MapGet("/", () => Results.Redirect("/swagger")).AllowAnonymous().ExcludeFromDescription();
+}
+else
+{
+    // Azure warmup endpoint: must return immediately.
+    app.MapGet("/", () => Results.Ok("API is running")).AllowAnonymous().ExcludeFromDescription();
 }
 
 app.UseMiddleware<ExceptionHandlingMiddleware>();
@@ -278,7 +301,7 @@ if (!app.Environment.IsDevelopment())
 }
 app.UseHttpsRedirection();
 
-app.UseCors("RestrictedCors");
+app.UseCors("AllowAll");
 
 app.UseAuthentication();
 app.UseAuthorization();
@@ -287,64 +310,6 @@ app.MapControllers();
 app.MapHealthChecks("/health");
 
 ValidateRequiredSettings(app.Configuration, app.Environment);
-
-var useDemoStorage = app.Configuration.GetValue<bool>("UseDemoStorage");
-var connectionString = app.Configuration.GetConnectionString("DefaultConnection");
-if (useDemoStorage)
-{
-    Log.Warning("Database mode is set to in-memory demo storage.");
-} else
-{
-    Log.Information("Database mode is set to SQL Server.");
-}
-
-using (var scope = app.Services.CreateScope())
-{
-    var db = scope.ServiceProvider.GetRequiredService<StudioTechBI.Infrastructure.Data.ApplicationDbContext>();
-    var config = scope.ServiceProvider.GetRequiredService<IConfiguration>();
-    try
-    {
-        if (useDemoStorage)
-        {
-            await StudioTechBI.Infrastructure.Data.RoleSeeder.SeedAsync(db);
-            await StudioTechBI.Infrastructure.Data.DemoUsersSeeder.SeedAsync(db, config);
-            await StudioTechBI.Infrastructure.Data.AdminUserSeeder.SeedAsync(db, config);
-            Log.Information("Demo storage ready. Roles, users, and admin seeded.");
-        }
-        else
-        {
-            try
-            {
-                if (!await db.Database.CanConnectAsync())
-                {
-                    Log.Error("Cannot connect to database.");
-                    throw new InvalidOperationException("Database connection failed.");
-                }
-            }
-            catch (InvalidOperationException)
-            {
-                throw;
-            }
-            catch (Exception ex)
-            {
-                Log.Error(ex, "Database connection failed.");
-                throw new InvalidOperationException("Database connection failed.", ex);
-            }
-            Log.Information("DB connection established.");
-            Log.Information("Applying EF Core migrations...");
-            await db.Database.MigrateAsync();
-            Log.Information("Migrations applied.");
-            await StudioTechBI.Infrastructure.Data.RoleSeeder.SeedAsync(db);
-            await StudioTechBI.Infrastructure.Data.AdminUserSeeder.SeedAsync(db, config);
-            Log.Information("Database migrations applied. Roles and admin user seeded.");
-        }
-    }
-    catch (Exception ex)
-    {
-        Log.Error(ex, "Database setup or seed failed.");
-        throw;
-    }
-}
 
 void MapEnvOverride(string environmentVariableName, string configPath)
 {
@@ -370,6 +335,7 @@ static void ValidateRequiredSettings(IConfiguration configuration, IWebHostEnvir
         "JwtSettings:SecretKey",
         "JwtSettings:Issuer",
         "JwtSettings:Audience",
+        // Keep this required key for existing deployments that still use RestrictedCors.
         "Cors:AllowedOrigins:0"
     };
 
