@@ -9,7 +9,17 @@ public sealed class TemplateMatchRequest
     public int MaxRows { get; set; } = 100;
     public bool UseSelectedClient { get; set; }
 
-    /// <summary>When true, call the AI refinement endpoint after deterministic ranking.</summary>
+    /// <summary>When true, call the AI refinement endpoint after deterministic ranking (subject to <c>InsightsEngine:ExternalCopilotAiEnabled</c> and match score threshold).</summary>
+    public bool UseAiRefinement { get; set; } = true;
+}
+
+/// <summary>Template matching using UI-provided column names (no blob read).</summary>
+public sealed class TemplateMatchFromSampleRequest
+{
+    public string? ClientCode { get; set; }
+    public bool UseSelectedClient { get; set; }
+    public List<string> Columns { get; set; } = new();
+
     public bool UseAiRefinement { get; set; } = true;
 }
 

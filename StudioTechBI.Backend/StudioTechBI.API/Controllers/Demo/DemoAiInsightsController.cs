@@ -3,9 +3,12 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using StudioTechBI.Application.DTOs.Common;
 using StudioTechBI.Application.DTOs.Templates;
 using StudioTechBI.Application.Interfaces;
+using StudioTechBI.Application.Models;
+using StudioTechBI.Application.Utilities;
 using StudioTechBI.Infrastructure.Data;
 
 namespace StudioTechBI.API.Controllers.Demo;
@@ -18,11 +21,16 @@ public sealed class DemoAiInsightsController : ControllerBase
 
     private readonly ApplicationDbContext _db;
     private readonly IInsightsEngineTemplateMappingClient _insightsEngine;
+    private readonly IOptionsMonitor<InsightsEngineOptions> _insightsEngineOptions;
 
-    public DemoAiInsightsController(ApplicationDbContext db, IInsightsEngineTemplateMappingClient insightsEngine)
+    public DemoAiInsightsController(
+        ApplicationDbContext db,
+        IInsightsEngineTemplateMappingClient insightsEngine,
+        IOptionsMonitor<InsightsEngineOptions> insightsEngineOptions)
     {
         _db = db;
         _insightsEngine = insightsEngine;
+        _insightsEngineOptions = insightsEngineOptions;
     }
 
     public sealed class DemoAiInsightsRequest
@@ -109,21 +117,29 @@ public sealed class DemoAiInsightsController : ControllerBase
         var mapping = new TemplateMappingPreview();
         if (best != null && (best.tpl.Required.Count > 0 || best.tpl.Optional.Count > 0))
         {
-            // Best-effort AI refinement with strict time budget, fallback to deterministic mapping.
-            using var budget = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            budget.CancelAfter(TimeSpan.FromMilliseconds(1500));
-
-            try
-            {
-                mapping = await _insightsEngine.RefineTemplateMappingAsync(
-                    columns,
-                    best.tpl.Required,
-                    best.tpl.Optional,
-                    budget.Token);
-            }
-            catch
+            var opt = _insightsEngineOptions.CurrentValue;
+            if (!CopilotExternalAiGate.ShouldCallExternalInsightsEngine(opt, best.score))
             {
                 mapping = DeterministicMapping(columns, best.tpl.Required, best.tpl.Optional);
+            }
+            else
+            {
+                // Best-effort AI refinement with strict time budget, fallback to deterministic mapping.
+                using var budget = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                budget.CancelAfter(TimeSpan.FromMilliseconds(1500));
+
+                try
+                {
+                    mapping = await _insightsEngine.RefineTemplateMappingAsync(
+                        columns,
+                        best.tpl.Required,
+                        best.tpl.Optional,
+                        budget.Token);
+                }
+                catch
+                {
+                    mapping = DeterministicMapping(columns, best.tpl.Required, best.tpl.Optional);
+                }
             }
         }
         else

@@ -50,6 +50,8 @@ MapEnvOverride("INSIGHT_ENGINE_API_KEY", "InsightEngine:ApiKey");
 // Transformations suggest API (InsightsEngine.Api) — different section from InsightEngine (model generation).
 MapEnvOverride("INSIGHTS_ENGINE_BASE_URL", "InsightsEngine:BaseUrl");
 MapEnvOverride("INSIGHTS_ENGINE_API_KEY", "InsightsEngine:ApiKey");
+MapEnvOverride("INSIGHTS_ENGINE_EXTERNAL_COPILOT_AI", "InsightsEngine:ExternalCopilotAiEnabled");
+MapEnvOverride("INSIGHTS_ENGINE_MIN_MATCH_SCORE_SKIP_AI", "InsightsEngine:MinTemplateMatchScoreToSkipExternalAi");
 MapEnvOverride("MICROSOFT_AUTH_CLIENT_ID", "MicrosoftAuth:ClientId");
 MapEnvOverride("MICROSOFT_AUTH_CLIENT_SECRET", "MicrosoftAuth:ClientSecret");
 MapEnvOverride("MICROSOFT_AUTH_TENANT_ID", "MicrosoftAuth:TenantId");

@@ -2,11 +2,13 @@ using System.Security.Claims;
 using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 using StudioTechBI.Application.DTOs.Common;
 using StudioTechBI.Application.DTOs.InsightsEngine;
 using StudioTechBI.Application.DTOs.InsightsEngine.Canonical;
 using StudioTechBI.Application.DTOs.Templates;
 using StudioTechBI.Application.Interfaces;
+using StudioTechBI.Application.Models;
 using StudioTechBI.Application.Services;
 using StudioTechBI.Application.Utilities;
 using StudioTechBI.Domain.Entities;
@@ -27,6 +29,7 @@ public sealed class InsightsEngineController : ControllerBase
     private readonly IClientByCompanyQuery _clientByCompanyQuery;
     private readonly IClientService _clientService;
     private readonly ITemplateMatchingService _templateMatching;
+    private readonly IOptionsMonitor<InsightsEngineOptions> _insightsEngineOptions;
     private readonly ILogger<InsightsEngineController> _logger;
 
     public InsightsEngineController(
@@ -38,6 +41,7 @@ public sealed class InsightsEngineController : ControllerBase
         IClientByCompanyQuery clientByCompanyQuery,
         IClientService clientService,
         ITemplateMatchingService templateMatching,
+        IOptionsMonitor<InsightsEngineOptions> insightsEngineOptions,
         ILogger<InsightsEngineController> logger)
     {
         _client = client;
@@ -48,6 +52,7 @@ public sealed class InsightsEngineController : ControllerBase
         _clientByCompanyQuery = clientByCompanyQuery;
         _clientService = clientService;
         _templateMatching = templateMatching;
+        _insightsEngineOptions = insightsEngineOptions;
         _logger = logger;
     }
 
@@ -181,6 +186,33 @@ public sealed class InsightsEngineController : ControllerBase
         return Ok(ApiResponse<TemplateMatchResponse>.SuccessResponse(resp, "Templates matched."));
     }
 
+    /// <summary>Same as <see cref="MatchTemplatesFromBlob"/> but uses UI-provided column names (no blob I/O).</summary>
+    [HttpPost("templates/match-from-sample")]
+    public async Task<IActionResult> MatchTemplatesFromSample([FromBody] TemplateMatchFromSampleRequest? body, CancellationToken ct)
+    {
+        var useSelected = body?.UseSelectedClient == true;
+        var key = useSelected ? User.FindFirstValue("client_code") : body?.ClientCode;
+        if (useSelected && string.IsNullOrWhiteSpace(key))
+        {
+            return BadRequest(ApiResponse<object>.ErrorResponse(
+                "useSelectedClient is true but the access token has no client_code claim."));
+        }
+
+        if (body?.Columns is null || body.Columns.Count == 0)
+        {
+            return BadRequest(ApiResponse<object>.ErrorResponse("columns is required (at least one column name)."));
+        }
+
+        var resp = await _templateMatching.MatchFromColumnsAsync(
+            clientCodeOrId: key,
+            useSelectedClient: useSelected,
+            columns: body.Columns,
+            useAiRefinement: body.UseAiRefinement,
+            cancellationToken: ct);
+
+        return Ok(ApiResponse<TemplateMatchResponse>.SuccessResponse(resp, "Templates matched."));
+    }
+
     /// <summary>
     /// Returns a small tabular sample from the latest CSV/XLSX under <c>{client}/accounting/created/</c>.
     /// </summary>
@@ -257,12 +289,25 @@ public sealed class InsightsEngineController : ControllerBase
             Sample = body.Sample.ValueKind == JsonValueKind.Undefined ? JsonSerializer.SerializeToElement(new { }) : body.Sample
         };
 
+        var columnNames = InsightsSampleColumnExtractor.ExtractColumnNames(req.Sample);
+        var best = await _templateMatching.GetBestCatalogMatchScoreAsync(columnNames, ct);
+        var opt = _insightsEngineOptions.CurrentValue;
+        if (!CopilotExternalAiGate.ShouldCallExternalInsightsEngine(opt, best))
+        {
+            var local = BuildCatalogOnlyTransformInsights(columnNames, opt);
+            var enriched = await _templateVerification.EnrichWithVerifiedTemplatesAsync(
+                local,
+                req.UserPrompt,
+                ct);
+            return Ok(ApiResponse<InsightsWithTemplatesResponse>.SuccessResponse(enriched, "Catalog templates only (external AI not used)."));
+        }
+
         var resp = await _client.SuggestTransformationsAsync(req, ct);
-        var enriched = await _templateVerification.EnrichWithVerifiedTemplatesAsync(
+        var enriched2 = await _templateVerification.EnrichWithVerifiedTemplatesAsync(
             resp,
             req.UserPrompt,
             ct);
-        return Ok(ApiResponse<InsightsWithTemplatesResponse>.SuccessResponse(enriched, "Suggestions generated."));
+        return Ok(ApiResponse<InsightsWithTemplatesResponse>.SuccessResponse(enriched2, "Suggestions generated."));
     }
 
     public sealed class SuggestFromBlobApiRequest
@@ -300,12 +345,92 @@ public sealed class InsightsEngineController : ControllerBase
             Sample = element
         };
 
+        var columnNames = sample.Columns?.Count > 0
+            ? (IReadOnlyList<string>)sample.Columns
+            : InsightsSampleColumnExtractor.ExtractColumnNames(element);
+        var best = await _templateMatching.GetBestCatalogMatchScoreAsync(columnNames, ct);
+        var opt = _insightsEngineOptions.CurrentValue;
+        if (!CopilotExternalAiGate.ShouldCallExternalInsightsEngine(opt, best))
+        {
+            var local = BuildCatalogOnlyTransformInsights(columnNames, opt);
+            var enriched = await _templateVerification.EnrichWithVerifiedTemplatesAsync(
+                local,
+                req.UserPrompt,
+                ct);
+            return Ok(ApiResponse<InsightsWithTemplatesResponse>.SuccessResponse(enriched, "Catalog templates only (external AI not used)."));
+        }
+
         var resp = await _client.SuggestTransformationsAsync(req, ct);
-        var enriched = await _templateVerification.EnrichWithVerifiedTemplatesAsync(
+        var enriched2 = await _templateVerification.EnrichWithVerifiedTemplatesAsync(
             resp,
             req.UserPrompt,
             ct);
-        return Ok(ApiResponse<InsightsWithTemplatesResponse>.SuccessResponse(enriched, "Suggestions generated."));
+        return Ok(ApiResponse<InsightsWithTemplatesResponse>.SuccessResponse(enriched2, "Suggestions generated."));
+    }
+
+    /// <summary>Same as <see cref="SuggestModelsFromBlob"/> but with a tabular <c>Sample</c> from the client (no blob I/O).</summary>
+    [HttpPost("models/suggest")]
+    public async Task<IActionResult> SuggestModelsFromSample([FromBody] SuggestApiRequest body, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(body.ClientId))
+            return BadRequest(ApiResponse<object>.ErrorResponse("ClientId is required."));
+
+        if (body.MaxRows <= 0 || body.MaxRows > 100)
+            body.MaxRows = 100;
+
+        var sampleElement = body.Sample.ValueKind == JsonValueKind.Undefined
+            ? JsonSerializer.SerializeToElement(Array.Empty<object>())
+            : body.Sample;
+
+        var columnNames = InsightsSampleColumnExtractor.ExtractColumnNames(sampleElement);
+        var best = await _templateMatching.GetBestCatalogMatchScoreAsync(columnNames, ct);
+        var opt = _insightsEngineOptions.CurrentValue;
+
+        var req = new ModelSuggestRequest
+        {
+            ClientId = body.ClientId.Trim(),
+            MaxRows = body.MaxRows,
+            UserPrompt = string.IsNullOrWhiteSpace(body.UserPrompt) ? null : body.UserPrompt.Trim(),
+            Sample = sampleElement
+        };
+
+        if (!CopilotExternalAiGate.ShouldCallExternalInsightsEngine(opt, best))
+        {
+            var local = BuildCatalogOnlyModelResponse(columnNames, opt);
+            var projected = new TransformSuggestResponse
+            {
+                Provider = local.Provider,
+                Summary = local.AnalysisSummary,
+                Columns = local.DetectedSchema
+                    .Where(c => !string.IsNullOrWhiteSpace(c.Name))
+                    .Select(c => new ColumnProfile { Name = c.Name, InferredType = c.InferredType })
+                    .ToList()
+            };
+            var verified = await _templateVerification.EnrichWithVerifiedTemplatesAsync(projected, req.UserPrompt, ct);
+            return Ok(ApiResponse<ModelSuggestionsWithTemplatesResponse>.SuccessResponse(new ModelSuggestionsWithTemplatesResponse
+            {
+                Suggestions = local,
+                VerifiedTemplates = verified.VerifiedTemplates
+            }, "Catalog templates only (external AI not used)."));
+        }
+
+        var resp = await _client.SuggestModelsAsync(req, ct);
+        var projected2 = new TransformSuggestResponse
+        {
+            Provider = resp.Provider,
+            Summary = resp.AnalysisSummary,
+            Columns = resp.DetectedSchema
+                .Where(c => !string.IsNullOrWhiteSpace(c.Name))
+                .Select(c => new ColumnProfile { Name = c.Name, InferredType = c.InferredType })
+                .ToList()
+        };
+        var verified2 = await _templateVerification.EnrichWithVerifiedTemplatesAsync(projected2, req.UserPrompt, ct);
+
+        return Ok(ApiResponse<ModelSuggestionsWithTemplatesResponse>.SuccessResponse(new ModelSuggestionsWithTemplatesResponse
+        {
+            Suggestions = resp,
+            VerifiedTemplates = verified2.VerifiedTemplates
+        }, "Model suggestions generated."));
     }
 
     /// <summary>
@@ -343,6 +468,31 @@ public sealed class InsightsEngineController : ControllerBase
             UserPrompt = string.IsNullOrWhiteSpace(body?.UserPrompt) ? null : body!.UserPrompt!.Trim(),
             Sample = element
         };
+
+        var columnNames = sample.Columns?.Count > 0
+            ? (IReadOnlyList<string>)sample.Columns
+            : InsightsSampleColumnExtractor.ExtractColumnNames(element);
+        var best = await _templateMatching.GetBestCatalogMatchScoreAsync(columnNames, ct);
+        var opt = _insightsEngineOptions.CurrentValue;
+        if (!CopilotExternalAiGate.ShouldCallExternalInsightsEngine(opt, best))
+        {
+            var local = BuildCatalogOnlyModelResponse(columnNames, opt);
+            var projected0 = new TransformSuggestResponse
+            {
+                Provider = local.Provider,
+                Summary = local.AnalysisSummary,
+                Columns = local.DetectedSchema
+                    .Where(c => !string.IsNullOrWhiteSpace(c.Name))
+                    .Select(c => new ColumnProfile { Name = c.Name, InferredType = c.InferredType })
+                    .ToList()
+            };
+            var verified0 = await _templateVerification.EnrichWithVerifiedTemplatesAsync(projected0, req.UserPrompt, ct);
+            return Ok(ApiResponse<ModelSuggestionsWithTemplatesResponse>.SuccessResponse(new ModelSuggestionsWithTemplatesResponse
+            {
+                Suggestions = local,
+                VerifiedTemplates = verified0.VerifiedTemplates
+            }, "Catalog templates only (external AI not used)."));
+        }
 
         var resp = await _client.SuggestModelsAsync(req, ct);
 
@@ -405,8 +555,57 @@ public sealed class InsightsEngineController : ControllerBase
             Sample = element
         };
 
+        var columnNames = sample.Columns?.Count > 0
+            ? (IReadOnlyList<string>)sample.Columns
+            : InsightsSampleColumnExtractor.ExtractColumnNames(element);
+        var best = await _templateMatching.GetBestCatalogMatchScoreAsync(columnNames, ct);
+        var opt = _insightsEngineOptions.CurrentValue;
+        if (!CopilotExternalAiGate.ShouldCallExternalInsightsEngine(opt, best))
+        {
+            var local = new PlansGenerateResponse
+            {
+                Provider = "StudioTechBI.Catalog",
+                Summary = BuildCatalogOnlyPlanSummary(opt),
+                Plans = new List<DashboardTemplatePlan>()
+            };
+            return Ok(ApiResponse<PlansGenerateResponse>.SuccessResponse(local, "Catalog only (external AI not used)."));
+        }
+
         var resp = await _client.GeneratePlansAsync(req, ct);
         return Ok(ApiResponse<PlansGenerateResponse>.SuccessResponse(resp, "Plans generated."));
     }
+
+    private static TransformSuggestResponse BuildCatalogOnlyTransformInsights(
+        IReadOnlyList<string> columnNames,
+        InsightsEngineOptions options)
+    {
+        return new TransformSuggestResponse
+        {
+            Provider = "StudioTechBI.Catalog",
+            Summary = !options.ExternalCopilotAiEnabled
+                ? "External copilot AI is disabled (InsightsEngine:ExternalCopilotAiEnabled=false). Showing verified dashboard templates from your column names only."
+                : $"External copilot AI skipped: your data already matches a catalog report template (score threshold {options.MinTemplateMatchScoreToSkipExternalAi:0.##}).",
+            Columns = columnNames.Select(n => new ColumnProfile { Name = n }).ToList()
+        };
+    }
+
+    private static ModelSuggestResponse BuildCatalogOnlyModelResponse(
+        IReadOnlyList<string> columnNames,
+        InsightsEngineOptions options)
+    {
+        return new ModelSuggestResponse
+        {
+            Provider = "StudioTechBI.Catalog",
+            AnalysisSummary = !options.ExternalCopilotAiEnabled
+                ? "External copilot AI is disabled (InsightsEngine:ExternalCopilotAiEnabled=false). Proposed models are not generated; use VerifiedTemplates for catalog matches."
+                : $"External copilot AI skipped: schema already aligns with a template (threshold {options.MinTemplateMatchScoreToSkipExternalAi:0.##}).",
+            DetectedSchema = columnNames.Select(n => new DetectedColumn { Name = n }).ToList()
+        };
+    }
+
+    private static string BuildCatalogOnlyPlanSummary(InsightsEngineOptions options) =>
+        !options.ExternalCopilotAiEnabled
+            ? "External copilot AI is disabled (InsightsEngine:ExternalCopilotAiEnabled=false). No remote plan generation; adjust InsightsEngine:ExternalCopilotAiEnabled to enable."
+            : $"External copilot plan generation skipped: data matches a template at or above the threshold ({options.MinTemplateMatchScoreToSkipExternalAi:0.##}).";
 }
 

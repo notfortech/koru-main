@@ -1,6 +1,9 @@
 using System.Text;
+using Microsoft.Extensions.Options;
 using StudioTechBI.Application.DTOs.Templates;
 using StudioTechBI.Application.Interfaces;
+using StudioTechBI.Application.Models;
+using StudioTechBI.Application.Utilities;
 
 namespace StudioTechBI.Application.Services;
 
@@ -12,6 +15,7 @@ public sealed class TemplateMatchingService : ITemplateMatchingService
     private readonly IClientResolver _clientResolver;
     private readonly IClientService _clientService;
     private readonly IInsightsEngineTemplateMappingClient _insightsEngine;
+    private readonly IOptionsMonitor<InsightsEngineOptions> _insightsEngineOptions;
 
     public TemplateMatchingService(
         ITemplateService templates,
@@ -19,7 +23,8 @@ public sealed class TemplateMatchingService : ITemplateMatchingService
         IBlobStorageService blobStorage,
         IClientResolver clientResolver,
         IClientService clientService,
-        IInsightsEngineTemplateMappingClient insightsEngine)
+        IInsightsEngineTemplateMappingClient insightsEngine,
+        IOptionsMonitor<InsightsEngineOptions> insightsEngineOptions)
     {
         _templates = templates;
         _sampling = sampling;
@@ -27,6 +32,27 @@ public sealed class TemplateMatchingService : ITemplateMatchingService
         _clientResolver = clientResolver;
         _clientService = clientService;
         _insightsEngine = insightsEngine;
+        _insightsEngineOptions = insightsEngineOptions;
+    }
+
+    public async Task<double> GetBestCatalogMatchScoreAsync(
+        IReadOnlyList<string> clientColumns,
+        CancellationToken cancellationToken = default)
+    {
+        var templates = await _templates.GetAllAsync(cancellationToken);
+        if (templates.Count == 0)
+            return 0;
+
+        var cols = clientColumns ?? Array.Empty<string>();
+        var best = 0.0;
+        foreach (var t in templates)
+        {
+            var (_, score, _) = ScoreTemplate(t, cols);
+            if (score > best)
+                best = score;
+        }
+
+        return best;
     }
 
     public async Task<TemplateMatchResponse> MatchFromBlobAsync(
@@ -64,6 +90,12 @@ public sealed class TemplateMatchingService : ITemplateMatchingService
         var sample = await _sampling.CreateSampleAsync(resolvedBlobPath, client.Id, mr, cancellationToken);
         var clientColumns = sample.Columns ?? new List<string>();
 
+        var bestCatalog = await GetBestCatalogMatchScoreAsync(clientColumns, cancellationToken);
+        var effectiveRefine = CopilotExternalAiGate.ShouldRefineMappingWithExternalAi(
+            _insightsEngineOptions.CurrentValue,
+            bestCatalog,
+            useAiRefinement);
+
         var templates = await _templates.GetAllAsync(cancellationToken);
         var ranked = templates
             .Select(t => ScoreTemplate(t, clientColumns))
@@ -78,7 +110,7 @@ public sealed class TemplateMatchingService : ITemplateMatchingService
             var confidence = Math.Round(score, 4);
             var preview = mappingPreview;
 
-            if (useAiRefinement && template.RequiredColumns.Count > 0)
+            if (effectiveRefine && template.RequiredColumns.Count > 0)
             {
                 // best-effort refinement: if the endpoint isn't available yet, we still return deterministic ranking.
                 try
@@ -110,6 +142,83 @@ public sealed class TemplateMatchingService : ITemplateMatchingService
         {
             ClientCode = client.ClientCode ?? resolvedClientCode,
             BlobPath = resolvedBlobPath,
+            Templates = results
+        };
+    }
+
+    public async Task<TemplateMatchResponse> MatchFromColumnsAsync(
+        string? clientCodeOrId,
+        bool useSelectedClient,
+        IReadOnlyList<string> columns,
+        bool useAiRefinement,
+        CancellationToken cancellationToken = default)
+    {
+        var resolvedClientCode = (clientCodeOrId ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(resolvedClientCode))
+            throw new InvalidOperationException("clientCode is required.");
+
+        var client = await _clientResolver.ResolveAsync(resolvedClientCode, cancellationToken);
+        if (client == null)
+            throw new InvalidOperationException("Client not found.");
+
+        var clientColumns = (columns ?? Array.Empty<string>())
+            .Where(c => !string.IsNullOrWhiteSpace(c))
+            .Select(c => c.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(500)
+            .ToList();
+
+        var bestCatalog = await GetBestCatalogMatchScoreAsync(clientColumns, cancellationToken);
+        var effectiveRefine = CopilotExternalAiGate.ShouldRefineMappingWithExternalAi(
+            _insightsEngineOptions.CurrentValue,
+            bestCatalog,
+            useAiRefinement);
+
+        var templates = await _templates.GetAllAsync(cancellationToken);
+        var ranked = templates
+            .Select(t => ScoreTemplate(t, clientColumns))
+            .OrderByDescending(x => x.score)
+            .ThenBy(x => x.template.TemplateName, StringComparer.OrdinalIgnoreCase)
+            .Take(20)
+            .ToList();
+
+        var results = new List<TemplateMatchResult>();
+        foreach (var (template, score, mappingPreview) in ranked)
+        {
+            var confidence = Math.Round(score, 4);
+            var preview = mappingPreview;
+
+            if (effectiveRefine && template.RequiredColumns.Count > 0)
+            {
+                try
+                {
+                    var refined = await _insightsEngine.RefineTemplateMappingAsync(
+                        clientColumns,
+                        template.RequiredColumns,
+                        template.OptionalColumns,
+                        cancellationToken);
+                    preview = refined;
+                    confidence = Math.Max(confidence, refined?.Mapping.Count > 0 ? 0.6 : confidence);
+                }
+                catch
+                {
+                    // ignore refinement failures; deterministic output remains.
+                }
+            }
+
+            results.Add(new TemplateMatchResult
+            {
+                TemplateId = template.TemplateId,
+                Name = template.TemplateName,
+                Confidence = confidence,
+                MappingPreview = preview
+            });
+        }
+
+        return new TemplateMatchResponse
+        {
+            ClientCode = client.ClientCode ?? resolvedClientCode,
+            BlobPath = string.Empty,
             Templates = results
         };
     }
