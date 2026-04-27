@@ -40,7 +40,6 @@ public class PowerBiAssetQuery : IPowerBiAssetQuery
 
         var templateId = template?.Id;
         var clientId = client?.Id;
-        var templateIdString = templateId?.ToString("D");
 
         if (!templateId.HasValue && !clientId.HasValue)
             return null;
@@ -51,7 +50,7 @@ public class PowerBiAssetQuery : IPowerBiAssetQuery
 
         // Candidate assets: either template-scoped or client-scoped.
         assetQuery = assetQuery.Where(a =>
-            (!string.IsNullOrEmpty(templateIdString) && a.TemplateId == templateIdString) ||
+            (templateId.HasValue && a.TemplateId == templateId.Value) ||
             (clientId.HasValue && a.ClientId == clientId.Value));
 
         // Priority:
@@ -61,7 +60,7 @@ public class PowerBiAssetQuery : IPowerBiAssetQuery
         // Additionally prefer ReportType match (e.g. monthly).
         var asset = await assetQuery
             .OrderBy(a =>
-                (!string.IsNullOrEmpty(templateIdString) && a.TemplateId == templateIdString)
+                (templateId.HasValue && a.TemplateId == templateId.Value)
                     ? ((clientId.HasValue && a.ClientId == clientId.Value) ? 0 : 1)
                     : 2)
             .ThenBy(a => a.ReportType == reportType ? 0 : 1)
