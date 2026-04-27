@@ -12,5 +12,15 @@ public interface IPowerBiAssetQuery
         string clientCode,
         string reportType,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets the active Power BI asset for a specific catalog template and client.
+    /// Prefer rows where <c>ClientId</c> matches; falls back to client-agnostic template rows (<c>ClientId</c> null) if present.
+    /// </summary>
+    Task<PowerBiAssetDto?> GetActiveAssetByClientCodeAndTemplateIdAsync(
+        string clientCode,
+        Guid templateId,
+        string reportType,
+        CancellationToken cancellationToken = default);
 }
 

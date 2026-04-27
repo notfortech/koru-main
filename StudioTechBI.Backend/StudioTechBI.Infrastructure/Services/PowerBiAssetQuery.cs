@@ -80,5 +80,60 @@ public class PowerBiAssetQuery : IPowerBiAssetQuery
             CapacityId = asset.CapacityId
         };
     }
+
+    public async Task<PowerBiAssetDto?> GetActiveAssetByClientCodeAndTemplateIdAsync(
+        string clientCode,
+        Guid templateId,
+        string reportType,
+        CancellationToken cancellationToken = default)
+    {
+        var code = (clientCode ?? "").Trim();
+        if (string.IsNullOrEmpty(code) || templateId == Guid.Empty)
+            return null;
+
+        var codeLower = code.ToLowerInvariant();
+        reportType = (reportType ?? "").Trim();
+
+        var client = await _db.Clients
+            .AsNoTracking()
+            .FirstOrDefaultAsync(
+                c => !c.IsDeleted && c.ClientCode != null && c.ClientCode.ToLower() == codeLower,
+                cancellationToken);
+
+        if (client == null)
+            return null;
+
+        var templateExists = await _db.Templates
+            .AsNoTracking()
+            .AnyAsync(t => !t.IsDeleted && t.Id == templateId, cancellationToken);
+
+        if (!templateExists)
+            return null;
+
+        var baseQuery = _db.PowerBiAssets
+            .AsNoTracking()
+            .Where(a => a.IsActive == true
+                && a.TemplateId == templateId
+                && (a.ClientId == client.Id || a.ClientId == null));
+
+        var asset = await baseQuery
+            .OrderBy(a => a.ClientId == client.Id ? 0 : 1)
+            .ThenBy(a => a.ReportType == reportType ? 0 : 1)
+            .ThenByDescending(a => a.UpdatedAt ?? a.CreatedAt ?? DateTime.MinValue)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (asset == null)
+            return null;
+
+        return new PowerBiAssetDto
+        {
+            ClientId = asset.ClientId,
+            ReportType = asset.ReportType,
+            WorkspaceId = asset.WorkspaceId,
+            DatasetId = asset.DatasetId,
+            ReportId = asset.ReportId,
+            CapacityId = asset.CapacityId
+        };
+    }
 }
 

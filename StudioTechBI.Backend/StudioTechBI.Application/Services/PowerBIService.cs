@@ -91,6 +91,56 @@ public class PowerBIService
         };
     }
 
+    /// <summary>
+    /// Embed token for the published report in <c>reporting.PowerBIAssets</c> for a specific
+    /// catalog template id and client, matching <paramref name="reportType"/>.
+    /// </summary>
+    public async Task<object> GetEmbedTokenByTemplate(
+        string reportType,
+        string? period,
+        string clientCode,
+        Guid templateId,
+        CancellationToken cancellationToken = default)
+    {
+        var code = (clientCode ?? "").Trim();
+        if (string.IsNullOrEmpty(code))
+            throw new InvalidOperationException("Client code is required for template-scoped embed.");
+
+        if (templateId == Guid.Empty)
+            throw new InvalidOperationException("TemplateId is required.");
+
+        if (!await MasterExcelExistsAsync(code))
+            throw new InvalidOperationException($"No master file found in blob for client '{code}'. Please upload/prepare the master first.");
+
+        var reportTypeKey = (reportType ?? "").Trim();
+        var asset = await _powerBiAssetQuery.GetActiveAssetByClientCodeAndTemplateIdAsync(
+            code,
+            templateId,
+            reportTypeKey,
+            cancellationToken);
+
+        if (asset == null || string.IsNullOrWhiteSpace(asset.ReportId) || string.IsNullOrWhiteSpace(asset.WorkspaceId))
+            throw new InvalidOperationException(
+                $"No Power BI report configured for template '{templateId}' and client '{code}' (reportType='{reportTypeKey}').");
+
+        var ds = string.IsNullOrWhiteSpace(asset.DatasetId) ? "" : asset.DatasetId!.Trim();
+        var result = await GenerateEmbedForReportAsync(
+            asset.WorkspaceId!.Trim(),
+            asset.ReportId!.Trim(),
+            ds,
+            cancellationToken);
+
+        return new
+        {
+            accessToken = result.AccessToken,
+            embedUrl = result.EmbedUrl,
+            reportId = result.ReportId,
+            datasetId = string.IsNullOrEmpty(result.DatasetId) ? (string?)null : result.DatasetId,
+            periodType = reportTypeKey,
+            period = period
+        };
+    }
+
     /// <summary>Generate embed token for a specific report in a workspace (e.g. Insight orchestrator output).</summary>
     public async Task<PowerBiEmbedTokenResult> GenerateEmbedForReportAsync(
         string workspaceId,

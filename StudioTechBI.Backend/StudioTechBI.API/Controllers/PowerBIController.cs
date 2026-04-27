@@ -98,6 +98,79 @@ public class PowerBIController : ControllerBase
         }
     }
 
+    /// <summary>Embed for the Power BI report registered for a specific <c>dbo.Templates.Id</c> and client (copilot / template pick).</summary>
+    [HttpGet("embed-token-by-template")]
+    [Microsoft.AspNetCore.Authorization.Authorize]
+    public async Task<IActionResult> GetEmbedTokenByTemplate(
+        [FromQuery] string? templateId,
+        [FromQuery] string? reportType,
+        [FromQuery] string? period,
+        [FromQuery] string? clientCode,
+        [FromQuery] bool useSelectedClient = false)
+    {
+        if (string.IsNullOrWhiteSpace(templateId) || !Guid.TryParse(templateId.Trim(), out var tid) || tid == Guid.Empty)
+        {
+            return BadRequest(new
+            {
+                success = false,
+                message = "templateId must be a non-empty GUID.",
+                error = "InvalidTemplateId"
+            });
+        }
+
+        if (string.IsNullOrWhiteSpace(reportType))
+        {
+            return BadRequest(new
+            {
+                success = false,
+                message = "reportType is required.",
+                error = "InvalidRequest"
+            });
+        }
+
+        // Client resolution: mirror embed-token/{periodType} (claim + optional selected client) — keep logic local to this action only.
+        var clientCodeOrId = User.FindFirst("client_code")?.Value?.Trim();
+        if (useSelectedClient && !string.IsNullOrWhiteSpace(clientCode))
+        {
+            var accessible = await GetAccessibleClientCodesAsync(HttpContext.RequestAborted);
+            var normalized = clientCode.Trim();
+            if (accessible.Any(c => string.Equals(c, normalized, StringComparison.OrdinalIgnoreCase)))
+                clientCodeOrId = normalized;
+        }
+        if (string.IsNullOrWhiteSpace(clientCodeOrId))
+            clientCodeOrId = clientCode?.Trim();
+
+        var periodTypeKey = reportType.Trim();
+
+        try
+        {
+            var result = await _service.GetEmbedTokenByTemplate(periodTypeKey, period, clientCodeOrId ?? "", tid, HttpContext.RequestAborted);
+            return Ok(result);
+        }
+        catch (InvalidOperationException)
+        {
+            await _technicalLogWriter.LogAsync(
+                "PowerBIService.GetEmbedTokenByTemplate",
+                "Warning",
+                "Power BI template-scoped report not found or not configured.",
+                null,
+                HttpContext.RequestAborted);
+            return StatusCode(
+                StatusCodes.Status422UnprocessableEntity,
+                new
+                {
+                    success = false,
+                    message = "Power BI report is not configured for the selected client.",
+                    error = "PowerBiNotConfigured"
+                });
+        }
+        catch (Exception)
+        {
+            await _technicalLogWriter.LogAsync("PowerBIService.GetEmbedTokenByTemplate", "Error", "Embed token request failed.", null, HttpContext.RequestAborted);
+            throw;
+        }
+    }
+
     [HttpGet("reports")]
     [Authorize(Roles = "Admin,SuperAdmin,OperationsAdmin,SupportAdmin")]
     public async Task<IActionResult> GetReports()
