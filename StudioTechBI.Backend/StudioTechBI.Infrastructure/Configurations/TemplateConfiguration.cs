@@ -1,7 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using StudioTechBI.Domain.Entities;
-using StudioTechBI.Infrastructure.ValueConversion;
 
 namespace StudioTechBI.Infrastructure.Configurations;
 
@@ -15,10 +14,8 @@ public class TemplateConfiguration : IEntityTypeConfiguration<Template>
         builder.Property(e => e.Industry).HasMaxLength(200);
         builder.Property(e => e.Version).IsRequired().HasMaxLength(50);
         builder.Property(e => e.BlobPath).HasMaxLength(1000);
-        // ModelId is stored as an opaque string in the app, but some DBs use uniqueidentifier.
-        builder.Property(e => e.ModelId)
-            .HasConversion(GuidStringConverters.NullableStringToGuid())
-            .HasMaxLength(200);
+        // SQL: dbo.Templates.ModelId is uniqueidentifier NULL; in code it's Guid?
+        builder.Property(e => e.ModelId);
         builder.Property(e => e.RequiredColumnsJson).IsRequired().HasColumnType("nvarchar(max)");
         builder.Property(e => e.OptionalColumnsJson).IsRequired().HasColumnType("nvarchar(max)");
         builder.Property(e => e.CreatedDate).IsRequired();
