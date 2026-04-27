@@ -29,8 +29,9 @@ public class ExceptionHandlingMiddleware
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "An unhandled exception occurred");
-            await HandleExceptionAsync(context, ex);
+            var root = Unwrap(ex);
+            _logger.LogError(root, "An unhandled exception occurred");
+            await HandleExceptionAsync(context, root);
         }
     }
 
@@ -39,11 +40,10 @@ public class ExceptionHandlingMiddleware
         context.Response.ContentType = "application/json";
         context.Response.StatusCode = (int)HttpStatusCode.InternalServerError;
 
+        var detail = exception.InnerException?.Message ?? exception.Message;
         var response = ApiResponse<object>.ErrorResponse(
-            _isProduction
-                ? "An error occurred while processing your request."
-                : "An error occurred while processing your request.",
-            _isProduction ? null : new List<string> { exception.Message }
+            "An error occurred while processing your request.",
+            _isProduction ? null : new List<string> { detail }
         );
 
         var jsonOptions = new JsonSerializerOptions
@@ -52,5 +52,25 @@ public class ExceptionHandlingMiddleware
         };
 
         return context.Response.WriteAsync(JsonSerializer.Serialize(response, jsonOptions));
+    }
+
+    private static Exception Unwrap(Exception ex)
+    {
+        var e = ex;
+        for (var i = 0; i < 10; i++)
+        {
+            if (e is System.Reflection.TargetInvocationException t && t.InnerException != null)
+            {
+                e = t.InnerException;
+                continue;
+            }
+            if (e is AggregateException a && a.InnerExceptions.Count > 0)
+            {
+                e = a.Flatten().InnerExceptions[0];
+                continue;
+            }
+            break;
+        }
+        return e;
     }
 }

@@ -293,6 +293,9 @@ builder.Services.AddHealthChecks()
         failureStatus: HealthStatus.Unhealthy,
         tags: new[] { "db", "ready" });
 
+// Gate /api/* until background migrations finish (avoids 500 when DB schema is not ready yet).
+builder.Services.AddSingleton<StudioTechBI.API.Services.DatabaseReadinessState>();
+
 // Do not block startup on DB work; run migrations/seeding after the app is listening.
 builder.Services.AddHostedService<StudioTechBI.API.Services.StartupDbTasksHostedService>();
 
@@ -322,6 +325,7 @@ if (!app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 
 app.UseCors("AllowAll");
+app.UseMiddleware<StudioTechBI.API.Middleware.DatabaseReadinessMiddleware>();
 
 app.UseAuthentication();
 app.UseAuthorization();

@@ -14,21 +14,24 @@ public sealed class StartupDbTasksHostedService : BackgroundService
     private readonly IServiceProvider _services;
     private readonly IConfiguration _configuration;
     private readonly ILogger<StartupDbTasksHostedService> _logger;
+    private readonly DatabaseReadinessState _readiness;
 
     public StartupDbTasksHostedService(
         IServiceProvider services,
         IConfiguration configuration,
-        ILogger<StartupDbTasksHostedService> logger)
+        ILogger<StartupDbTasksHostedService> logger,
+        DatabaseReadinessState readiness)
     {
         _services = services;
         _configuration = configuration;
         _logger = logger;
+        _readiness = readiness;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        // Small delay to allow Kestrel to bind and Azure warmup to succeed.
-        await Task.Delay(TimeSpan.FromSeconds(2), stoppingToken);
+        // Kestrel is already listening; DB gate blocks /api until we finish.
+        await Task.Yield();
 
         var useDemoStorage = _configuration.GetValue<bool>("UseDemoStorage");
         if (useDemoStorage)
@@ -50,6 +53,7 @@ public sealed class StartupDbTasksHostedService : BackgroundService
                 await RoleSeeder.SeedAsync(db);
                 await DemoUsersSeeder.SeedAsync(db, _configuration);
                 await AdminUserSeeder.SeedAsync(db, _configuration);
+                _readiness.MarkDatabaseReady();
                 _logger.LogInformation("Demo storage ready. Roles/users/admin seeded.");
                 return;
             }
@@ -67,6 +71,7 @@ public sealed class StartupDbTasksHostedService : BackgroundService
                     _logger.LogInformation("Migrations applied. Seeding roles/admin...");
                     await RoleSeeder.SeedAsync(db);
                     await AdminUserSeeder.SeedAsync(db, _configuration);
+                    _readiness.MarkDatabaseReady();
                     _logger.LogInformation("Database ready (migrations + seed complete).");
                     return;
                 }
