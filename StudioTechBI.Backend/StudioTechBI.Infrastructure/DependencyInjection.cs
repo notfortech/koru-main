@@ -54,6 +54,7 @@ public static class DependencyInjection
         services.AddScoped<IReportingTechnicalLogWriter, ReportingTechnicalLogWriter>();
         services.AddScoped<IPowerBiAssetQuery, PowerBiAssetQuery>();
         services.AddScoped<IClientPortalDashboardService, ClientPortalDashboardService>();
+        services.AddScoped<IReportTemplateAssetService, ReportTemplateAssetService>();
 
         services.Configure<InsightEngineOptions>(configuration.GetSection(InsightEngineOptions.SectionName));
         services.AddHttpClient<InsightEngineClient>()

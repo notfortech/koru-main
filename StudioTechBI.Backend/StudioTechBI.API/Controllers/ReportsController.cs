@@ -5,6 +5,9 @@ using System.Diagnostics;
 using StudioTechBI.Application.Interfaces;
 using StudioTechBI.Application.Services;
 using StudioTechBI.Domain.Interfaces;
+using StudioTechBI.Infrastructure.Data;
+using Microsoft.EntityFrameworkCore;
+using System.Text.Json.Serialization;
 
 namespace StudioTechBI.API.Controllers;
 
@@ -20,6 +23,7 @@ public class ReportsController : ControllerBase
     private readonly IPowerBiAssetQuery _powerBiAssetQuery;
     private readonly IInsightReportService _insightReportService;
     private readonly IModelRepository _insightModelRepository;
+    private readonly ApplicationDbContext _db;
 
     public ReportsController(
         ReportWorkerService worker,
@@ -28,7 +32,8 @@ public class ReportsController : ControllerBase
         IClientByCompanyQuery clientByCompanyQuery,
         IPowerBiAssetQuery powerBiAssetQuery,
         IInsightReportService insightReportService,
-        IModelRepository insightModelRepository)
+        IModelRepository insightModelRepository,
+        ApplicationDbContext db)
     {
         _worker = worker;
         _logger = logger;
@@ -37,6 +42,76 @@ public class ReportsController : ControllerBase
         _powerBiAssetQuery = powerBiAssetQuery;
         _insightReportService = insightReportService;
         _insightModelRepository = insightModelRepository;
+        _db = db;
+    }
+
+    public sealed class CreateReportRequestBody
+    {
+        public string TemplateId { get; set; } = string.Empty;
+
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string? BlobPath { get; set; }
+
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string? ClientCode { get; set; }
+
+        public bool UseSelectedClient { get; set; }
+    }
+
+    /// <summary>
+    /// Creates a pending report request for downstream processing (reporting.ReportRequests).
+    /// Intended for Insights UI \"Confirm template\" action.
+    /// </summary>
+    [HttpPost("requests")]
+    public async Task<IActionResult> CreateReportRequest([FromBody] CreateReportRequestBody body, CancellationToken ct)
+    {
+        if (body == null || string.IsNullOrWhiteSpace(body.TemplateId) || !Guid.TryParse(body.TemplateId.Trim(), out var templateId) || templateId == Guid.Empty)
+            return BadRequest(new { success = false, message = "templateId must be a non-empty GUID." });
+
+        // Resolve client similarly to other firm-aware flows.
+        var effectiveClientCode = body.UseSelectedClient ? body.ClientCode?.Trim() : User.FindFirstValue("client_code")?.Trim();
+        if (string.IsNullOrWhiteSpace(effectiveClientCode))
+            return BadRequest(new { success = false, message = "clientCode is required (missing client_code claim)." });
+
+        var accessible = await GetAccessibleClientCodesAsync(ct);
+        if (body.UseSelectedClient)
+        {
+            if (string.IsNullOrWhiteSpace(body.ClientCode) || !accessible.Any(a => string.Equals(a.Code, effectiveClientCode, StringComparison.OrdinalIgnoreCase)))
+                return StatusCode(403, new { success = false, message = "You do not have access to this client." });
+        }
+
+        var client = await _clientService.GetByClientCodeOrIdAsync(effectiveClientCode, ct);
+        if (client == null)
+            return NotFound(new { success = false, message = "Client not found." });
+
+        if (!accessible.Any(a => a.Id == client.ClientId))
+            return StatusCode(403, new { success = false, message = "You do not have access to this client." });
+
+        var templateExists = await _db.Templates.AsNoTracking().AnyAsync(t => !t.IsDeleted && t.Id == templateId, ct);
+        if (!templateExists)
+            return NotFound(new { success = false, message = "Template not found." });
+
+        var email = User.FindFirstValue(ClaimTypes.Email)?.Trim();
+        var request = new StudioTechBI.Domain.Entities.ReportingReportRequest
+        {
+            RequestId = Guid.NewGuid(),
+            ClientId = client.ClientId,
+            TemplateId = templateId,
+            SourceBlobPath = string.IsNullOrWhiteSpace(body.BlobPath) ? null : body.BlobPath.Trim(),
+            Status = "Pending",
+            RequestedByEmail = string.IsNullOrWhiteSpace(email) ? null : email,
+            CreatedAtUtc = DateTime.UtcNow
+        };
+
+        _db.ReportingReportRequests.Add(request);
+        await _db.SaveChangesAsync(ct);
+
+        return Ok(new
+        {
+            success = true,
+            requestId = request.RequestId,
+            status = request.Status
+        });
     }
 
     /// <summary>Returns client codes and ids the current user can access (single client from claim + all from companies for accountant).</summary>
