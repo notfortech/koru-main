@@ -111,6 +111,7 @@ public static class DependencyInjection
                         retryCount: 3,
                         sleepDurationProvider: attempt => TimeSpan.FromSeconds(Math.Pow(2, attempt))));
         services.AddScoped<IInsightsEngineTemplateMappingClient>(sp => sp.GetRequiredService<InsightsEngineClient>());
+        services.AddScoped<IInsightsEngineReportInsightsClient>(sp => sp.GetRequiredService<InsightsEngineClient>());
         services.AddScoped<IModelRepository, ModelRepository>();
         services.AddScoped<IDatasetRepository, DatasetRepository>();
         services.AddScoped<IDataConnectionRepository, DataConnectionRepository>();

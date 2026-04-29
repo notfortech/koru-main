@@ -8,6 +8,9 @@ using StudioTechBI.Domain.Interfaces;
 using StudioTechBI.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using System.Text.Json.Serialization;
+using Microsoft.Extensions.Options;
+using StudioTechBI.Application.DTOs.InsightsEngine;
+using StudioTechBI.Application.Models;
 
 namespace StudioTechBI.API.Controllers;
 
@@ -24,6 +27,8 @@ public class ReportsController : ControllerBase
     private readonly IInsightReportService _insightReportService;
     private readonly IModelRepository _insightModelRepository;
     private readonly ApplicationDbContext _db;
+    private readonly IInsightsEngineReportInsightsClient _reportInsights;
+    private readonly IOptionsMonitor<InsightsEngineOptions> _insightsEngineOptions;
 
     public ReportsController(
         ReportWorkerService worker,
@@ -33,7 +38,9 @@ public class ReportsController : ControllerBase
         IPowerBiAssetQuery powerBiAssetQuery,
         IInsightReportService insightReportService,
         IModelRepository insightModelRepository,
-        ApplicationDbContext db)
+        ApplicationDbContext db,
+        IInsightsEngineReportInsightsClient reportInsights,
+        IOptionsMonitor<InsightsEngineOptions> insightsEngineOptions)
     {
         _worker = worker;
         _logger = logger;
@@ -43,6 +50,8 @@ public class ReportsController : ControllerBase
         _insightReportService = insightReportService;
         _insightModelRepository = insightModelRepository;
         _db = db;
+        _reportInsights = reportInsights;
+        _insightsEngineOptions = insightsEngineOptions;
     }
 
     public sealed class CreateReportRequestBody
@@ -112,6 +121,93 @@ public class ReportsController : ControllerBase
             requestId = request.RequestId,
             status = request.Status
         });
+    }
+
+    public sealed class ReportAiInsightsBody
+    {
+        public string? ClientCode { get; set; }
+        public bool UseSelectedClient { get; set; }
+        public string ReportType { get; set; } = "monthly";
+        public string? Period { get; set; }
+        public string? ActivePageName { get; set; }
+        public List<string>? VisualTitles { get; set; }
+    }
+
+    /// <summary>
+    /// Returns AI insights for the active embedded Power BI page (metadata-only).
+    /// Proxies to InsightsEngine.Api when enabled.
+    /// </summary>
+    [HttpPost("ai-insights")]
+    public async Task<IActionResult> GetAiInsightsForReportPage([FromBody] ReportAiInsightsBody body, CancellationToken ct)
+    {
+        var opt = _insightsEngineOptions.CurrentValue;
+        if (!opt.ExternalCopilotAiEnabled)
+        {
+            return Ok(new
+            {
+                enabled = false,
+                message = "AI is not enabled for this client."
+            });
+        }
+
+        var requestedClientCode = (body?.ClientCode ?? "").Trim();
+        if (body?.UseSelectedClient == true)
+        {
+            if (string.IsNullOrWhiteSpace(requestedClientCode))
+                return BadRequest(new { enabled = false, message = "clientCode is required when useSelectedClient is true." });
+        }
+
+        var effectiveClientCode = body?.UseSelectedClient == true
+            ? requestedClientCode
+            : User.FindFirstValue("client_code")?.Trim();
+
+        if (string.IsNullOrWhiteSpace(effectiveClientCode))
+            return BadRequest(new { enabled = false, message = "clientCode is required (missing client_code claim)." });
+
+        var accessible = await GetAccessibleClientCodesAsync(ct);
+        if (body?.UseSelectedClient == true && !accessible.Any(a => string.Equals(a.Code, effectiveClientCode, StringComparison.OrdinalIgnoreCase)))
+            return StatusCode(403, new { enabled = false, message = "You do not have access to this client." });
+
+        var client = await _clientService.GetByClientCodeOrIdAsync(effectiveClientCode, ct);
+        if (client == null)
+            return NotFound(new { enabled = false, message = "Client not found." });
+        if (!accessible.Any(a => a.Id == client.ClientId))
+            return StatusCode(403, new { enabled = false, message = "You do not have access to this client." });
+
+        var req = new ReportPageInsightsRequest
+        {
+            ReportType = string.IsNullOrWhiteSpace(body?.ReportType) ? "monthly" : body!.ReportType.Trim(),
+            Period = string.IsNullOrWhiteSpace(body?.Period) ? null : body!.Period!.Trim(),
+            ActivePageName = (body?.ActivePageName ?? "").Trim(),
+            VisualTitles = body?.VisualTitles?.Where(s => !string.IsNullOrWhiteSpace(s)).Select(s => s.Trim()).Take(50).ToList() ?? new List<string>(),
+            Prompts = new List<string>
+            {
+                "What do these visuals suggest?",
+                "What is this report conveying?",
+                "Any anomalies, risks, or action items a user should notice?",
+            }
+        };
+
+        if (req.ActivePageName.Length == 0)
+            req.ActivePageName = "Active page";
+
+        try
+        {
+            var resp = await _reportInsights.GetInsightsFromMetadataAsync(req, ct);
+            return Ok(new
+            {
+                enabled = true,
+                provider = resp.Provider,
+                summary = resp.Summary,
+                insights = resp.Insights,
+                followUps = resp.FollowUps
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "AI report insights proxy failed for client {ClientCode}.", effectiveClientCode);
+            return StatusCode(502, new { enabled = false, message = "AI insights service is temporarily unavailable." });
+        }
     }
 
     /// <summary>Returns client codes and ids the current user can access (single client from claim + all from companies for accountant).</summary>

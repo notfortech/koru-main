@@ -9,7 +9,7 @@ using StudioTechBI.Application.Interfaces;
 namespace StudioTechBI.Infrastructure.Clients;
 
 /// <summary>Typed client for the external InsightsEngine transformations suggestion endpoint.</summary>
-public sealed class InsightsEngineClient : IInsightsEngineTemplateMappingClient
+public sealed class InsightsEngineClient : IInsightsEngineTemplateMappingClient, IInsightsEngineReportInsightsClient
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -102,6 +102,33 @@ public sealed class InsightsEngineClient : IInsightsEngineTemplateMappingClient
             return new PlansGenerateResponse();
 
         return JsonSerializer.Deserialize<PlansGenerateResponse>(body, JsonOptions) ?? new PlansGenerateResponse();
+    }
+
+    public async Task<ReportPageInsightsResponse> GetInsightsFromMetadataAsync(
+        ReportPageInsightsRequest request,
+        CancellationToken ct = default)
+    {
+        using var response = await _httpClient.PostAsJsonAsync(
+            "api/ai/report-insights/from-metadata",
+            request,
+            JsonOptions,
+            ct);
+
+        var body = await response.Content.ReadAsStringAsync(ct);
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger.LogWarning(
+                "InsightsEngine report insights failed: {StatusCode} {Body}",
+                (int)response.StatusCode,
+                Truncate(body, 2000));
+            response.EnsureSuccessStatusCode();
+        }
+
+        if (string.IsNullOrWhiteSpace(body))
+            return new ReportPageInsightsResponse { Provider = "InsightsEngine" };
+
+        return JsonSerializer.Deserialize<ReportPageInsightsResponse>(body, JsonOptions)
+            ?? new ReportPageInsightsResponse { Provider = "InsightsEngine" };
     }
 
     public async Task<TemplateMappingPreview> RefineTemplateMappingAsync(
