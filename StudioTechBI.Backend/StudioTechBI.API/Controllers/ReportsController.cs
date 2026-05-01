@@ -29,6 +29,7 @@ public class ReportsController : ControllerBase
     private readonly ApplicationDbContext _db;
     private readonly IInsightsEngineReportInsightsClient _reportInsights;
     private readonly IOptionsMonitor<InsightsEngineOptions> _insightsEngineOptions;
+    private readonly IPowerBiDatasetSampleService _datasetSamples;
 
     public ReportsController(
         ReportWorkerService worker,
@@ -40,7 +41,8 @@ public class ReportsController : ControllerBase
         IModelRepository insightModelRepository,
         ApplicationDbContext db,
         IInsightsEngineReportInsightsClient reportInsights,
-        IOptionsMonitor<InsightsEngineOptions> insightsEngineOptions)
+        IOptionsMonitor<InsightsEngineOptions> insightsEngineOptions,
+        IPowerBiDatasetSampleService datasetSamples)
     {
         _worker = worker;
         _logger = logger;
@@ -52,6 +54,7 @@ public class ReportsController : ControllerBase
         _db = db;
         _reportInsights = reportInsights;
         _insightsEngineOptions = insightsEngineOptions;
+        _datasetSamples = datasetSamples;
     }
 
     public sealed class CreateReportRequestBody
@@ -174,22 +177,49 @@ public class ReportsController : ControllerBase
         if (!accessible.Any(a => a.Id == client.ClientId))
             return StatusCode(403, new { enabled = false, message = "You do not have access to this client." });
 
+        var asset = await _powerBiAssetQuery.GetActiveAssetByClientCodeAsync(
+            effectiveClientCode,
+            string.IsNullOrWhiteSpace(body?.ReportType) ? "monthly" : body!.ReportType.Trim(),
+            ct);
+
+        var activePage = (body?.ActivePageName ?? "").Trim();
+        if (activePage.Length == 0)
+            activePage = "Active page";
+
+        var identityForRls =
+            User.FindFirstValue(ClaimTypes.Email)
+            ?? User.FindFirstValue("preferred_username")
+            ?? User.FindFirstValue(ClaimTypes.Upn);
+
+        IReadOnlyList<DatasetQueryTableSample> samples = Array.Empty<DatasetQueryTableSample>();
+        try
+        {
+            samples = await _datasetSamples.GetDatasetSamplesAsync(
+                asset,
+                string.IsNullOrWhiteSpace(body?.ReportType) ? "monthly" : body!.ReportType.Trim(),
+                activePage,
+                identityForRls,
+                ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Dataset sampling for report insights failed; continuing metadata-only for {Client}.", effectiveClientCode);
+        }
+
         var req = new ReportPageInsightsRequest
         {
             ReportType = string.IsNullOrWhiteSpace(body?.ReportType) ? "monthly" : body!.ReportType.Trim(),
             Period = string.IsNullOrWhiteSpace(body?.Period) ? null : body!.Period!.Trim(),
-            ActivePageName = (body?.ActivePageName ?? "").Trim(),
+            ActivePageName = activePage,
             VisualTitles = body?.VisualTitles?.Where(s => !string.IsNullOrWhiteSpace(s)).Select(s => s.Trim()).Take(50).ToList() ?? new List<string>(),
             Prompts = new List<string>
             {
                 "What do these visuals suggest?",
                 "What is this report conveying?",
                 "Any anomalies, risks, or action items a user should notice?",
-            }
+            },
+            DatasetSamples = samples.Count > 0 ? samples.ToList() : null
         };
-
-        if (req.ActivePageName.Length == 0)
-            req.ActivePageName = "Active page";
 
         try
         {

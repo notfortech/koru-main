@@ -140,7 +140,7 @@ public class AuthService : BaseService, IAuthService
                 FirstName = string.IsNullOrWhiteSpace(request.FirstName) ? "User" : request.FirstName.Trim(),
                 LastName = (request.LastName ?? "").Trim(),
                 PasswordHash = passwordHash,
-                IsActive = false
+                IsActive = true
             };
 
             await _userRepository.AddAsync(user, cancellationToken);

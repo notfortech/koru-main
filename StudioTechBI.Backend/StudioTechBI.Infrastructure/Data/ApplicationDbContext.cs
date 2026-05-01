@@ -23,6 +23,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<RegistrationAttempt> RegistrationAttempts => Set<RegistrationAttempt>();
     public DbSet<AdminUser> AdminUsers => Set<AdminUser>();
     public DbSet<Client> Clients => Set<Client>();
+    public DbSet<ClientBlobFolder> ClientBlobFolders => Set<ClientBlobFolder>();
     public DbSet<Tenant> Tenants => Set<Tenant>();
     public DbSet<Template> Templates => Set<Template>();
     public DbSet<ProcessingJob> ProcessingJobs => Set<ProcessingJob>();

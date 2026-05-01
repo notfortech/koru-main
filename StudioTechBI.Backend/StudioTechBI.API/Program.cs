@@ -11,6 +11,7 @@ using StudioTechBI.API.Authorization;
 using StudioTechBI.API.Middleware;
 using StudioTechBI.Application;
 using StudioTechBI.Application.Models;
+using StudioTechBI.Application.Interfaces;
 using StudioTechBI.Application.Services;
 using StudioTechBI.Infrastructure;
 using System.Text;
@@ -52,6 +53,7 @@ MapEnvOverride("INSIGHTS_ENGINE_BASE_URL", "InsightsEngine:BaseUrl");
 MapEnvOverride("INSIGHTS_ENGINE_API_KEY", "InsightsEngine:ApiKey");
 MapEnvOverride("INSIGHTS_ENGINE_EXTERNAL_COPILOT_AI", "InsightsEngine:ExternalCopilotAiEnabled");
 MapEnvOverride("INSIGHTS_ENGINE_MIN_MATCH_SCORE_SKIP_AI", "InsightsEngine:MinTemplateMatchScoreToSkipExternalAi");
+MapEnvOverride("REPORT_INSIGHTS_DATASET_EXECUTE_ENABLED", "ReportInsights:DatasetExecuteQueriesEnabled");
 MapEnvOverride("MICROSOFT_AUTH_CLIENT_ID", "MicrosoftAuth:ClientId");
 MapEnvOverride("MICROSOFT_AUTH_CLIENT_SECRET", "MicrosoftAuth:ClientSecret");
 MapEnvOverride("MICROSOFT_AUTH_TENANT_ID", "MicrosoftAuth:TenantId");
@@ -274,6 +276,8 @@ builder.Services.Configure<InsightEngineOptions>(
     builder.Configuration.GetSection(InsightEngineOptions.SectionName));
 builder.Services.Configure<PowerBISettings>(
     builder.Configuration.GetSection("PowerBI"));
+builder.Services.Configure<ReportInsightsOptions>(
+    builder.Configuration.GetSection(ReportInsightsOptions.SectionName));
 builder.Services.Configure<MicrosoftAuthOptions>(
     builder.Configuration.GetSection(MicrosoftAuthOptions.SectionName));
 
@@ -288,6 +292,7 @@ builder.Services.Configure<GoogleAuthOptions>(options =>
 });
 
 builder.Services.AddScoped<PowerBIService>();
+builder.Services.AddScoped<IPowerBiDatasetSampleService, PowerBiDatasetSampleService>();
 
 builder.Services.AddHealthChecks()
     .AddDbContextCheck<StudioTechBI.Infrastructure.Data.ApplicationDbContext>(

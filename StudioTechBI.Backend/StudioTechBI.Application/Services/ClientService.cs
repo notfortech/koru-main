@@ -10,6 +10,11 @@ public class ClientService : BaseService, IClientService
 {
     private readonly IRepository<Client> _clientRepository;
     private readonly IRepository<User> _userRepository;
+    private readonly IRepository<Role> _roleRepository;
+    private readonly IRepository<UserRole> _userRoleRepository;
+    private readonly IRepository<Company> _companyRepository;
+    private readonly IRepository<CompanyUser> _companyUserRepository;
+    private readonly IRepository<ClientBlobFolder> _clientBlobFolderRepository;
     private readonly IBlobStorageService _blobStorage;
     private readonly ILogger<ClientService> _logger;
     private readonly IClientByCompanyQuery _clientByCompanyQuery;
@@ -18,6 +23,11 @@ public class ClientService : BaseService, IClientService
         IUnitOfWork unitOfWork,
         IRepository<Client> clientRepository,
         IRepository<User> userRepository,
+        IRepository<Role> roleRepository,
+        IRepository<UserRole> userRoleRepository,
+        IRepository<Company> companyRepository,
+        IRepository<CompanyUser> companyUserRepository,
+        IRepository<ClientBlobFolder> clientBlobFolderRepository,
         IBlobStorageService blobStorage,
         ILogger<ClientService> logger,
         IClientByCompanyQuery clientByCompanyQuery)
@@ -25,6 +35,11 @@ public class ClientService : BaseService, IClientService
     {
         _clientRepository = clientRepository;
         _userRepository = userRepository;
+        _roleRepository = roleRepository;
+        _userRoleRepository = userRoleRepository;
+        _companyRepository = companyRepository;
+        _companyUserRepository = companyUserRepository;
+        _clientBlobFolderRepository = clientBlobFolderRepository;
         _blobStorage = blobStorage;
         _logger = logger;
         _clientByCompanyQuery = clientByCompanyQuery;
@@ -144,6 +159,142 @@ public class ClientService : BaseService, IClientService
         await UnitOfWork.SaveChangesAsync(cancellationToken);
         _logger.LogInformation("Assigned user {UserId} to client {ClientId} ({ClientCode})", userId, clientId, client.ClientCode);
         return true;
+    }
+
+    public async Task<ClientPhaseOneProvisionResultDto> ProvisionPhaseOneAsync(
+        ClientPhaseOneProvisionDto dto,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(dto);
+
+        if ((dto.UserId == null || dto.UserId == Guid.Empty) && string.IsNullOrWhiteSpace(dto.UserEmail))
+            throw new InvalidOperationException("Provide UserId or UserEmail.");
+
+        User? user = null;
+        if (dto.UserId is { } uid && uid != Guid.Empty)
+            user = await _userRepository.GetByIdAsync(uid, cancellationToken);
+        else if (!string.IsNullOrWhiteSpace(dto.UserEmail))
+        {
+            var email = dto.UserEmail.Trim().ToLowerInvariant();
+            user = await _userRepository.GetByPredicateAsync(u => u.Email == email && !u.IsDeleted, cancellationToken);
+        }
+
+        if (user == null || user.IsDeleted)
+            throw new InvalidOperationException("User not found. Provide a valid UserId or UserEmail.");
+
+        var clientDto = await CreateAsync(
+            new ClientCreateDto
+            {
+                ClientCode = dto.ClientCode,
+                ClientName = dto.ClientName,
+                Industry = dto.Industry,
+                TemplateVersion = dto.TemplateVersion
+            },
+            cancellationToken);
+
+        var companyNameResolved = string.IsNullOrWhiteSpace(dto.CompanyName)
+            ? $"{dto.ClientName.Trim()} Company"
+            : dto.CompanyName.Trim();
+        var companyNameStored =
+            companyNameResolved.Length > 256 ? companyNameResolved[..256] : companyNameResolved;
+
+        string? industryForCompany = dto.Industry?.Trim();
+        if (!string.IsNullOrEmpty(industryForCompany) && industryForCompany.Length > 100)
+            industryForCompany = industryForCompany[..100];
+
+        var companyId = Guid.NewGuid();
+        await _companyRepository.AddAsync(
+            new Company
+            {
+                Id = companyId,
+                Name = companyNameStored,
+                ClientId = clientDto.ClientId,
+                Industry = industryForCompany,
+                BankIntegrationEnabled = false
+            },
+            cancellationToken);
+
+        var duplicateMembership = await _companyUserRepository.AnyAsync(
+            cu => cu.UserId == user.Id && cu.CompanyId == companyId && !cu.IsDeleted,
+            cancellationToken);
+        if (!duplicateMembership)
+        {
+            await _companyUserRepository.AddAsync(
+                new CompanyUser
+                {
+                    Id = Guid.NewGuid(),
+                    UserId = user.Id,
+                    CompanyId = companyId,
+                    Role = 0
+                },
+                cancellationToken);
+        }
+
+        var blobLogicalKey = NormalizeClientCodeSegment(dto.ClientCode);
+        var blobLogicalPath = $"clients/{blobLogicalKey}";
+        await _clientBlobFolderRepository.AddAsync(
+            new ClientBlobFolder
+            {
+                Id = Guid.NewGuid(),
+                ClientId = clientDto.ClientId,
+                FolderPath = blobLogicalPath
+            },
+            cancellationToken);
+
+        user.ClientId = clientDto.ClientId;
+        user.IsActive = true;
+
+        await _userRepository.UpdateAsync(user, cancellationToken);
+        await UnitOfWork.SaveChangesAsync(cancellationToken);
+
+        var clientRole = await _roleRepository.GetByPredicateAsync(
+            r => r.Name == "Client" && !r.IsDeleted,
+            cancellationToken);
+        if (clientRole == null)
+            throw new InvalidOperationException("Role 'Client' was not found in the database (run role seed / migration).");
+
+        var hasClientRole = await _userRoleRepository.AnyAsync(
+            ur => ur.UserId == user.Id && ur.RoleId == clientRole.Id && !ur.IsDeleted,
+            cancellationToken);
+        if (!hasClientRole)
+        {
+            await _userRoleRepository.AddAsync(
+                new UserRole
+                {
+                    Id = Guid.NewGuid(),
+                    UserId = user.Id,
+                    RoleId = clientRole.Id
+                },
+                cancellationToken);
+            await UnitOfWork.SaveChangesAsync(cancellationToken);
+        }
+
+        _logger.LogInformation(
+            "Phase 1 provision: client {ClientId} ({ClientCode}), company {CompanyId}, user {UserId} ({Email}).",
+            clientDto.ClientId,
+            clientDto.ClientCode,
+            companyId,
+            user.Id,
+            user.Email);
+
+        return new ClientPhaseOneProvisionResultDto
+        {
+            Client = clientDto,
+            UserId = user.Id,
+            Email = user.Email,
+            CompanyId = companyId,
+            CompanyName = companyNameStored,
+            BlobFolderPath = blobLogicalPath
+        };
+    }
+
+    /// <summary>Normalizes segment for blob logical paths (slashes, trims).</summary>
+    private static string NormalizeClientCodeSegment(string? clientCode)
+    {
+        var s = (clientCode ?? "").Trim().Replace('\\', '/');
+        while (s.Contains("//", StringComparison.Ordinal))
+            s = s.Replace("//", "/", StringComparison.Ordinal);
+        return s.Trim('/');
     }
 
     public async Task<string?> GetClientCodeForUserEmailAsync(string email, CancellationToken cancellationToken = default)

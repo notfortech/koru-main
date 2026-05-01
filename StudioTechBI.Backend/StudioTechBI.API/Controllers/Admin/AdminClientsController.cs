@@ -71,6 +71,34 @@ public class AdminClientsController : BaseApiController
         return NoContent();
     }
 
+    /// <summary>
+    /// Phase 1 onboarding: creates the client (and blob folders), activates the portal user, assigns them to this client,
+    /// and ensures the Client role. Does not configure Power BI report/workspace/dataset IDs (phase 2).
+    /// Pass <c>userId</c> or <c>userEmail</c> of an existing portal user (e.g. after self-registration).
+    /// </summary>
+    [HttpPost("provision-phase-one")]
+    public async Task<IActionResult> ProvisionPhaseOne([FromBody] ClientPhaseOneProvisionDto dto, CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (!ModelState.IsValid)
+            {
+                var errors = ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage).ToList();
+                return BadRequest(ApiResponse<object>.ErrorResponse("Invalid request", errors));
+            }
+
+            var result = await _clientService.ProvisionPhaseOneAsync(dto, cancellationToken);
+            return CreatedAtAction(
+                nameof(GetById),
+                new { id = result.Client.ClientId },
+                ApiResponse<ClientPhaseOneProvisionResultDto>.SuccessResponse(result, "Phase 1 provisioning completed."));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ApiResponse<ClientPhaseOneProvisionResultDto>.ErrorResponse(ex.Message));
+        }
+    }
+
     /// <summary>Assign a user to this client. The user will then see and refresh only this client's reports (folder key = ClientCode).</summary>
     [HttpPost("{clientId:guid}/users/{userId:guid}")]
     public async Task<IActionResult> AssignUserToClient(Guid clientId, Guid userId, CancellationToken cancellationToken)
