@@ -6,8 +6,13 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
+using Polly;
+using Polly.Extensions.Http;
 using Serilog;
 using StudioTechBI.API.Authorization;
+using StudioTechBI.API.Configuration;
+using StudioTechBI.API.Integrations.Common;
+using StudioTechBI.API.Services.Domain;
 using StudioTechBI.API.Middleware;
 using StudioTechBI.Application;
 using StudioTechBI.Application.Models;
@@ -63,6 +68,11 @@ MapEnvOverride("GOOGLE_AUTH_CLIENT_ID", "GoogleAuth:ClientId");
 MapEnvOverride("GOOGLE_AUTH_CLIENT_SECRET", "GoogleAuth:ClientSecret");
 MapEnvOverride("GOOGLE_AUTH_REDIRECT_URI", "GoogleAuth:RedirectUri");
 MapEnvOverride("GOOGLE_AUTH_SUCCESS_REDIRECT_URI", "GoogleAuth:SuccessRedirectUri");
+MapEnvOverride("DOMAIN_API_CLIENT_ID", "DomainApi:ClientId");
+MapEnvOverride("DOMAIN_API_CLIENT_SECRET", "DomainApi:ClientSecret");
+MapEnvOverride("DOMAIN_API_BASE_URL", "DomainApi:BaseUrl");
+MapEnvOverride("DOMAIN_API_AUTH_BASE_URL", "DomainApi:AuthBaseUrl");
+MapEnvOverride("DOMAIN_API_SCOPE", "DomainApi:Scope");
 
 if (envOverrides.Count > 0)
 {
@@ -280,6 +290,28 @@ builder.Services.Configure<ReportInsightsOptions>(
     builder.Configuration.GetSection(ReportInsightsOptions.SectionName));
 builder.Services.Configure<MicrosoftAuthOptions>(
     builder.Configuration.GetSection(MicrosoftAuthOptions.SectionName));
+builder.Services.Configure<DomainApiSettings>(
+    builder.Configuration.GetSection(DomainApiSettings.SectionName));
+
+builder.Services.AddHttpClient(DomainHttpClientNames.Auth, (sp, client) =>
+{
+    var s = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<DomainApiSettings>>().Value;
+    var baseUrl = (string.IsNullOrWhiteSpace(s.AuthBaseUrl) ? "https://auth.domain.com.au" : s.AuthBaseUrl).TrimEnd('/');
+    client.BaseAddress = new Uri(baseUrl + "/");
+    client.Timeout = TimeSpan.FromSeconds(30);
+});
+
+builder.Services.AddSingleton<DomainAccessTokenProvider>();
+builder.Services.AddSingleton<IIntegrationAccessTokenProvider>(sp => sp.GetRequiredService<DomainAccessTokenProvider>());
+
+builder.Services.AddHttpClient<IDomainPropertyLocationService, DomainPropertyLocationService>((sp, client) =>
+    {
+        var s = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<DomainApiSettings>>().Value;
+        var baseUrl = (string.IsNullOrWhiteSpace(s.BaseUrl) ? "https://api.domain.com.au" : s.BaseUrl).TrimEnd('/');
+        client.BaseAddress = new Uri(baseUrl + "/");
+        client.Timeout = TimeSpan.FromSeconds(60);
+    })
+    .AddPolicyHandler(DomainResourceApiRetryPolicy());
 
 // Google OAuth: Azure App Settings / env as GOOGLE_AUTH_* first, then GoogleAuth:* (appsettings, Key Vault, MapEnvOverride).
 builder.Services.Configure<GoogleAuthOptions>(options =>
@@ -350,6 +382,16 @@ void MapEnvOverride(string environmentVariableName, string configPath)
         envOverrides[configPath] = value;
     }
 }
+
+static IAsyncPolicy<HttpResponseMessage> DomainResourceApiRetryPolicy() =>
+    HttpPolicyExtensions
+        .HandleTransientHttpError()
+        .OrResult(msg => msg.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+        .WaitAndRetryAsync(
+            3,
+            retryAttempt =>
+                TimeSpan.FromSeconds(Math.Pow(2, retryAttempt))
+                + TimeSpan.FromMilliseconds(Random.Shared.Next(0, 250)));
 
 static void ValidateRequiredSettings(IConfiguration configuration, IWebHostEnvironment environment)
 {
