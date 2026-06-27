@@ -22,5 +22,12 @@ public interface IPowerBiAssetQuery
         Guid templateId,
         string reportType,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Returns all active Power BI assets for a given client code. Used to populate the reports list screen.
+    /// </summary>
+    Task<IReadOnlyList<PowerBiAssetDto>> GetAllActiveAssetsForClientAsync(
+        string clientCode,
+        CancellationToken cancellationToken = default);
 }
 

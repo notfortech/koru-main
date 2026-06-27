@@ -405,6 +405,95 @@ public class ReportsController : ControllerBase
         });
     }
 
+    /// <summary>
+    /// Returns a list of all active reports (Power BI assets) for the current user's client.
+    /// Each item contains reportType, reportId, datasetId, and workspaceId.
+    /// </summary>
+    [HttpGet("list")]
+    public async Task<IActionResult> GetReportsList(CancellationToken cancellationToken)
+    {
+        var userClientCode = User.FindFirstValue("client_code");
+        if (string.IsNullOrEmpty(userClientCode))
+            return Ok(new { clientCode = (string?)null, clientId = (Guid?)null, clientName = (string?)null, reports = Array.Empty<object>() });
+
+        var client = await _clientService.GetByClientCodeOrIdAsync(userClientCode, cancellationToken);
+        if (client == null)
+            return Ok(new { clientCode = userClientCode, clientId = (Guid?)null, clientName = (string?)null, reports = Array.Empty<object>() });
+
+        var folderCode = client.ClientCode ?? client.BlobFolderPath ?? userClientCode;
+        var assets = await _powerBiAssetQuery.GetAllActiveAssetsForClientAsync(folderCode, cancellationToken);
+
+        var reports = assets.Select(a => new
+        {
+            reportType = a.ReportType,
+            reportId = a.ReportId,
+            datasetId = a.DatasetId,
+            workspaceId = a.WorkspaceId
+        }).ToList();
+
+        return Ok(new
+        {
+            clientCode = folderCode,
+            clientId = client.ClientId,
+            clientName = client.ClientName,
+            reports
+        });
+    }
+
+    /// <summary>
+    /// Returns a list of all active reports (Power BI assets) for a specific client.
+    /// For accountant users: allowed if the client is in their accessible list.
+    /// For single-client users: allowed only if it matches their own client.
+    /// </summary>
+    [HttpGet("list/{clientCodeOrId}")]
+    public async Task<IActionResult> GetReportsListForClient(
+        string clientCodeOrId,
+        [FromQuery] bool useSelectedClient = false,
+        CancellationToken cancellationToken = default)
+    {
+        var effective = useSelectedClient
+            ? clientCodeOrId?.Trim()
+            : User.FindFirstValue("client_code")?.Trim();
+
+        if (string.IsNullOrWhiteSpace(effective))
+            return NotFound();
+
+        var accessible = await GetAccessibleClientCodesAsync(cancellationToken);
+        if (accessible.Count == 0)
+            return NotFound();
+
+        var client = await _clientService.GetByClientCodeOrIdAsync(effective, cancellationToken);
+        if (client == null)
+            return NotFound();
+
+        var hasAccess = accessible.Any(a =>
+            string.Equals(a.Code, client.ClientCode ?? client.BlobFolderPath, StringComparison.OrdinalIgnoreCase)
+            || a.Id == client.ClientId);
+        if (!hasAccess)
+            return StatusCode(403, new { success = false, message = "You do not have access to this client's reports." });
+
+        var folderCode = client.ClientCode ?? client.BlobFolderPath;
+        var assets = !string.IsNullOrWhiteSpace(folderCode)
+            ? await _powerBiAssetQuery.GetAllActiveAssetsForClientAsync(folderCode!, cancellationToken)
+            : Array.Empty<StudioTechBI.Application.DTOs.PowerBI.PowerBiAssetDto>();
+
+        var reports = assets.Select(a => new
+        {
+            reportType = a.ReportType,
+            reportId = a.ReportId,
+            datasetId = a.DatasetId,
+            workspaceId = a.WorkspaceId
+        }).ToList();
+
+        return Ok(new
+        {
+            clientCode = folderCode,
+            clientId = client.ClientId,
+            clientName = client.ClientName,
+            reports
+        });
+    }
+
     /// <summary>Same as GET available but for a specific client. Use folder name (AU-001) or client Id. For accountant: allowed if client is in their list. For single-client user: allowed if it matches their client.</summary>
     [HttpGet("available/{clientCodeOrId}")]
     public async Task<IActionResult> GetAvailableReportsForClient(

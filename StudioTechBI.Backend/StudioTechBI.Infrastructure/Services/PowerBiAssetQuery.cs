@@ -135,5 +135,49 @@ public class PowerBiAssetQuery : IPowerBiAssetQuery
             CapacityId = asset.CapacityId
         };
     }
+
+    public async Task<IReadOnlyList<PowerBiAssetDto>> GetAllActiveAssetsForClientAsync(
+        string clientCode,
+        CancellationToken cancellationToken = default)
+    {
+        var code = (clientCode ?? "").Trim();
+        if (string.IsNullOrEmpty(code))
+            return Array.Empty<PowerBiAssetDto>();
+
+        var codeLower = code.ToLowerInvariant();
+
+        var client = await _db.Clients
+            .AsNoTracking()
+            .FirstOrDefaultAsync(c => !c.IsDeleted && c.ClientCode != null && c.ClientCode.ToLower() == codeLower, cancellationToken);
+
+        var template = await _db.Templates
+            .AsNoTracking()
+            .FirstOrDefaultAsync(t => !t.IsDeleted && t.TemplateName.ToLower() == codeLower, cancellationToken);
+
+        var clientId = client?.Id;
+        var templateId = template?.Id;
+
+        if (!clientId.HasValue && !templateId.HasValue)
+            return Array.Empty<PowerBiAssetDto>();
+
+        var assets = await _db.PowerBiAssets
+            .AsNoTracking()
+            .Where(a => a.IsActive == true &&
+                ((clientId.HasValue && a.ClientId == clientId.Value) ||
+                 (templateId.HasValue && a.TemplateId == templateId.Value)))
+            .OrderBy(a => a.ReportType)
+            .ThenByDescending(a => a.UpdatedAt ?? a.CreatedAt ?? DateTime.MinValue)
+            .ToListAsync(cancellationToken);
+
+        return assets.Select(a => new PowerBiAssetDto
+        {
+            ClientId = a.ClientId,
+            ReportType = a.ReportType,
+            WorkspaceId = a.WorkspaceId,
+            DatasetId = a.DatasetId,
+            ReportId = a.ReportId,
+            CapacityId = a.CapacityId
+        }).ToList();
+    }
 }
 
