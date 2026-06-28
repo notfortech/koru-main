@@ -1,0 +1,942 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Professional Services Performance Dashboard — StudioTech BI</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+:root{
+  --bg:#0b0d14;--surface:#13161f;--surface2:#1c2030;--surface3:#242840;
+  --border:#1e2236;--border2:#2a3050;
+  --text:#e2e8f0;--text2:#94a3b8;--text3:#64748b;
+  --accent:#5b6ef5;--accent2:#8b5cf6;--accent3:#06b6d4;
+  --success:#22c55e;--warn:#f59e0b;--danger:#ef4444;
+  --font:'Segoe UI',system-ui,sans-serif;
+  --mono:'Cascadia Code','Fira Code',Consolas,monospace;
+  --radius:10px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:14px;line-height:1.5}
+
+/* ── Topbar ─────────────────────────────────────── */
+.topbar{
+  position:sticky;top:0;z-index:100;
+  display:flex;align-items:center;gap:12px;
+  padding:0 24px;height:52px;
+  background:rgba(11,13,20,.92);
+  border-bottom:1px solid var(--border);
+  backdrop-filter:blur(12px);
+}
+.topbar-logo{font-size:15px;font-weight:800;color:var(--text)}
+.topbar-logo span{background:linear-gradient(90deg,var(--accent),var(--accent2));
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.topbar-sep{flex:1}
+.topbar-chip{
+  font-size:10px;font-weight:700;letter-spacing:.4px;padding:3px 9px;
+  border-radius:12px;border:1px solid;white-space:nowrap;
+}
+.chip-green{background:rgba(34,197,94,.1);color:var(--success);border-color:rgba(34,197,94,.3)}
+.chip-blue {background:rgba(91,110,245,.1);color:var(--accent); border-color:rgba(91,110,245,.3)}
+.chip-purple{background:rgba(139,92,246,.1);color:var(--accent2);border-color:rgba(139,92,246,.3)}
+.chip-amber{background:rgba(245,158,11,.1);color:var(--warn);border-color:rgba(245,158,11,.3)}
+.live-dot{width:7px;height:7px;border-radius:50%;background:var(--success);
+  box-shadow:0 0 6px var(--success);animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+
+/* ── Page nav tabs ──────────────────────────────── */
+.page-tabs{
+  display:flex;gap:2px;padding:10px 24px 0;
+  border-bottom:1px solid var(--border);
+  background:var(--surface);overflow-x:auto;
+}
+.page-tab{
+  padding:8px 18px;border-radius:8px 8px 0 0;font-size:12px;font-weight:600;
+  color:var(--text3);cursor:pointer;border:none;background:none;
+  border-bottom:2px solid transparent;transition:all .15s;white-space:nowrap;
+  font-family:var(--font);
+}
+.page-tab:hover{color:var(--text);background:var(--surface2)}
+.page-tab.active{color:var(--accent);border-bottom-color:var(--accent);background:var(--surface2)}
+
+/* ── Main layout ────────────────────────────────── */
+.page-content{display:none;padding:20px 24px 40px}
+.page-content.active{display:block}
+
+/* ── Slicer bar ─────────────────────────────────── */
+.slicer-bar{
+  display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+  padding:10px 14px;background:var(--surface);
+  border:1px solid var(--border);border-radius:var(--radius);
+  margin-bottom:16px;
+}
+.slicer-label{font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.5px}
+.slicer-sep{width:1px;height:20px;background:var(--border)}
+select.slicer,input.slicer{
+  background:var(--surface2);border:1px solid var(--border2);
+  color:var(--text);border-radius:6px;padding:4px 8px;font-size:12px;
+  font-family:var(--font);cursor:pointer;outline:none;
+}
+select.slicer:focus,input.slicer:focus{border-color:var(--accent)}
+.slicer-reset{
+  margin-left:auto;font-size:11px;font-weight:600;color:var(--accent);
+  cursor:pointer;background:none;border:none;font-family:var(--font);padding:4px 8px;
+}
+.slicer-reset:hover{opacity:.7}
+
+/* ── KPI cards ──────────────────────────────────── */
+.kpi-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px;margin-bottom:20px}
+.kpi-card{
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+  padding:14px 16px;position:relative;overflow:hidden;
+  transition:border-color .15s;
+}
+.kpi-card:hover{border-color:var(--accent)}
+.kpi-card::before{
+  content:'';position:absolute;top:0;left:0;right:0;height:2px;
+}
+.kpi-card.green::before{background:var(--success)}
+.kpi-card.amber::before{background:var(--warn)}
+.kpi-card.red::before{background:var(--danger)}
+.kpi-card.blue::before{background:var(--accent)}
+.kpi-card.purple::before{background:var(--accent2)}
+.kpi-label{font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px}
+.kpi-value{font-size:26px;font-weight:800;letter-spacing:-.5px;line-height:1}
+.kpi-sub{font-size:10px;color:var(--text3);margin-top:5px}
+.kpi-trend{font-size:10px;font-weight:700;margin-top:4px}
+.kpi-trend.up{color:var(--success)}
+.kpi-trend.down{color:var(--danger)}
+.kpi-trend.warn{color:var(--warn)}
+
+/* ── Chart sections ─────────────────────────────── */
+.chart-grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
+.chart-grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:16px}
+.chart-card{
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+  padding:16px;
+}
+.chart-card.span2{grid-column:span 2}
+.chart-card.span3{grid-column:span 3}
+.chart-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.chart-title{font-size:12px;font-weight:700;color:var(--text)}
+.chart-sub{font-size:10px;color:var(--text3)}
+.chart-wrap{position:relative}
+.chart-wrap canvas{max-height:220px}
+.chart-wrap.tall canvas{max-height:280px}
+.chart-wrap.short canvas{max-height:160px}
+
+/* ── Table ──────────────────────────────────────── */
+.data-table{width:100%;border-collapse:collapse;font-size:12px}
+.data-table th{
+  padding:8px 10px;text-align:left;font-size:10px;font-weight:700;
+  color:var(--text3);text-transform:uppercase;letter-spacing:.5px;
+  border-bottom:1px solid var(--border2);background:var(--surface2);
+}
+.data-table td{padding:8px 10px;border-bottom:1px solid var(--border);color:var(--text2);vertical-align:middle}
+.data-table tr:hover td{background:var(--surface2)}
+.data-table tr:last-child td{border-bottom:none}
+.tbl-wrap{overflow-x:auto}
+
+/* ── Tag ────────────────────────────────────────── */
+.tag{display:inline-block;font-size:9px;font-weight:700;padding:2px 7px;border-radius:10px;letter-spacing:.3px}
+.tag-green{background:rgba(34,197,94,.1);color:var(--success);border:1px solid rgba(34,197,94,.2)}
+.tag-amber{background:rgba(245,158,11,.1);color:var(--warn);border:1px solid rgba(245,158,11,.2)}
+.tag-red  {background:rgba(239,68,68,.1); color:var(--danger);border:1px solid rgba(239,68,68,.2)}
+.tag-blue {background:rgba(91,110,245,.1);color:var(--accent);border:1px solid rgba(91,110,245,.2)}
+.tag-gray {background:var(--surface2);color:var(--text3);border:1px solid var(--border2)}
+
+/* ── Progress bar ───────────────────────────────── */
+.prog-bar{height:5px;background:var(--surface3);border-radius:3px;overflow:hidden;margin-top:4px}
+.prog-fill{height:100%;border-radius:3px;transition:width .8s ease}
+
+/* ── Footer ─────────────────────────────────────── */
+.footer{text-align:center;padding:20px;font-size:10px;color:var(--text3);border-top:1px solid var(--border)}
+
+@media(max-width:900px){
+  .chart-grid-2,.chart-grid-3{grid-template-columns:1fr}
+  .chart-card.span2,.chart-card.span3{grid-column:span 1}
+  .kpi-grid{grid-template-columns:repeat(2,1fr)}
+}
+</style>
+</head>
+<body>
+
+<!-- ══ Topbar ════════════════════════════════════ -->
+<header class="topbar">
+  <div class="topbar-logo">📊 <span>StudioTech</span> BI</div>
+  <div class="topbar-logo" style="font-weight:400;font-size:13px;color:var(--text2)">Professional Services Performance Dashboard</div>
+  <div class="topbar-sep"></div>
+  <div class="live-dot"></div>
+  <span class="topbar-chip chip-green">Live Mock Data</span>
+  <span class="topbar-chip chip-blue">FY2024–FY2025</span>
+  <span class="topbar-chip chip-purple">120 Consultants</span>
+  <span class="topbar-chip chip-amber">Blueprint Generated</span>
+</header>
+
+<!-- ══ Page Tabs ═════════════════════════════════ -->
+<nav class="page-tabs">
+  <button class="page-tab active" onclick="showPage('executive',this)">🏛 Executive Summary</button>
+  <button class="page-tab" onclick="showPage('utilisation',this)">⚙️ Consultant Performance</button>
+  <button class="page-tab" onclick="showPage('wip',this)">💰 WIP & Revenue Leakage</button>
+  <button class="page-tab" onclick="showPage('debtors',this)">📋 Debtor Management</button>
+  <button class="page-tab" onclick="showPage('pipeline',this)">🚀 BD Pipeline</button>
+</nav>
+
+<!-- ══════════════════════════════════════════════
+     PAGE 1: EXECUTIVE SUMMARY
+═══════════════════════════════════════════════ -->
+<div class="page-content active" id="page-executive">
+
+  <!-- Slicers -->
+  <div class="slicer-bar" style="margin-top:16px">
+    <span class="slicer-label">🔽 Filters</span>
+    <div class="slicer-sep"></div>
+    <span class="slicer-label">Fiscal Year</span>
+    <select class="slicer" id="sl-fy" onchange="applyFilters()">
+      <option value="all">All Years</option>
+      <option value="FY2024">FY2024</option>
+      <option value="FY2025">FY2025</option>
+    </select>
+    <div class="slicer-sep"></div>
+    <span class="slicer-label">Service Line</span>
+    <select class="slicer" id="sl-sl" onchange="applyFilters()">
+      <option value="all">All Service Lines</option>
+      <option>Audit &amp; Assurance</option>
+      <option>Tax &amp; Compliance</option>
+      <option>Business Advisory</option>
+      <option>Corporate Finance</option>
+    </select>
+    <button class="slicer-reset" onclick="resetFilters()">✕ Reset</button>
+  </div>
+
+  <!-- KPI Cards -->
+  <div class="kpi-grid" id="kpi-cards">
+    <div class="kpi-card green">
+      <div class="kpi-label">Revenue</div>
+      <div class="kpi-value" id="kv-revenue">$$20.5M</div>
+      <div class="kpi-sub">Total invoiced (ex GST)</div>
+      <div class="kpi-trend up">↑ vs prior year</div>
+    </div>
+    <div class="kpi-card blue">
+      <div class="kpi-label">Billable Utilisation</div>
+      <div class="kpi-value" id="kv-util">75.3%</div>
+      <div class="kpi-sub">Target ≥ 75%</div>
+      <div class="prog-bar"><div class="prog-fill" style="width:75.3%;background:var(--success)"></div></div>
+    </div>
+    <div class="kpi-card green">
+      <div class="kpi-label">Realisation Rate</div>
+      <div class="kpi-value" id="kv-real">131.3%</div>
+      <div class="kpi-sub">Target ≥ 85%</div>
+      <div class="prog-bar"><div class="prog-fill" style="width:100%;background:var(--success)"></div></div>
+    </div>
+    <div class="kpi-card amber">
+      <div class="kpi-label">WIP Value</div>
+      <div class="kpi-value" id="kv-wip">$$15.6M</div>
+      <div class="kpi-sub">Unbilled at standard rates</div>
+    </div>
+    <div class="kpi-card red">
+      <div class="kpi-label">Debtor Days (DSO)</div>
+      <div class="kpi-value" id="kv-dso">90</div>
+      <div class="kpi-sub">Target &lt; 45 days</div>
+    </div>
+    <div class="kpi-card red">
+      <div class="kpi-label">Write-Off Rate</div>
+      <div class="kpi-value" id="kv-wo">13.9%</div>
+      <div class="kpi-sub">Target &lt; 5%</div>
+    </div>
+    <div class="kpi-card blue">
+      <div class="kpi-label">Avg Bill Rate</div>
+      <div class="kpi-value" id="kv-abr">$302/hr</div>
+      <div class="kpi-sub">Effective rate vs standard</div>
+    </div>
+    <div class="kpi-card purple">
+      <div class="kpi-label">Pipeline (Weighted)</div>
+      <div class="kpi-value" id="kv-pipe">$$15.4M</div>
+      <div class="kpi-sub">Expected new revenue</div>
+    </div>
+  </div>
+
+  <!-- Charts row 1 -->
+  <div class="chart-grid-2">
+    <div class="chart-card span2">
+      <div class="chart-hdr">
+        <div><div class="chart-title">Revenue — Monthly Trend</div><div class="chart-sub">Invoiced revenue by month · FY2024 vs FY2025</div></div>
+      </div>
+      <div class="chart-wrap tall"><canvas id="c-rev-trend"></canvas></div>
+    </div>
+  </div>
+
+  <!-- Charts row 2 -->
+  <div class="chart-grid-3">
+    <div class="chart-card">
+      <div class="chart-hdr"><div><div class="chart-title">Revenue by Service Line</div><div class="chart-sub">Total invoiced revenue</div></div></div>
+      <div class="chart-wrap"><canvas id="c-rev-sl"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-hdr"><div><div class="chart-title">Utilisation by Service Line</div><div class="chart-sub">Avg vs 75% target</div></div></div>
+      <div class="chart-wrap"><canvas id="c-util-sl"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-hdr"><div><div class="chart-title">Top 10 Clients by Revenue</div><div class="chart-sub">All time</div></div></div>
+      <div class="chart-wrap"><canvas id="c-top-cli"></canvas></div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ══════════════════════════════════════════════
+     PAGE 2: CONSULTANT PERFORMANCE
+═══════════════════════════════════════════════ -->
+<div class="page-content" id="page-utilisation">
+
+  <div class="slicer-bar" style="margin-top:16px">
+    <span class="slicer-label">🔽 Filters</span>
+    <div class="slicer-sep"></div>
+    <span class="slicer-label">Service Line</span>
+    <select class="slicer" id="sl-sl2" onchange="applyFilters()">
+      <option value="all">All Service Lines</option>
+      <option>Audit &amp; Assurance</option>
+      <option>Tax &amp; Compliance</option>
+      <option>Business Advisory</option>
+      <option>Corporate Finance</option>
+    </select>
+    <button class="slicer-reset" onclick="resetFilters()">✕ Reset</button>
+  </div>
+
+  <div class="chart-grid-2">
+    <div class="chart-card">
+      <div class="chart-hdr"><div><div class="chart-title">Utilisation Rate — Monthly Trend</div><div class="chart-sub">Avg billable utilisation % vs 75% target</div></div></div>
+      <div class="chart-wrap tall"><canvas id="c-util-trend"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-hdr"><div><div class="chart-title">Utilisation by Grade</div><div class="chart-sub">Actual vs grade target</div></div></div>
+      <div class="chart-wrap tall"><canvas id="c-util-grade"></canvas></div>
+    </div>
+  </div>
+
+  <div class="chart-card" style="margin-bottom:16px">
+    <div class="chart-hdr"><div><div class="chart-title">Utilisation by Service Line</div><div class="chart-sub">All service lines vs 75% target</div></div></div>
+    <div class="chart-wrap short"><canvas id="c-util-sl2"></canvas></div>
+  </div>
+
+</div>
+
+<!-- ══════════════════════════════════════════════
+     PAGE 3: WIP & REVENUE LEAKAGE
+═══════════════════════════════════════════════ -->
+<div class="page-content" id="page-wip">
+
+  <div class="slicer-bar" style="margin-top:16px">
+    <span class="slicer-label">🔽 Filters</span>
+    <div class="slicer-sep"></div>
+    <span class="slicer-label">Service Line</span>
+    <select class="slicer" id="sl-sl3" onchange="applyFilters()">
+      <option value="all">All Service Lines</option>
+      <option>Audit &amp; Assurance</option>
+      <option>Tax &amp; Compliance</option>
+      <option>Business Advisory</option>
+      <option>Corporate Finance</option>
+    </select>
+    <button class="slicer-reset" onclick="resetFilters()">✕ Reset</button>
+  </div>
+
+  <div class="kpi-grid">
+    <div class="kpi-card amber">
+      <div class="kpi-label">WIP Value</div>
+      <div class="kpi-value">$$15.6M</div>
+      <div class="kpi-sub">Unbilled at standard rates</div>
+    </div>
+    <div class="kpi-card red">
+      <div class="kpi-label">Write-Offs</div>
+      <div class="kpi-value">$$2.2M</div>
+      <div class="kpi-sub">WIP written off this period</div>
+    </div>
+    <div class="kpi-card red">
+      <div class="kpi-label">Write-Off Rate</div>
+      <div class="kpi-value">13.9%</div>
+      <div class="kpi-sub">Target &lt; 5%</div>
+    </div>
+    <div class="kpi-card green">
+      <div class="kpi-label">Realisation Rate</div>
+      <div class="kpi-value">131.3%</div>
+      <div class="kpi-sub">Revenue / WIP at standard rate</div>
+    </div>
+  </div>
+
+  <div class="chart-grid-2">
+    <div class="chart-card">
+      <div class="chart-hdr"><div><div class="chart-title">WIP by Month</div><div class="chart-sub">Total WIP generated at standard rates</div></div></div>
+      <div class="chart-wrap tall"><canvas id="c-wip-trend"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-hdr"><div><div class="chart-title">WIP by Service Line</div><div class="chart-sub">Unbilled work in progress</div></div></div>
+      <div class="chart-wrap tall"><canvas id="c-wip-sl"></canvas></div>
+    </div>
+  </div>
+
+  <div class="chart-card">
+    <div class="chart-hdr"><div><div class="chart-title">Write-Offs by Service Line</div><div class="chart-sub">WIP written off — revenue leakage</div></div></div>
+    <div class="chart-wrap short"><canvas id="c-wo-sl"></canvas></div>
+  </div>
+
+</div>
+
+<!-- ══════════════════════════════════════════════
+     PAGE 4: DEBTOR MANAGEMENT
+═══════════════════════════════════════════════ -->
+<div class="page-content" id="page-debtors">
+
+  <div class="slicer-bar" style="margin-top:16px">
+    <span class="slicer-label">🔽 Filters</span>
+    <div class="slicer-sep"></div>
+    <span class="slicer-label">Invoice Status</span>
+    <select class="slicer" id="sl-status" onchange="applyFilters()">
+      <option value="all">All Statuses</option>
+      <option>Paid</option>
+      <option>Issued</option>
+      <option>Overdue</option>
+      <option>Written Off</option>
+    </select>
+    <button class="slicer-reset" onclick="resetFilters()">✕ Reset</button>
+  </div>
+
+  <div class="kpi-grid">
+    <div class="kpi-card red">
+      <div class="kpi-label">Debtors Outstanding</div>
+      <div class="kpi-value">$$9.1M</div>
+      <div class="kpi-sub">Total unpaid invoices</div>
+    </div>
+    <div class="kpi-card red">
+      <div class="kpi-label">Debtor Days (DSO)</div>
+      <div class="kpi-value">90</div>
+      <div class="kpi-sub">Target &lt; 45 days</div>
+    </div>
+    <div class="kpi-card green">
+      <div class="kpi-label">Revenue</div>
+      <div class="kpi-value">$$20.5M</div>
+      <div class="kpi-sub">Total invoiced</div>
+    </div>
+  </div>
+
+  <div class="chart-grid-2">
+    <div class="chart-card">
+      <div class="chart-hdr"><div><div class="chart-title">Invoice Status Breakdown</div><div class="chart-sub">By outstanding value</div></div></div>
+      <div class="chart-wrap"><canvas id="c-debtor-donut"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-hdr"><div><div class="chart-title">Invoice Count by Status</div><div class="chart-sub">Number of invoices per status</div></div></div>
+      <div class="chart-wrap"><canvas id="c-debtor-count"></canvas></div>
+    </div>
+  </div>
+
+  <!-- Debtor table -->
+  <div class="chart-card">
+    <div class="chart-hdr"><div><div class="chart-title">Invoice Status Detail</div><div class="chart-sub">Outstanding value and count by status</div></div></div>
+    <div class="tbl-wrap">
+      <table class="data-table" id="debtor-table">
+        <thead><tr><th>Status</th><th>Invoices</th><th>Outstanding Value</th><th>% of Total</th><th>Risk</th></tr></thead>
+        <tbody id="debtor-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<!-- ══════════════════════════════════════════════
+     PAGE 5: BD PIPELINE
+═══════════════════════════════════════════════ -->
+<div class="page-content" id="page-pipeline">
+
+  <div class="slicer-bar" style="margin-top:16px">
+    <span class="slicer-label">🔽 Filters</span>
+    <div class="slicer-sep"></div>
+    <span class="slicer-label">Pipeline Stage</span>
+    <select class="slicer" id="sl-stage" onchange="applyFilters()">
+      <option value="all">All Stages</option>
+      <option>Lead</option><option>Qualified</option>
+      <option>Proposal Sent</option><option>Negotiation</option>
+      <option>Won</option><option>Lost</option>
+    </select>
+    <button class="slicer-reset" onclick="resetFilters()">✕ Reset</button>
+  </div>
+
+  <div class="kpi-grid">
+    <div class="kpi-card blue">
+      <div class="kpi-label">Weighted Pipeline</div>
+      <div class="kpi-value">$$15.4M</div>
+      <div class="kpi-sub">Probability-weighted value</div>
+    </div>
+    <div class="kpi-card green">
+      <div class="kpi-label">Active Opportunities</div>
+      <div class="kpi-value">67</div>
+      <div class="kpi-sub">Leads through negotiation</div>
+    </div>
+    <div class="kpi-card purple">
+      <div class="kpi-label">Won This Period</div>
+      <div class="kpi-value">$$3.8M</div>
+      <div class="kpi-sub">Confirmed new engagements</div>
+    </div>
+  </div>
+
+  <div class="chart-grid-2">
+    <div class="chart-card span2">
+      <div class="chart-hdr"><div><div class="chart-title">Pipeline Funnel — Estimated Value by Stage</div><div class="chart-sub">Estimated value vs probability-weighted value</div></div></div>
+      <div class="chart-wrap tall"><canvas id="c-pipeline-bar"></canvas></div>
+    </div>
+  </div>
+
+  <!-- Pipeline table -->
+  <div class="chart-card">
+    <div class="chart-hdr"><div><div class="chart-title">Pipeline Detail by Stage</div><div class="chart-sub">Count, estimated value, weighted value</div></div></div>
+    <div class="tbl-wrap">
+      <table class="data-table" id="pipeline-table">
+        <thead><tr><th>Stage</th><th>Opportunities</th><th>Estimated Value</th><th>Weighted Value</th><th>Coverage</th></tr></thead>
+        <tbody id="pipeline-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<div class="footer">
+  StudioTech BI Blueprint Generator · Professional Services Mock Report · Data: MockData_ProfessionalServices.xlsx · FY2024–FY2025
+  <br>Generated recommendations based on supplied business requirements. No actual data quality assessments performed.
+</div>
+
+<script>
+// ── Embedded data ──────────────────────────────────────────────
+const D = {"kpis": {"revenue": 20534282, "wip": 15637795, "utilisation": 75.3, "realisation": 131.3, "debtor_days": 90, "debtors": 9090137, "write_off_rate": 13.9, "write_offs": 2171836, "avg_bill_rate": 302, "rev_per_consult": 186675, "pipeline_weighted": 15385326, "active_employees": 110}, "revenue_trend": [{"month": "Aug-2023", "fy": "FY2024", "revenue": 28160}, {"month": "Sep-2023", "fy": "FY2024", "revenue": 120321}, {"month": "Oct-2023", "fy": "FY2024", "revenue": 627331}, {"month": "Nov-2023", "fy": "FY2024", "revenue": 694629}, {"month": "Dec-2023", "fy": "FY2024", "revenue": 371855}, {"month": "Jan-2024", "fy": "FY2024", "revenue": 721193}, {"month": "Feb-2024", "fy": "FY2024", "revenue": 589628}, {"month": "Mar-2024", "fy": "FY2024", "revenue": 942693}, {"month": "Apr-2024", "fy": "FY2024", "revenue": 1359809}, {"month": "May-2024", "fy": "FY2024", "revenue": 1530798}, {"month": "Jun-2024", "fy": "FY2024", "revenue": 1495475}, {"month": "Jul-2024", "fy": "FY2025", "revenue": 1354394}, {"month": "Aug-2024", "fy": "FY2025", "revenue": 1041162}, {"month": "Sep-2024", "fy": "FY2025", "revenue": 785788}, {"month": "Oct-2024", "fy": "FY2025", "revenue": 830777}, {"month": "Nov-2024", "fy": "FY2025", "revenue": 914858}, {"month": "Dec-2024", "fy": "FY2025", "revenue": 1648809}, {"month": "Jan-2025", "fy": "FY2025", "revenue": 1126781}, {"month": "Feb-2025", "fy": "FY2025", "revenue": 1172642}, {"month": "Mar-2025", "fy": "FY2025", "revenue": 919575}, {"month": "Apr-2025", "fy": "FY2025", "revenue": 721787}, {"month": "May-2025", "fy": "FY2025", "revenue": 530545}, {"month": "Jun-2025", "fy": "FY2025", "revenue": 617307}], "util_trend": [{"month": "Jul-2023", "rate": 75.8}, {"month": "Aug-2023", "rate": 75.4}, {"month": "Sep-2023", "rate": 75.1}, {"month": "Oct-2023", "rate": 75.3}, {"month": "Nov-2023", "rate": 75.3}, {"month": "Dec-2023", "rate": 75.2}, {"month": "Jan-2024", "rate": 75.3}, {"month": "Feb-2024", "rate": 75.3}, {"month": "Mar-2024", "rate": 75.3}, {"month": "Apr-2024", "rate": 75.2}, {"month": "May-2024", "rate": 75.4}, {"month": "Jun-2024", "rate": 74.7}, {"month": "Jul-2024", "rate": 75.5}, {"month": "Aug-2024", "rate": 75.2}, {"month": "Sep-2024", "rate": 75.3}, {"month": "Oct-2024", "rate": 75.2}, {"month": "Nov-2024", "rate": 75.2}, {"month": "Dec-2024", "rate": 75.5}, {"month": "Jan-2025", "rate": 75.2}, {"month": "Feb-2025", "rate": 75.6}, {"month": "Mar-2025", "rate": 75.1}, {"month": "Apr-2025", "rate": 75.4}, {"month": "May-2025", "rate": 75.8}, {"month": "Jun-2025", "rate": 75.4}], "wip_trend": [{"month": "Jul-2023", "wip": 609964}, {"month": "Aug-2023", "wip": 693936}, {"month": "Sep-2023", "wip": 650067}, {"month": "Oct-2023", "wip": 665744}, {"month": "Nov-2023", "wip": 604911}, {"month": "Dec-2023", "wip": 611862}, {"month": "Jan-2024", "wip": 629273}, {"month": "Feb-2024", "wip": 643889}, {"month": "Mar-2024", "wip": 635867}, {"month": "Apr-2024", "wip": 687242}, {"month": "May-2024", "wip": 703848}, {"month": "Jun-2024", "wip": 558723}, {"month": "Jul-2024", "wip": 645548}, {"month": "Aug-2024", "wip": 668885}, {"month": "Sep-2024", "wip": 676196}, {"month": "Oct-2024", "wip": 747188}, {"month": "Nov-2024", "wip": 655438}, {"month": "Dec-2024", "wip": 698369}, {"month": "Jan-2025", "wip": 681515}, {"month": "Feb-2025", "wip": 597473}, {"month": "Mar-2025", "wip": 615450}, {"month": "Apr-2025", "wip": 680027}, {"month": "May-2025", "wip": 672021}, {"month": "Jun-2025", "wip": 604358}], "util_by_sl": [{"name": "Audit & Assurance", "rate": 74.3, "target": 75.0}, {"name": "Business Advisory", "rate": 74.9, "target": 75.0}, {"name": "Corporate Finance", "rate": 73.5, "target": 75.0}, {"name": "Tax & Compliance", "rate": 77.9, "target": 75.0}], "wip_by_sl": [{"name": "Audit & Assurance", "wip": 3992228}, {"name": "Business Advisory", "wip": 3739929}, {"name": "Corporate Finance", "wip": 3991952}, {"name": "Tax & Compliance", "wip": 3913686}], "debtor_ageing": [{"status": "Issued", "amount": 2011727, "count": 76}, {"status": "Overdue", "amount": 3506184, "count": 70}, {"status": "Paid", "amount": 0, "count": 245}, {"status": "Written Off", "amount": 3572226, "count": 77}], "pipeline": [{"stage": "Lead", "value": 5966842, "weighted": 624248, "count": 14}, {"stage": "Qualified", "value": 7296033, "weighted": 1937200, "count": 17}, {"stage": "Proposal Sent", "value": 6575629, "weighted": 3324937, "count": 17}, {"stage": "Negotiation", "value": 7519857, "weighted": 5723357, "count": 19}, {"stage": "Won", "value": 3798168, "weighted": 3766893, "count": 9}, {"stage": "Lost", "value": 1748408, "weighted": 8690, "count": 4}], "top_clients": [{"name": "Apex Holdings", "revenue": 978652}, {"name": "Benchmark Solutions", "revenue": 955882}, {"name": "Nexus Capital", "revenue": 862247}, {"name": "Pinnacle Group", "revenue": 828374}, {"name": "Accord Limited", "revenue": 704133}, {"name": "Benchmark Services", "revenue": 692404}, {"name": "Zenith Enterprises", "revenue": 675291}, {"name": "Endure Consulting", "revenue": 610170}, {"name": "Atlas Solutions", "revenue": 495236}, {"name": "Pacific Group", "revenue": 494099}], "util_by_grade": [{"grade": "Partner", "rate": 56.2, "target": 55}, {"grade": "Director", "rate": 62.6, "target": 60}, {"grade": "Senior Manager", "rate": 70.1, "target": 68}, {"grade": "Manager", "rate": 73.2, "target": 72}, {"grade": "Senior Consultant", "rate": 78.9, "target": 78}, {"grade": "Consultant", "rate": 81.0, "target": 80}, {"grade": "Graduate", "rate": 83.0, "target": 82}], "rev_by_sl": [{"name": "Audit & Assurance", "revenue": 3606532}, {"name": "Business Advisory", "revenue": 5252151}, {"name": "Corporate Finance", "revenue": 5676874}, {"name": "Tax & Compliance", "revenue": 5998725}]};
+
+// ── Colour palette ─────────────────────────────────────────────
+const ACCENT   = '#5b6ef5';
+const ACCENT2  = '#8b5cf6';
+const ACCENT3  = '#06b6d4';
+const SUCCESS  = '#22c55e';
+const WARN     = '#f59e0b';
+const DANGER   = '#ef4444';
+const TEXT     = '#94a3b8';
+const BORDER   = '#1e2236';
+const GRID     = 'rgba(255,255,255,.06)';
+const SL_COLORS = [ACCENT, ACCENT2, ACCENT3, WARN];
+
+Chart.defaults.color      = TEXT;
+Chart.defaults.borderColor = BORDER;
+Chart.defaults.font.family = "'Segoe UI', system-ui, sans-serif";
+Chart.defaults.font.size   = 11;
+
+const CHART_DEFAULTS = {
+  plugins:{ legend:{ labels:{ color:TEXT, boxWidth:10, font:{size:11} } } },
+  scales: {
+    x:{ grid:{ color:GRID }, ticks:{ color:TEXT } },
+    y:{ grid:{ color:GRID }, ticks:{ color:TEXT } },
+  },
+};
+
+// ── Page nav ───────────────────────────────────────────────────
+function showPage(name, btn) {
+  document.querySelectorAll('.page-content').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.page-tab').forEach(b => b.classList.remove('active'));
+  document.getElementById('page-' + name).classList.add('active');
+  if (btn) btn.classList.add('active');
+}
+
+// ── Slicers ────────────────────────────────────────────────────
+function resetFilters() {
+  document.querySelectorAll('select.slicer').forEach(s => s.value = 'all');
+  document.querySelectorAll('input.slicer').forEach(i => i.value = '');
+  applyFilters();
+}
+
+function applyFilters() {
+  const fy = document.getElementById('sl-fy')?.value || 'all';
+  const sl = document.getElementById('sl-sl')?.value || 'all';
+
+  // Revenue trend — filter by FY
+  const revData = fy === 'all' ? D.revenue_trend
+    : D.revenue_trend.filter(r => r.fy === fy);
+  revTrendChart.data.labels   = revData.map(r => r.month);
+  revTrendChart.data.datasets[0].data = revData.map(r => r.revenue);
+  revTrendChart.update();
+
+  // Util trend — no fy split, keep as-is
+  utilTrendChart.update();
+  utilGradeChart.update();
+}
+
+// ── Number formatters ──────────────────────────────────────────
+const fmt = v => v >= 1e6 ? '$' + (v/1e6).toFixed(1) + 'M'
+               : v >= 1e3 ? '$' + (v/1e3).toFixed(0) + 'K'
+               : '$' + v.toFixed(0);
+const fmtPct = v => v.toFixed(1) + '%';
+
+// ══════════════════════════════════════════════
+// CHART 1 — Revenue Trend
+// ══════════════════════════════════════════════
+const revTrendChart = new Chart(
+  document.getElementById('c-rev-trend'),
+  {
+    type: 'bar',
+    data: {
+      labels: D.revenue_trend.map(r => r.month),
+      datasets: [
+        {
+          label: 'Revenue',
+          data: D.revenue_trend.map(r => r.revenue),
+          backgroundColor: ctx => {
+            const g = ctx.chart.ctx.createLinearGradient(0, 0, 0, 280);
+            g.addColorStop(0, 'rgba(91,110,245,.7)');
+            g.addColorStop(1, 'rgba(91,110,245,.1)');
+            return g;
+          },
+          borderColor: ACCENT,
+          borderWidth: 1,
+          borderRadius: 4,
+        },
+      ],
+    },
+    options: {
+      ...CHART_DEFAULTS,
+      responsive: true,
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: c => fmt(c.raw) } },
+      },
+      scales: {
+        x: { grid: { color: GRID }, ticks: { color: TEXT, maxRotation: 45 } },
+        y: {
+          grid: { color: GRID }, ticks: { color: TEXT, callback: v => fmt(v) },
+          beginAtZero: true,
+        },
+      },
+    },
+  }
+);
+
+// ══════════════════════════════════════════════
+// CHART 2 — Revenue by Service Line
+// ══════════════════════════════════════════════
+new Chart(document.getElementById('c-rev-sl'), {
+  type: 'doughnut',
+  data: {
+    labels: D.rev_by_sl.map(r => r.name),
+    datasets: [{ data: D.rev_by_sl.map(r => r.revenue),
+      backgroundColor: SL_COLORS, borderColor: '#0b0d14', borderWidth: 2 }],
+  },
+  options: {
+    responsive: true,
+    plugins: {
+      legend: { position:'bottom', labels:{ color:TEXT, boxWidth:10 } },
+      tooltip: { callbacks: { label: c => c.label + ': ' + fmt(c.raw) } },
+    },
+  },
+});
+
+// ══════════════════════════════════════════════
+// CHART 3 — Utilisation by Service Line
+// ══════════════════════════════════════════════
+new Chart(document.getElementById('c-util-sl'), {
+  type: 'bar',
+  data: {
+    labels: D.util_by_sl.map(r => r.name.replace(' & ', '\n& ')),
+    datasets: [
+      { label:'Actual', data: D.util_by_sl.map(r => r.rate),
+        backgroundColor: D.util_by_sl.map(r => r.rate >= 75 ? 'rgba(34,197,94,.6)' : 'rgba(245,158,11,.6)'),
+        borderColor:     D.util_by_sl.map(r => r.rate >= 75 ? SUCCESS : WARN),
+        borderWidth:1, borderRadius:4 },
+      { label:'Target 75%', data: D.util_by_sl.map(() => 75),
+        type:'line', borderColor:DANGER, borderDash:[4,4], borderWidth:1.5,
+        pointRadius:0, fill:false },
+    ],
+  },
+  options: {
+    ...CHART_DEFAULTS,
+    responsive: true,
+    plugins: { legend:{ labels:{ color:TEXT, boxWidth:10 } },
+      tooltip:{ callbacks:{ label: c => c.dataset.label + ': ' + c.raw + '%' } } },
+    scales: {
+      x:{ grid:{ color:GRID },ticks:{ color:TEXT } },
+      y:{ grid:{ color:GRID },ticks:{ color:TEXT, callback: v => v+'%' },min:50,max:100 },
+    },
+  },
+});
+
+// ══════════════════════════════════════════════
+// CHART 4 — Top 10 Clients
+// ══════════════════════════════════════════════
+new Chart(document.getElementById('c-top-cli'), {
+  type: 'bar',
+  data: {
+    labels: D.top_clients.map(r => r.name.split(' ').slice(0,2).join(' ')),
+    datasets: [{ label:'Revenue', data: D.top_clients.map(r => r.revenue),
+      backgroundColor:'rgba(6,182,212,.5)', borderColor:ACCENT3, borderWidth:1, borderRadius:4 }],
+  },
+  options: {
+    ...CHART_DEFAULTS,
+    indexAxis:'y', responsive:true,
+    plugins:{ legend:{display:false}, tooltip:{callbacks:{label:c=>fmt(c.raw)}} },
+    scales:{
+      x:{grid:{color:GRID},ticks:{color:TEXT,callback:v=>fmt(v)}},
+      y:{grid:{color:'transparent'},ticks:{color:TEXT,font:{size:10}} },
+    },
+  },
+});
+
+// ══════════════════════════════════════════════
+// CHART 5 — Util Trend
+// ══════════════════════════════════════════════
+const utilTrendChart = new Chart(document.getElementById('c-util-trend'), {
+  type: 'line',
+  data: {
+    labels: D.util_trend.map(r => r.month),
+    datasets: [
+      {
+        label:'Utilisation %', data: D.util_trend.map(r => r.rate),
+        borderColor: ACCENT, backgroundColor:'rgba(91,110,245,.1)',
+        borderWidth:2, fill:true, tension:.35, pointRadius:3, pointBackgroundColor:ACCENT,
+      },
+      {
+        label:'Target 75%', data: D.util_trend.map(() => 75),
+        borderColor:DANGER, borderDash:[5,5], borderWidth:1.5, pointRadius:0, fill:false,
+      },
+    ],
+  },
+  options: {
+    ...CHART_DEFAULTS,
+    responsive:true,
+    plugins:{ legend:{labels:{color:TEXT,boxWidth:10}},
+      tooltip:{callbacks:{label:c=>c.dataset.label+': '+c.raw+'%'}} },
+    scales:{
+      x:{grid:{color:GRID},ticks:{color:TEXT,maxRotation:45}},
+      y:{grid:{color:GRID},ticks:{color:TEXT,callback:v=>v+'%'},min:50,max:100},
+    },
+  },
+});
+
+// ══════════════════════════════════════════════
+// CHART 6 — Util by Grade
+// ══════════════════════════════════════════════
+const utilGradeChart = new Chart(document.getElementById('c-util-grade'), {
+  type:'bar',
+  data:{
+    labels: D.util_by_grade.map(r => r.grade),
+    datasets:[
+      { label:'Actual', data:D.util_by_grade.map(r=>r.rate),
+        backgroundColor: D.util_by_grade.map(r=>r.rate>=r.target?'rgba(34,197,94,.6)':'rgba(245,158,11,.6)'),
+        borderColor:     D.util_by_grade.map(r=>r.rate>=r.target?SUCCESS:WARN),
+        borderWidth:1, borderRadius:4 },
+      { label:'Target', data:D.util_by_grade.map(r=>r.target),
+        type:'line',borderColor:DANGER,borderDash:[4,4],borderWidth:1.5,pointRadius:3,
+        pointBackgroundColor:DANGER,fill:false },
+    ],
+  },
+  options:{
+    ...CHART_DEFAULTS,
+    responsive:true,
+    plugins:{legend:{labels:{color:TEXT,boxWidth:10}},
+      tooltip:{callbacks:{label:c=>c.dataset.label+': '+c.raw+'%'}} },
+    scales:{
+      x:{grid:{color:GRID},ticks:{color:TEXT,font:{size:10}}},
+      y:{grid:{color:GRID},ticks:{color:TEXT,callback:v=>v+'%'},min:40,max:100},
+    },
+  },
+});
+
+// Util by SL (page 2 duplicate)
+new Chart(document.getElementById('c-util-sl2'), {
+  type:'bar',
+  data:{
+    labels: D.util_by_sl.map(r=>r.name),
+    datasets:[
+      {label:'Actual',data:D.util_by_sl.map(r=>r.rate),
+        backgroundColor:D.util_by_sl.map(r=>r.rate>=75?'rgba(34,197,94,.6)':'rgba(245,158,11,.6)'),
+        borderColor:D.util_by_sl.map(r=>r.rate>=75?SUCCESS:WARN),borderWidth:1,borderRadius:4},
+      {label:'Target 75%',data:D.util_by_sl.map(()=>75),
+        type:'line',borderColor:DANGER,borderDash:[4,4],borderWidth:1.5,pointRadius:0,fill:false},
+    ],
+  },
+  options:{
+    ...CHART_DEFAULTS, responsive:true,
+    plugins:{legend:{labels:{color:TEXT,boxWidth:10}},tooltip:{callbacks:{label:c=>c.dataset.label+': '+c.raw+'%'}}},
+    scales:{x:{grid:{color:GRID},ticks:{color:TEXT}},y:{grid:{color:GRID},ticks:{color:TEXT,callback:v=>v+'%'},min:50,max:100}},
+  },
+});
+
+// ══════════════════════════════════════════════
+// CHART 7 — WIP Trend
+// ══════════════════════════════════════════════
+new Chart(document.getElementById('c-wip-trend'), {
+  type:'line',
+  data:{
+    labels:D.wip_trend.map(r=>r.month),
+    datasets:[{
+      label:'WIP Value',data:D.wip_trend.map(r=>r.wip),
+      borderColor:WARN,backgroundColor:'rgba(245,158,11,.08)',
+      borderWidth:2,fill:true,tension:.35,pointRadius:3,pointBackgroundColor:WARN,
+    }],
+  },
+  options:{
+    ...CHART_DEFAULTS,responsive:true,
+    plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>fmt(c.raw)}}},
+    scales:{
+      x:{grid:{color:GRID},ticks:{color:TEXT,maxRotation:45}},
+      y:{grid:{color:GRID},ticks:{color:TEXT,callback:v=>fmt(v)},beginAtZero:true},
+    },
+  },
+});
+
+// ══════════════════════════════════════════════
+// CHART 8 — WIP by Service Line
+// ══════════════════════════════════════════════
+new Chart(document.getElementById('c-wip-sl'), {
+  type:'doughnut',
+  data:{
+    labels:D.wip_by_sl.map(r=>r.name),
+    datasets:[{data:D.wip_by_sl.map(r=>r.wip),
+      backgroundColor:SL_COLORS,borderColor:'#0b0d14',borderWidth:2}],
+  },
+  options:{
+    responsive:true,
+    plugins:{
+      legend:{position:'bottom',labels:{color:TEXT,boxWidth:10}},
+      tooltip:{callbacks:{label:c=>c.label+': '+fmt(c.raw)}},
+    },
+  },
+});
+
+// ══════════════════════════════════════════════
+// CHART 9 — Write-offs by SL
+// ══════════════════════════════════════════════
+new Chart(document.getElementById('c-wo-sl'), {
+  type:'bar',
+  data:{
+    labels:D.writeoffs.map(r=>r.name),
+    datasets:[{
+      label:'Write-Off Amount',data:D.writeoffs.map(r=>r.amount),
+      backgroundColor:'rgba(239,68,68,.5)',borderColor:DANGER,borderWidth:1,borderRadius:4,
+    }],
+  },
+  options:{
+    ...CHART_DEFAULTS,responsive:true,indexAxis:'y',
+    plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>fmt(c.raw)}}},
+    scales:{
+      x:{grid:{color:GRID},ticks:{color:TEXT,callback:v=>fmt(v)}},
+      y:{grid:{color:'transparent'},ticks:{color:TEXT}},
+    },
+  },
+});
+
+// ══════════════════════════════════════════════
+// CHART 10 — Debtor donut
+// ══════════════════════════════════════════════
+const debtorColors = { Paid:'rgba(34,197,94,.6)', Issued:'rgba(91,110,245,.6)',
+  Overdue:'rgba(239,68,68,.6)', 'Written Off':'rgba(100,116,139,.6)', Draft:'rgba(245,158,11,.5)' };
+const debtorBorder = { Paid:SUCCESS, Issued:ACCENT, Overdue:DANGER, 'Written Off':TEXT, Draft:WARN };
+const daTotals = D.debtor_ageing.filter(r=>r.amount>0);
+
+new Chart(document.getElementById('c-debtor-donut'), {
+  type:'doughnut',
+  data:{
+    labels:daTotals.map(r=>r.status),
+    datasets:[{
+      data:daTotals.map(r=>r.amount),
+      backgroundColor:daTotals.map(r=>debtorColors[r.status]||'rgba(148,163,184,.4)'),
+      borderColor:daTotals.map(r=>debtorBorder[r.status]||TEXT),
+      borderWidth:2,
+    }],
+  },
+  options:{
+    responsive:true,
+    plugins:{
+      legend:{position:'bottom',labels:{color:TEXT,boxWidth:10}},
+      tooltip:{callbacks:{label:c=>c.label+': '+fmt(c.raw)+' ('+c.count+' inv)'}},
+    },
+  },
+});
+
+new Chart(document.getElementById('c-debtor-count'), {
+  type:'bar',
+  data:{
+    labels:D.debtor_ageing.map(r=>r.status),
+    datasets:[{
+      label:'Invoice Count',data:D.debtor_ageing.map(r=>r.count),
+      backgroundColor:D.debtor_ageing.map(r=>debtorColors[r.status]||'rgba(148,163,184,.4)'),
+      borderColor:D.debtor_ageing.map(r=>debtorBorder[r.status]||TEXT),
+      borderWidth:1,borderRadius:4,
+    }],
+  },
+  options:{
+    ...CHART_DEFAULTS,responsive:true,
+    plugins:{legend:{display:false}},
+    scales:{
+      x:{grid:{color:GRID},ticks:{color:TEXT}},
+      y:{grid:{color:GRID},ticks:{color:TEXT},beginAtZero:true},
+    },
+  },
+});
+
+// Debtor table
+const totalDebt = D.debtor_ageing.reduce((s,r)=>s+r.amount,0);
+const riskMap = { Paid:'tag-green', Issued:'tag-blue', Overdue:'tag-red', 'Written Off':'tag-gray', Draft:'tag-amber' };
+document.getElementById('debtor-tbody').innerHTML = D.debtor_ageing.map(r=>{
+  const pct = totalDebt>0 ? (r.amount/totalDebt*100).toFixed(1) : '0.0';
+  return `<tr>
+    <td><span class="tag ${riskMap[r.status]||'tag-gray'}">${r.status}</span></td>
+    <td>${r.count}</td>
+    <td>${fmt(r.amount)}</td>
+    <td>${pct}%</td>
+    <td><span class="tag ${r.status==='Overdue'?'tag-red':r.status==='Written Off'?'tag-gray':r.status==='Issued'?'tag-amber':'tag-green'}">${r.status==='Overdue'?'High Risk':r.status==='Written Off'?'Lost':r.status==='Issued'?'Monitor':'Low'}</span></td>
+  </tr>`;
+}).join('');
+
+// ══════════════════════════════════════════════
+// CHART 11 — Pipeline bar
+// ══════════════════════════════════════════════
+new Chart(document.getElementById('c-pipeline-bar'), {
+  type:'bar',
+  data:{
+    labels:D.pipeline.map(r=>r.stage),
+    datasets:[
+      {label:'Estimated Value',data:D.pipeline.map(r=>r.value),
+        backgroundColor:'rgba(91,110,245,.4)',borderColor:ACCENT,borderWidth:1,borderRadius:4},
+      {label:'Weighted Value',data:D.pipeline.map(r=>r.weighted),
+        backgroundColor:'rgba(139,92,246,.6)',borderColor:ACCENT2,borderWidth:1,borderRadius:4},
+    ],
+  },
+  options:{
+    ...CHART_DEFAULTS,responsive:true,
+    plugins:{
+      legend:{labels:{color:TEXT,boxWidth:10}},
+      tooltip:{callbacks:{label:c=>c.dataset.label+': '+fmt(c.raw)}},
+    },
+    scales:{
+      x:{grid:{color:GRID},ticks:{color:TEXT}},
+      y:{grid:{color:GRID},ticks:{color:TEXT,callback:v=>fmt(v)},beginAtZero:true},
+    },
+  },
+});
+
+// Pipeline table
+const totalPipe = D.pipeline.reduce((s,r)=>s+r.value,0);
+const stageTag = { Lead:'tag-gray',Qualified:'tag-blue','Proposal Sent':'tag-blue',
+  Negotiation:'tag-amber',Won:'tag-green',Lost:'tag-red' };
+document.getElementById('pipeline-tbody').innerHTML = D.pipeline.map(r=>{
+  const cov = totalPipe>0 ? (r.value/totalPipe*100).toFixed(1) : '0';
+  return `<tr>
+    <td><span class="tag ${stageTag[r.stage]||'tag-gray'}">${r.stage}</span></td>
+    <td>${r.count}</td>
+    <td>${fmt(r.value)}</td>
+    <td>${fmt(r.weighted)}</td>
+    <td>
+      <div style="display:flex;align-items:center;gap:6px">
+        <div class="prog-bar" style="flex:1;height:4px">
+          <div class="prog-fill" style="width:${cov}%;background:${r.stage==='Won'?'var(--success)':r.stage==='Lost'?'var(--danger)':'var(--accent)'}"></div>
+        </div>
+        <span style="font-size:10px;color:var(--text3)">${cov}%</span>
+      </div>
+    </td>
+  </tr>`;
+}).join('');
+</script>
+</body>
+</html>

@@ -1,0 +1,1578 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>StudioTech BI Blueprint Generator — Early Access Beta</title>
+  <link rel="stylesheet" href="styles.css"/>
+  <style>
+    /* ── blueprint-generator.html additions not in styles.css ── */
+
+    /* Loading overlay (fullscreen spinner during API call) */
+    .loading-overlay {
+      position: fixed; inset: 0;
+      background: rgba(11,13,20,.88);
+      display: none; align-items: center; justify-content: center;
+      flex-direction: column; gap: 14px; z-index: 200;
+    }
+    .loading-overlay.on { display: flex; }
+    .spinner {
+      width: 42px; height: 42px; border-radius: 50%;
+      border: 3px solid var(--border); border-top-color: var(--accent);
+      animation: spin .7s linear infinite;
+    }
+    .load-text  { font-size: 13px; color: var(--text2); }
+    .load-step  { font-size: 11px; color: var(--accent); min-height: 18px; text-align: center; }
+
+    /* Stream box (debug / status output) */
+    .stream-box {
+      background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+      padding: 12px 14px; font-family: var(--font-mono); font-size: 11px;
+      color: #a8d8a8; line-height: 1.7; min-height: 40px; max-height: 140px;
+      overflow-y: auto; display: none; margin-top: 10px; white-space: pre-wrap; word-break: break-word;
+    }
+    .stream-box.visible { display: block; }
+
+    /* Clarification panel (low confidence) */
+    .clarify-box {
+      background: rgba(245,158,11,.06); border: 1px solid rgba(245,158,11,.3);
+      border-radius: var(--radius); padding: 16px; margin-bottom: 16px; display: none;
+    }
+    .clarify-box.visible { display: block; }
+    .clarify-box h3 { font-size: 13px; font-weight: 600; color: var(--warn); margin-bottom: 8px; }
+    .clarify-box p  { font-size: 12px; color: var(--text); line-height: 1.6; margin-bottom: 10px; }
+    .clarify-candidates { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+    .candidate-btn {
+      padding: 6px 12px; border-radius: 6px; border: 1px solid var(--warn);
+      background: rgba(245,158,11,.1); color: var(--warn); font-size: 11px;
+      font-weight: 600; cursor: pointer; transition: all .12s;
+    }
+    .candidate-btn:hover { background: rgba(245,158,11,.2); }
+
+    /* Export button */
+    #exportBtn {
+      display: none;
+      align-items: center; gap: 6px;
+      padding: 5px 12px; border-radius: 7px;
+      background: rgba(91,110,245,.12);
+      border: 1px solid rgba(91,110,245,.35);
+      color: var(--accent); font-size: 11px; font-weight: 600;
+      cursor: pointer; white-space: nowrap;
+      font-family: var(--font);
+      transition: background .15s;
+    }
+    #exportBtn:hover { background: rgba(91,110,245,.22); }
+
+    /* Gen status span */
+    #genStatus { font-size: 11px; color: var(--text2); margin-left: 4px; }
+
+    /* Provider hint block */
+    .provider-hint {
+      font-size: 11px; color: var(--text2); padding: 8px 10px;
+      background: var(--surface2); border-radius: 6px;
+      border-left: 2px solid var(--accent); line-height: 1.6;
+    }
+    .provider-hint a { color: var(--accent3); text-decoration: none; }
+    .provider-hint a:hover { text-decoration: underline; }
+
+    /* Blueprint output view sections */
+    .bp-section { margin-bottom: 24px; }
+    .sec-hdr-bp {
+      display: flex; align-items: center; gap: 9px; margin-bottom: 12px;
+    }
+    .sec-icon-bp {
+      width: 26px; height: 26px; border-radius: 7px;
+      background: rgba(91,110,245,.14);
+      display: flex; align-items: center; justify-content: center; font-size: 13px;
+    }
+    .sec-hdr-bp h2 { font-size: 13px; font-weight: 700; }
+    .sec-div-bp { flex: 1; height: 1px; background: var(--border); }
+
+    /* Blueprint meta grid override (4 cols, smaller) */
+    .bp-meta-grid {
+      display: grid; grid-template-columns: repeat(4,1fr); gap: 10px;
+    }
+    .bp-meta-item { background: var(--surface2); border-radius: 7px; padding: 10px 12px; }
+    .bp-ml { font-size: 9px; font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 3px; }
+    .bp-mv { font-size: 12px; font-weight: 600; }
+
+    /* DAX block in blueprint view */
+    .dax-block {
+      background: #080a10; border: 1px solid var(--border); border-radius: 7px;
+      padding: 11px 13px; font-family: var(--font-mono); font-size: 11px;
+      color: #a8d8a8; line-height: 1.7; overflow-x: auto; white-space: pre; margin-bottom: 8px;
+    }
+
+    /* Confidence score display in blueprint */
+    .bp-conf-score {
+      font-size: 52px; font-weight: 800; text-align: center;
+      background: linear-gradient(135deg,var(--accent),var(--accent2));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    }
+    .bp-conf-label { text-align: center; font-size: 11px; color: var(--text2); margin-bottom: 14px; }
+
+    /* Progress bar (blueprint confidence) */
+    .prog-wrap { margin-bottom: 4px; }
+    .prog-label { display: flex; justify-content: space-between; font-size: 10px; color: var(--text2); margin-bottom: 3px; }
+    .prog-bar-bp { height: 5px; background: var(--surface2); border-radius: 3px; overflow: hidden; }
+    .prog-fill-bp { height: 100%; border-radius: 3px; background: linear-gradient(90deg,var(--accent),var(--accent2)); transition: width .8s ease; }
+
+    /* Assumptions list in blueprint */
+    .assump-list { display: flex; flex-direction: column; gap: 5px; }
+    .assump {
+      display: flex; align-items: flex-start; gap: 7px; font-size: 11px;
+      color: var(--text2); padding: 5px 9px; background: var(--surface2);
+      border-radius: 5px; border-left: 2px solid var(--warn);
+    }
+
+    /* Self-review in blueprint-generator style */
+    .rev-header {
+      display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px;
+    }
+    .verdict-pill {
+      font-size: 10px; font-weight: 700; padding: 4px 10px; border-radius: 20px; letter-spacing: .5px;
+    }
+    .v-pass { background: rgba(34,197,94,.12); color: var(--success); border: 1px solid var(--success); }
+    .v-warn { background: rgba(245,158,11,.12); color: var(--warn);    border: 1px solid var(--warn); }
+    .v-fail { background: rgba(239,68,68,.12);  color: var(--danger);  border: 1px solid var(--danger); }
+
+    /* Strengths/weaknesses/improvements columns */
+    .sw-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+
+    /* KPI card in blueprint output (blueprint-generator style) */
+    .bp-kpi-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 9px; }
+    .bp-kpi-card { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 12px; }
+    .bp-kpi-name { font-size: 11px; font-weight: 600; margin-bottom: 6px; }
+    .bp-kpi-tgt  { font-size: 10px; color: var(--text2); margin-bottom: 7px; }
+    .bp-kpi-thresh { display: flex; flex-direction: column; gap: 3px; }
+    .bp-kt { display: flex; align-items: center; gap: 5px; font-size: 10px; }
+
+    /* Page cards in blueprint output */
+    .bp-page-grid { display: grid; grid-template-columns: repeat(2,1fr); gap: 10px; }
+    .bp-page-card { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 12px; }
+    .bp-page-name { font-size: 12px; font-weight: 700; margin-bottom: 3px; display: flex; align-items: center; gap: 7px; }
+    .bp-page-purpose { font-size: 10px; color: var(--text2); margin-bottom: 8px; }
+    .vis-list { display: flex; flex-direction: column; gap: 3px; }
+    .vis-item { display: flex; align-items: center; gap: 7px; font-size: 10px; padding: 3px 6px; border-radius: 4px; background: rgba(255,255,255,.025); }
+
+    /* Raw JSON view */
+    .raw-copy-btn { font-size: 11px; padding: 5px 10px; }
+
+    /* Rubric row (blueprint-generator style, replaces rubric-grid in input view) */
+    .rubric-row {
+      display: flex; align-items: center; gap: 8px; padding: 7px 0;
+      border-bottom: 1px solid var(--border); font-size: 11px;
+    }
+    .rubric-row:last-child { border-bottom: none; }
+
+    /* Sidebar agent steps (s1-s8 style) */
+    .agent-step {
+      display: flex; align-items: flex-start; gap: 8px; padding: 6px 0;
+      font-size: 11px; color: var(--text2);
+      border-bottom: 1px solid rgba(255,255,255,.04);
+    }
+    .agent-step:last-child { border-bottom: none; }
+    .step-bubble {
+      width: 18px; height: 18px; border-radius: 50%; font-size: 9px; font-weight: 700;
+      display: flex; align-items: center; justify-content: center;
+      background: var(--surface3); color: var(--text3); flex-shrink: 0;
+      transition: all .2s;
+    }
+    .step-bubble.done   { background: rgba(34,197,94,.2);  color: var(--success); }
+    .step-bubble.active { background: rgba(91,110,245,.25); color: var(--accent); }
+
+    /* Confidence guide in sidebar */
+    .conf-guide { font-size: 11px; line-height: 2; color: var(--text2); }
+
+    @media (max-width: 1000px) {
+      .bp-meta-grid { grid-template-columns: repeat(2,1fr); }
+      .bp-kpi-grid  { grid-template-columns: repeat(2,1fr); }
+      .bp-page-grid { grid-template-columns: 1fr; }
+      .sw-grid      { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="app">
+
+  <!-- ══════════════════════════════════════════
+       TOPBAR
+  ═══════════════════════════════════════════ -->
+  <header class="topbar">
+    <div class="topbar-logo">
+      <div class="logo-icon">📊</div>
+      StudioTech BI Blueprint Generator
+    </div>
+    <div class="topbar-sep"></div>
+    <span class="chip accent">AI-Powered</span>
+    <div class="topbar-right">
+      <div class="agent-badge">
+        <span class="pulse-dot"></span>
+        9-gate quality framework
+      </div>
+      <span class="pill ai" id="providerPill">⚡ Groq · Llama 3.3 70B · Free</span>
+      <span class="chip">AU · AUD · FY July</span>
+      <span class="chip" id="dateBadge"></span>
+      <button id="exportBtn" onclick="exportPDF()" title="Export blueprint to PDF">📄 Export PDF</button>
+    </div>
+  </header>
+
+  <div class="body-wrap">
+
+    <!-- ══════════════════════════════════════════
+         SIDEBAR
+    ═══════════════════════════════════════════ -->
+    <nav class="sidebar">
+
+      <!-- Navigation -->
+      <div class="sb-section">
+        <div class="sb-label">Navigation</div>
+        <button class="nav-btn active" id="navInput">
+          <span class="nav-icon">✏️</span>
+          Generate Blueprint
+        </button>
+        <button class="nav-btn" id="navDetection">
+          <span class="nav-icon">🔍</span>
+          Industry Detection
+          <span class="nav-count" id="cntDetection">—</span>
+        </button>
+        <button class="nav-btn" id="navCapabilities">
+          <span class="nav-icon">⚙️</span>
+          Business Capabilities
+          <span class="nav-count" id="cntCapabilities">—</span>
+        </button>
+        <button class="nav-btn" id="navModel">
+          <span class="nav-icon">🗄️</span>
+          Semantic Model
+          <span class="nav-count" id="cntModel">—</span>
+        </button>
+        <button class="nav-btn" id="navKpis">
+          <span class="nav-icon">🎯</span>
+          KPIs
+          <span class="nav-count" id="cntKpis">—</span>
+        </button>
+        <button class="nav-btn" id="navPages">
+          <span class="nav-icon">📄</span>
+          Dashboard Pages
+          <span class="nav-count" id="cntPages">—</span>
+        </button>
+        <button class="nav-btn" id="navDax">
+          <span class="nav-icon">⚡</span>
+          DAX Catalogue
+          <span class="nav-count" id="cntDax">—</span>
+        </button>
+        <button class="nav-btn" id="navReview">
+          <span class="nav-icon">🛡️</span>
+          Quality Review
+          <span class="nav-count" id="cntReview">—</span>
+        </button>
+        <button class="nav-btn" id="navBlueprint">
+          <span class="nav-icon">📐</span>
+          Blueprint Output
+        </button>
+        <button class="nav-btn" id="navRaw">
+          <span class="nav-icon">🗂️</span>
+          Raw JSON
+        </button>
+      </div>
+
+      <!-- Tier 1 Packs -->
+      <div class="sb-section">
+        <div class="sb-label">Tier 1 — Core Industries</div>
+        <div class="pack-grid">
+          <div class="pack-chip" data-industry="NDIS">🧩 NDIS</div>
+          <div class="pack-chip" data-industry="Government">🏛️ Govt</div>
+          <div class="pack-chip" data-industry="Healthcare">🏥 Health</div>
+          <div class="pack-chip" data-industry="Aged Care">👴 Aged</div>
+          <div class="pack-chip" data-industry="Property Management">🏢 PropMgmt</div>
+          <div class="pack-chip" data-industry="Real Estate">🏠 Real Est</div>
+          <div class="pack-chip" data-industry="Accounting">📒 Acctg</div>
+          <div class="pack-chip" data-industry="Legal">⚖️ Legal</div>
+          <div class="pack-chip" data-industry="Finance">💰 Finance</div>
+          <div class="pack-chip" data-industry="Construction">🏗️ Const</div>
+          <div class="pack-chip" data-industry="Professional Services">💼 ProServ</div>
+        </div>
+      </div>
+
+      <!-- Tier 2 Packs -->
+      <div class="sb-section">
+        <div class="sb-label">Tier 2 — Extended Industries</div>
+        <div class="pack-grid">
+          <div class="pack-chip" data-industry="Retail">🛍️ Retail</div>
+          <div class="pack-chip" data-industry="Education">🎓 Edu</div>
+          <div class="pack-chip" data-industry="Manufacturing">🏭 Mfg</div>
+          <div class="pack-chip" data-industry="Human Resources">👥 HR</div>
+          <div class="pack-chip" data-industry="Marketing">📣 Mktg</div>
+          <div class="pack-chip" data-industry="Logistics">🚚 Logist</div>
+          <div class="pack-chip" data-industry="Insurance">🛡️ Insur</div>
+          <div class="pack-chip" data-industry="Hospitality">🏨 Hosp</div>
+        </div>
+      </div>
+
+      <!-- Agent Workflow Steps -->
+      <div class="sb-section">
+        <div class="sb-label">Agent Workflow (8 steps)</div>
+        <div id="agentStepsWrap">
+          <div class="agent-step"><div class="step-bubble" id="s1">1</div><span>Detect industry</span></div>
+          <div class="agent-step"><div class="step-bubble" id="s2">2</div><span>Define business goals</span></div>
+          <div class="agent-step"><div class="step-bubble" id="s3">3</div><span>Map capabilities</span></div>
+          <div class="agent-step"><div class="step-bubble" id="s4">4</div><span>Identify entities</span></div>
+          <div class="agent-step"><div class="step-bubble" id="s5">5</div><span>Generate semantic model</span></div>
+          <div class="agent-step"><div class="step-bubble" id="s6">6</div><span>Design pages &amp; visuals</span></div>
+          <div class="agent-step"><div class="step-bubble" id="s7">7</div><span>Generate blueprint JSON</span></div>
+          <div class="agent-step"><div class="step-bubble" id="s8">8</div><span>Self-review &amp; improve</span></div>
+        </div>
+      </div>
+
+      <!-- Confidence Guide -->
+      <div class="sb-section">
+        <div class="sb-label">Confidence Guide</div>
+        <div class="conf-guide">
+          <span style="color:var(--success)">■</span> 90–100 Production Ready<br>
+          <span style="color:var(--accent)">■</span> 75–89 Strong<br>
+          <span style="color:var(--warn)">■</span> 50–74 Directional<br>
+          <span style="color:var(--danger)">■</span> Below 50 Needs Workshop
+        </div>
+      </div>
+
+      <!-- Test Suite Info -->
+      <div class="sb-section">
+        <div class="sb-label">Test Suite</div>
+        <div style="font-size:11px;color:var(--text2);line-height:2;padding:0 4px">
+          🔴 Critical: 18<br>
+          🟡 High: 22<br>
+          🟠 Medium: 10<br>
+          <strong style="color:var(--text)">Total: 50 tests</strong>
+        </div>
+      </div>
+
+    </nav>
+    <!-- /sidebar -->
+
+    <!-- ══════════════════════════════════════════
+         MAIN CONTENT
+    ═══════════════════════════════════════════ -->
+    <main class="main">
+
+      <!-- ── Agent Progress Panel (inline — shown during generation) ── -->
+      <div class="agent-panel" id="agentPanel">
+        <div class="agent-title">
+          <span class="spin">⚡</span>
+          Agent Workflow Running
+          <span class="chip accent" style="margin-left:8px">8 Steps</span>
+        </div>
+        <div class="steps-list" id="stepsList"></div>
+      </div>
+
+      <!-- ════════════════════════════════════════
+           VIEW: INPUT / GENERATE
+      ═══════════════════════════════════════════ -->
+      <div class="view active" id="view-input">
+
+        <div class="panel">
+          <div class="panel-title">📐 Generate Dashboard Blueprint</div>
+          <div class="panel-sub">
+            Powered by your <strong>AgentInstructions</strong>, <strong>IndustryKnowledgePacks</strong>,
+            <strong>BusinessCapabilityMappings</strong>, <strong>DashboardDesignRules</strong>
+            &amp; <strong>DashboardBlueprintSchema</strong>.
+            Generates blueprints with 5 quality frameworks, 9-gate self-review, governance design, and Audit Agent compatibility.
+            Select a mode then describe your requirements or paste your schema.
+          </div>
+
+          <!-- Mode Tabs -->
+          <div class="mode-tabs">
+            <div class="mode-tab active" id="modeTabReq">✏️ Business Requirements Mode</div>
+            <div class="mode-tab" id="modeTabSchema">🗄️ Dataset / Schema Mode</div>
+          </div>
+
+          <!-- Configuration Grid -->
+          <div class="form-grid">
+
+            <div class="form-group">
+              <label for="inp-industry">Industry (leave blank to auto-detect)</label>
+              <select id="inp-industry">
+                <option value="">Auto-detect from requirements</option>
+                <optgroup label="── Tier 1 ──">
+                  <option value="NDIS">🧩 NDIS Provider</option>
+                  <option value="Government">🏛️ Government (Federal / State / Local)</option>
+                  <option value="Healthcare">🏥 Healthcare</option>
+                  <option value="Aged Care">👴 Aged Care</option>
+                  <option value="Property Management">🏢 Property Management</option>
+                  <option value="Real Estate">🏠 Real Estate Agency</option>
+                  <option value="Accounting">📒 Accounting Practice</option>
+                  <option value="Legal">⚖️ Legal Practice</option>
+                  <option value="Finance">💰 Finance &amp; Financial Services</option>
+                  <option value="Construction">🏗️ Construction</option>
+                  <option value="Professional Services">💼 Professional Services</option>
+                </optgroup>
+                <optgroup label="── Tier 2 ──">
+                  <option value="Retail">🛍️ Retail &amp; E-Commerce</option>
+                  <option value="Education">🎓 Education</option>
+                  <option value="Manufacturing">🏭 Manufacturing</option>
+                  <option value="Human Resources">👥 Human Resources</option>
+                  <option value="Marketing">📣 Marketing &amp; Advertising</option>
+                  <option value="Logistics">🚚 Logistics &amp; Transport</option>
+                  <option value="Insurance">🛡️ Insurance</option>
+                  <option value="Hospitality">🏨 Hospitality &amp; Tourism</option>
+                </optgroup>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label for="inp-audience">Primary Audience</label>
+              <select id="inp-audience">
+                <option value="Executives, Operations, Analysts">Executives, Operations, Analysts</option>
+                <option value="C-Suite / Board">C-Suite / Board only</option>
+                <option value="Operations Team">Operations Team</option>
+                <option value="Finance Team">Finance Team</option>
+                <option value="Sales &amp; Commercial">Sales &amp; Commercial</option>
+                <option value="Clinical / Service Delivery">Clinical / Service Delivery</option>
+                <option value="All Staff">All Staff</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label for="inp-currency">Currency</label>
+              <select id="inp-currency">
+                <option value="AUD" selected>AUD — Australian Dollar</option>
+                <option value="USD">USD — US Dollar</option>
+                <option value="GBP">GBP — British Pound</option>
+                <option value="EUR">EUR — Euro</option>
+                <option value="NZD">NZD — New Zealand Dollar</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label for="inp-fy">Fiscal Year Start</label>
+              <select id="inp-fy">
+                <option value="July" selected>July (AU Standard)</option>
+                <option value="January">January (Calendar Year)</option>
+                <option value="April">April (UK Standard)</option>
+                <option value="October">October</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label for="inp-rls">RLS Required?</label>
+              <select id="inp-rls">
+                <option value="yes">Yes — Row-level security needed</option>
+                <option value="no">No — Open access</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label for="inp-refresh">Refresh Cadence</label>
+              <select id="inp-refresh">
+                <option value="Daily">Daily</option>
+                <option value="Real-time">Real-time</option>
+                <option value="Hourly">Hourly</option>
+                <option value="Weekly">Weekly</option>
+                <option value="Monthly">Monthly</option>
+              </select>
+            </div>
+
+            <!-- Business Requirements textarea -->
+            <div class="form-group full" id="reqInputGroup">
+              <label for="inp-requirements">Business Requirements</label>
+              <textarea id="inp-requirements" rows="6"
+                placeholder="Describe what decisions this dashboard should support. Include stakeholders, KPIs of interest, pain points, and reporting frequency…"
+              >Our NDIS provider needs to track participant funding utilisation, monitor delivered vs planned hours, and ensure claims are submitted on time. We want workforce utilisation by support worker and region. Management needs a weekly executive summary showing revenue, margin, and participant counts.</textarea>
+            </div>
+
+            <!-- Schema textarea (hidden by default) -->
+            <div class="form-group full" id="schemaInputGroup" style="display:none">
+              <label for="inp-schema">Dataset / Schema (paste table and column names)</label>
+              <textarea id="inp-schema" rows="7"
+                placeholder="e.g.&#10;Participants(ParticipantID, Name, Region, PlanStart, PlanEnd, FundingAmt)&#10;ServiceDelivery(DeliveryID, ParticipantID, WorkerID, ServiceDate, Hours, Rate, ClaimID)&#10;Employees(WorkerID, Name, Region, EmploymentType, HourlyRate)&#10;Claims(ClaimID, ParticipantID, SupportItem, ClaimDate, Amount, Status)"
+              ></textarea>
+            </div>
+
+          </div>
+          <!-- /form-grid -->
+
+          <!-- AI Provider Configuration -->
+          <div class="api-section">
+            <div class="api-row">
+              <div class="form-group">
+                <label for="inp-provider">AI Provider</label>
+                <select id="inp-provider">
+                  <option value="groq">⚡ Groq — Free (Llama 3.3 70B)</option>
+                  <option value="gemini">🆓 Gemini — Free (1.5 Flash)</option>
+                  <option value="openrouter">🆓 OpenRouter — Free models</option>
+                  <option value="openai">🟢 OpenAI (GPT-4o)</option>
+                  <option value="anthropic">🟣 Anthropic (Claude Sonnet)</option>
+                  <option value="demo">🎭 Demo Mode (No API Key)</option>
+                </select>
+              </div>
+              <div class="form-group" id="apiKeyGroup">
+                <label for="inp-apikey" id="apiKeyLabel">Groq API Key</label>
+                <input type="password" id="inp-apikey" placeholder="gsk_..." autocomplete="off"/>
+              </div>
+            </div>
+            <div id="providerHintWrap" style="margin-top:8px">
+              <div class="provider-hint" id="providerHint"></div>
+            </div>
+          </div>
+
+          <!-- Action Buttons -->
+          <div class="btn-row">
+            <button class="btn btn-primary" id="generateBtn">⚡ Generate Blueprint</button>
+            <button class="btn btn-secondary" id="clearBtn">🗑 Clear</button>
+            <span id="genStatus"></span>
+          </div>
+
+          <!-- Debug / stream box -->
+          <div id="streamBox" class="stream-box"></div>
+
+        </div>
+        <!-- /panel -->
+
+        <!-- Clarification panel (low confidence) -->
+        <div class="clarify-box" id="clarifyBox">
+          <h3>⚠️ Industry Confidence Below 70 — Clarification Required</h3>
+          <p id="clarifyText"></p>
+          <div class="clarify-candidates" id="clarifyBtns"></div>
+          <p style="font-size:11px;color:var(--text2)">
+            Click an industry to lock it in and re-generate, or add more detail to your requirements above.
+          </p>
+        </div>
+
+        <!-- Confidence Score Rubric -->
+        <div class="card">
+          <div class="section-hdr" style="margin-bottom:12px">
+            <div class="section-icon">📊</div>
+            <div class="section-title">Confidence Score Rubric — 7 Dimensions</div>
+            <div class="section-divider"></div>
+          </div>
+          <div style="padding:0 4px">
+            <div class="rubric-row"><span class="tag tag-green">90–100</span><strong>Production Ready</strong><span style="color:var(--text2);margin-left:6px">Full schema + requirements. Ready to build.</span></div>
+            <div class="rubric-row"><span class="tag tag-blue">75–89</span><strong>Strong</strong><span style="color:var(--text2);margin-left:6px">Good requirements, partial schema. Minor assumptions.</span></div>
+            <div class="rubric-row"><span class="tag tag-amber">50–74</span><strong>Directional</strong><span style="color:var(--text2);margin-left:6px">Requirements OR schema only. Significant assumptions.</span></div>
+            <div class="rubric-row"><span class="tag tag-red">Below 50</span><strong>Insufficient</strong><span style="color:var(--text2);margin-left:6px">Requires a requirements workshop before proceeding.</span></div>
+          </div>
+        </div>
+
+      </div>
+      <!-- /view-input -->
+
+      <!-- ════════════════════════════════════════
+           VIEW: INDUSTRY DETECTION  (app.js renders into here)
+      ═══════════════════════════════════════════ -->
+      <div class="view" id="view-detection">
+        <div class="empty-state">
+          <div class="empty-icon">🔍</div>
+          <div class="empty-title">No Blueprint Generated Yet</div>
+          <div class="empty-sub">Fill in your requirements on the Generate tab<br>and click ⚡ Generate Blueprint to see industry detection results here.</div>
+        </div>
+      </div>
+
+      <!-- ════════════════════════════════════════
+           VIEW: BUSINESS CAPABILITIES
+      ═══════════════════════════════════════════ -->
+      <div class="view" id="view-capabilities">
+        <div class="empty-state">
+          <div class="empty-icon">⚙️</div>
+          <div class="empty-title">No Blueprint Generated Yet</div>
+          <div class="empty-sub">Generate a blueprint to see mapped business capabilities and core processes.</div>
+        </div>
+      </div>
+
+      <!-- ════════════════════════════════════════
+           VIEW: SEMANTIC MODEL
+      ═══════════════════════════════════════════ -->
+      <div class="view" id="view-model">
+        <div class="empty-state">
+          <div class="empty-icon">🗄️</div>
+          <div class="empty-title">No Blueprint Generated Yet</div>
+          <div class="empty-sub">Generate a blueprint to see the recommended star schema, relationships, and date table.</div>
+        </div>
+      </div>
+
+      <!-- ════════════════════════════════════════
+           VIEW: KPIs
+      ═══════════════════════════════════════════ -->
+      <div class="view" id="view-kpis">
+        <div class="empty-state">
+          <div class="empty-icon">🎯</div>
+          <div class="empty-title">No Blueprint Generated Yet</div>
+          <div class="empty-sub">Generate a blueprint to see KPI definitions with Good / Warning / Critical thresholds.</div>
+        </div>
+      </div>
+
+      <!-- ════════════════════════════════════════
+           VIEW: DASHBOARD PAGES
+      ═══════════════════════════════════════════ -->
+      <div class="view" id="view-pages">
+        <div class="empty-state">
+          <div class="empty-icon">📄</div>
+          <div class="empty-title">No Blueprint Generated Yet</div>
+          <div class="empty-sub">Generate a blueprint to see recommended dashboard pages, visuals, and slicers.</div>
+        </div>
+      </div>
+
+      <!-- ════════════════════════════════════════
+           VIEW: DAX CATALOGUE
+      ═══════════════════════════════════════════ -->
+      <div class="view" id="view-dax">
+        <div class="empty-state">
+          <div class="empty-icon">⚡</div>
+          <div class="empty-title">No Blueprint Generated Yet</div>
+          <div class="empty-sub">Generate a blueprint to see the full DAX measure catalogue grouped by display folder.</div>
+        </div>
+      </div>
+
+      <!-- ════════════════════════════════════════
+           VIEW: QUALITY REVIEW  (9-gate + 5 QF tabs — app.js renders)
+      ═══════════════════════════════════════════ -->
+      <div class="view" id="view-review">
+        <div class="empty-state">
+          <div class="empty-icon">🛡️</div>
+          <div class="empty-title">No Blueprint Generated Yet</div>
+          <div class="empty-sub">Generate a blueprint to see the 9-gate self-review report, 5 quality frameworks, confidence score, and security audit.</div>
+        </div>
+      </div>
+
+      <!-- ════════════════════════════════════════
+           VIEW: BLUEPRINT OUTPUT  (blueprint-generator style render)
+      ═══════════════════════════════════════════ -->
+      <div class="view" id="view-blueprint">
+        <div id="blueprintOut">
+          <div class="empty-state">
+            <div class="empty-icon">📐</div>
+            <div class="empty-title">No Blueprint Generated Yet</div>
+            <div class="empty-sub">Generate a blueprint first to see the full structured output.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ════════════════════════════════════════
+           VIEW: RAW JSON
+      ═══════════════════════════════════════════ -->
+      <div class="view" id="view-raw">
+        <div id="rawOut">
+          <div class="empty-state">
+            <div class="empty-icon">🗂️</div>
+            <div class="empty-title">No Blueprint Generated Yet</div>
+            <div class="empty-sub">Generate a blueprint first to see the raw JSON output.</div>
+          </div>
+        </div>
+      </div>
+
+    </main>
+    <!-- /main -->
+
+  </div>
+  <!-- /body-wrap -->
+
+</div>
+<!-- /app -->
+
+<!-- Loading overlay (fullscreen — from blueprint-generator.html) -->
+<div class="loading-overlay" id="loadingOverlay">
+  <div class="spinner"></div>
+  <div class="load-text">AI Agent Running...</div>
+  <div class="load-step" id="loadStep">Initialising workflow…</div>
+</div>
+
+<!-- Scripts — order matters: knowledgepacks first, then app -->
+<script src="knowledgepacks-1.js"></script>
+<script src="knowledgepacks-2.js"></script>
+<script src="app.js"></script>
+
+<script>
+/* ================================================================
+   index.html inline script
+   Adds all blueprint-generator.html features that are not already
+   handled by app.js:
+
+   1.  PROVIDERS config + onProviderChange()    — all 4 providers
+   2.  Sidebar step animation (s1-s8)           — setStep/resetSteps
+   3.  generate() wrapper                       — calls callAI() then
+       renderBlueprint() / renderRaw() in addition to app.js views
+   4.  showClarification()
+   5.  callAI() multi-provider function         — groq/gemini/openrouter/anthropic
+   6.  renderBlueprint()  — 8-section view (blueprint-generator style)
+   7.  renderRaw()        — raw JSON with copy
+   8.  copyRaw()
+   9.  exportPDF() + buildPDF()                 — star schema SVG, wireframes, gates
+   10. Extended showView() to cover new views
+
+   Naming note: The existing app.js uses inp-requirements (not inp-req).
+   We read from both IDs so both paths work.
+================================================================ */
+
+// ── State ────────────────────────────────────────────────────────
+let currentBP  = null;
+let isGenerating = false;
+
+// ── Extended showView ────────────────────────────────────────────
+// app.js handles the 8 core views; we extend it for blueprint + raw
+const _origShowView = typeof showView === 'function' ? showView : null;
+function showView(name) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  const target = document.getElementById('view-' + name);
+  if (target) target.classList.add('active');
+
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  const navMap = {
+    input:'navInput', detection:'navDetection', capabilities:'navCapabilities',
+    model:'navModel', kpis:'navKpis', pages:'navPages', dax:'navDax',
+    review:'navReview', blueprint:'navBlueprint', raw:'navRaw'
+  };
+  const activeNav = document.getElementById(navMap[name]);
+  if (activeNav) activeNav.classList.add('active');
+}
+
+// ── Sidebar step animation ────────────────────────────────────────
+function setStep(n, _state) {
+  for (let i = 1; i <= 8; i++) {
+    const el = document.getElementById('s' + i);
+    if (!el) continue;
+    el.classList.remove('done','active');
+    if (i < n) el.classList.add('done');
+    else if (i === n) el.classList.add('active');
+  }
+}
+function resetSteps() {
+  for (let i = 1; i <= 8; i++) {
+    const el = document.getElementById('s' + i);
+    if (el) el.classList.remove('done','active');
+  }
+}
+const ANIM_STEPS = [
+  [1,'Step 1 — Detecting industry...'],
+  [2,'Step 2 — Defining business goals...'],
+  [3,'Step 3 — Mapping capabilities...'],
+  [4,'Step 4 — Identifying entities...'],
+  [5,'Step 5 — Building semantic model...'],
+  [6,'Step 6 — Designing pages & visuals...'],
+  [7,'Step 7 — Generating blueprint JSON...'],
+  [8,'Step 8 — Self-review & improving...'],
+];
+async function animateSteps(stopAt) {
+  for (const [n, label] of ANIM_STEPS) {
+    if (n > stopAt) break;
+    setStep(n,'active');
+    const ls = document.getElementById('loadStep');
+    if (ls) ls.textContent = label;
+    await new Promise(r => setTimeout(r, 220));
+  }
+}
+
+// ── Providers ────────────────────────────────────────────────────
+const PROVIDERS = {
+  groq: {
+    label:'Groq API Key', placeholder:'gsk_...',
+    hint:'🆓 <strong>Free tier available.</strong> Sign up at <a href="https://console.groq.com" target="_blank">console.groq.com</a> → API Keys. 14,400 req/day free. Uses <strong>Llama 3.3 70B</strong> — excellent for structured JSON.',
+    model:'llama-3.3-70b-versatile',
+    url:'https://api.groq.com/openai/v1/chat/completions', format:'openai',
+    pill:'⚡ Groq · Llama 3.3 70B · Free'
+  },
+  gemini: {
+    label:'Gemini API Key', placeholder:'AIza...',
+    hint:'🆓 <strong>Free tier available.</strong> Get a key at <a href="https://aistudio.google.com/apikey" target="_blank">aistudio.google.com</a>. 1,500 req/day free. Uses <strong>Gemini 1.5 Flash</strong>.',
+    model:'gemini-1.5-flash', url:null, format:'gemini',
+    pill:'🤖 Gemini 1.5 Flash · Free'
+  },
+  openrouter: {
+    label:'OpenRouter API Key', placeholder:'sk-or-v1-...',
+    hint:'🆓 <strong>Free models available.</strong> Sign up at <a href="https://openrouter.ai/keys" target="_blank">openrouter.ai</a>. Uses <code>meta-llama/llama-3.3-70b-instruct:free</code> — no credit card required.',
+    model:'meta-llama/llama-3.3-70b-instruct:free',
+    url:'https://openrouter.ai/api/v1/chat/completions', format:'openai',
+    pill:'🤖 OpenRouter · Llama 3.3 · Free'
+  },
+  openai: {
+    label:'OpenAI API Key', placeholder:'sk-...',
+    hint:'💳 <strong>Paid.</strong> Get a key at <a href="https://platform.openai.com/api-keys" target="_blank">platform.openai.com</a>. Uses <strong>GPT-4o</strong>.',
+    model:'gpt-4o',
+    url:'https://api.openai.com/v1/chat/completions', format:'openai',
+    pill:'🟢 OpenAI · GPT-4o'
+  },
+  anthropic: {
+    label:'Anthropic API Key', placeholder:'sk-ant-api03-...',
+    hint:'💳 <strong>Paid only.</strong> Get a key at <a href="https://console.anthropic.com" target="_blank">console.anthropic.com</a>. Claude Sonnet gives the best blueprint quality.',
+    model:'claude-sonnet-4-20250514',
+    url:'https://api.anthropic.com/v1/messages', format:'anthropic',
+    pill:'🟣 Anthropic · Claude Sonnet'
+  },
+  demo: {
+    label:'No key required', placeholder:'',
+    hint:'🎭 <strong>Demo Mode.</strong> Generates a full realistic blueprint from the industry knowledge pack — no API call required. Great for testing the tool.',
+    model:'demo', url:null, format:'demo',
+    pill:'🎭 Demo Mode'
+  }
+};
+
+function updateProviderUI() {
+  const id  = document.getElementById('inp-provider')?.value || 'groq';
+  const p   = PROVIDERS[id] || PROVIDERS.groq;
+  const lbl = document.getElementById('apiKeyLabel');
+  const inp = document.getElementById('inp-apikey');
+  const grp = document.getElementById('apiKeyGroup');
+  const hint = document.getElementById('providerHint');
+  const pill = document.getElementById('providerPill');
+  if (lbl) lbl.textContent = p.label;
+  if (inp) inp.placeholder = p.placeholder;
+  if (grp) grp.style.display = (id === 'demo') ? 'none' : '';
+  if (hint) hint.innerHTML = p.hint;
+  if (pill) pill.textContent = p.pill;
+  // Also update old groqNote if present
+  const gn = document.getElementById('groqNote');
+  if (gn) gn.style.display = (id === 'groq') ? '' : 'none';
+}
+
+// ── Multi-provider API call ───────────────────────────────────────
+async function callAI(systemPrompt, userPrompt) {
+  const id     = document.getElementById('inp-provider')?.value || 'groq';
+  const apiKey = (document.getElementById('inp-apikey')?.value || '').trim();
+  const p      = PROVIDERS[id];
+
+  if (id === 'demo') return null;
+  if (!apiKey) throw new Error('Please enter your API key for the selected provider.');
+
+  if (p.format === 'openai') {
+    const isGroq       = id === 'groq';
+    const isOpenRouter = id === 'openrouter';
+    const r = await fetch(p.url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + apiKey,
+        ...(isOpenRouter ? { 'HTTP-Referer': 'https://blueprint-generator.local', 'X-Title': 'Blueprint Generator' } : {}),
+      },
+      body: JSON.stringify({
+        model: p.model,
+        max_tokens: isGroq ? 32000 : 16000,
+        temperature: 0.25,
+        response_format: { type: 'json_object' },
+        messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
+      }),
+    });
+    if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.error?.message || id + ' API error ' + r.status); }
+    const d = await r.json();
+    if (d.choices?.[0]?.finish_reason === 'length') {
+      console.warn('[callAI/' + id + '] finish_reason=length — response truncated.');
+    }
+    return d.choices?.[0]?.message?.content || '';
+  }
+
+  if (p.format === 'gemini') {
+    const url = 'https://generativelanguage.googleapis.com/v1beta/models/' + p.model + ':generateContent?key=' + apiKey;
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        system_instruction: { parts: [{ text: systemPrompt }] },
+        contents: [{ parts: [{ text: userPrompt }] }],
+        generationConfig: { maxOutputTokens: 8192, temperature: 0.25, responseMimeType: 'application/json' },
+      }),
+    });
+    if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.error?.message || 'Gemini API error ' + r.status); }
+    const d = await r.json();
+    return d.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  }
+
+  if (p.format === 'anthropic') {
+    const r = await fetch(p.url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model: p.model,
+        max_tokens: 16000,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: userPrompt }],
+      }),
+    });
+    if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.error?.message || 'Anthropic API error ' + r.status); }
+    const d = await r.json();
+    if (d.stop_reason === 'max_tokens') {
+      console.warn('[callAI/anthropic] stop_reason=max_tokens — response truncated.');
+    }
+    return (d.content || []).map(b => b.text || '').join('');
+  }
+
+  throw new Error('Unknown provider: ' + id);
+}
+
+// ── Main generate (wrapper around app.js generateBlueprint) ──────
+// We intercept to: show overlay, animate sidebar steps, call
+// blueprint-generator style renders, show export button.
+// app.js generateBlueprint() still fires via the button's listener.
+// We ADD our overlay/animation layer here by hooking the button.
+document.addEventListener('DOMContentLoaded', () => {
+  updateProviderUI();
+
+  // Set date badge (both IDs)
+  const d = new Date().toLocaleDateString('en-AU',{day:'2-digit',month:'short',year:'numeric'});
+  const b1 = document.getElementById('dateBadge');
+  const b2 = document.getElementById('dateStamp');
+  if (b1) b1.textContent = d;
+  if (b2) b2.textContent = d;
+
+  // Wire provider change
+  const sel = document.getElementById('inp-provider');
+  if (sel) sel.addEventListener('change', updateProviderUI);
+
+  // Wire extra nav buttons
+  const navMap2 = {navBlueprint:'blueprint', navRaw:'raw'};
+  Object.entries(navMap2).forEach(([btnId, viewName]) => {
+    const btn = document.getElementById(btnId);
+    if (btn) btn.addEventListener('click', () => showView(viewName));
+  });
+
+  // Intercept generateBtn to add overlay + sidebar animations
+  const genBtn = document.getElementById('generateBtn');
+  if (genBtn) {
+    // Remove app.js listener by cloning; re-wire to our wrapper
+    const newBtn = genBtn.cloneNode(true);
+    genBtn.parentNode.replaceChild(newBtn, genBtn);
+    newBtn.addEventListener('click', generateWrapper);
+  }
+
+  // Wire clearBtn to also clear our extra state
+  const clrBtn = document.getElementById('clearBtn');
+  if (clrBtn) clrBtn.addEventListener('click', () => {
+    document.getElementById('clarifyBox')?.classList.remove('visible');
+    document.getElementById('streamBox')?.classList.remove('visible');
+    document.getElementById('genStatus').textContent = '';
+    document.getElementById('exportBtn').style.display = 'none';
+    const req = document.getElementById('inp-requirements');
+    const schema = document.getElementById('inp-schema');
+    const ind = document.getElementById('inp-industry');
+    if (req) req.value = '';
+    if (schema) schema.value = '';
+    if (ind) ind.value = '';
+    document.querySelectorAll('.pack-chip').forEach(c => c.classList.remove('active'));
+    resetSteps();
+  });
+
+  // Wire pack chips for industry select sync
+  document.querySelectorAll('.pack-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      document.querySelectorAll('.pack-chip').forEach(c => c.classList.remove('active'));
+      chip.classList.add('active');
+      const sel2 = document.getElementById('inp-industry');
+      if (sel2) sel2.value = chip.dataset.industry || '';
+    });
+  });
+
+  // Wire mode tabs
+  document.getElementById('modeTabReq')?.addEventListener('click', () => {
+    document.getElementById('modeTabReq')?.classList.add('active');
+    document.getElementById('modeTabSchema')?.classList.remove('active');
+    document.getElementById('reqInputGroup').style.display = '';
+    document.getElementById('schemaInputGroup').style.display = 'none';
+  });
+  document.getElementById('modeTabSchema')?.addEventListener('click', () => {
+    document.getElementById('modeTabSchema')?.classList.add('active');
+    document.getElementById('modeTabReq')?.classList.remove('active');
+    document.getElementById('schemaInputGroup').style.display = '';
+    document.getElementById('reqInputGroup').style.display = 'none';
+  });
+});
+
+async function generateWrapper() {
+  if (isGenerating) return;
+
+  const req = document.getElementById('inp-requirements')?.value?.trim() || '';
+  if (!req) { alert('Please enter your business requirements first.'); return; }
+
+  const providerId = document.getElementById('inp-provider')?.value || 'demo';
+  const apiKey     = (document.getElementById('inp-apikey')?.value || '').trim();
+
+  if (providerId !== 'demo' && !apiKey) {
+    alert('Please enter your API key, or select Demo Mode to generate without one.');
+    return;
+  }
+
+  // ── UI: lock and show spinners ────────────────────────────────
+  isGenerating = true;
+  const btn       = document.getElementById('generateBtn');
+  const overlay   = document.getElementById('loadingOverlay');
+  const agentPanel = document.getElementById('agentPanel');
+  const genStatus = document.getElementById('genStatus');
+  const streamBox = document.getElementById('streamBox');
+  const clarifyBox = document.getElementById('clarifyBox');
+
+  if (btn)        { btn.disabled = true; btn.textContent = '⏳ Generating…'; }
+  if (overlay)    overlay.classList.add('on');
+  if (agentPanel) agentPanel.classList.add('visible');
+  if (genStatus)  genStatus.textContent = '';
+  if (streamBox)  streamBox.classList.remove('visible');
+  if (clarifyBox) clarifyBox.classList.remove('visible');
+  resetSteps();
+
+  // ── Helper: reset all UI state ────────────────────────────────
+  function resetUI() {
+    isGenerating = false;
+    if (btn)        { btn.disabled = false; btn.innerHTML = '⚡ Generate Blueprint'; }
+    if (overlay)    overlay.classList.remove('on');
+    if (agentPanel) agentPanel.classList.remove('visible');
+  }
+
+  // ── Safety timeout — 90 seconds max then reset ────────────────
+  const safetyTimer = setTimeout(() => {
+    if (isGenerating) {
+      console.error('[generateWrapper] Safety timeout hit — resetting state.');
+      if (genStatus) genStatus.textContent = '❌ Timed out after 90 seconds. Check your API key or try Demo Mode.';
+      resetUI();
+    }
+  }, 90000);
+
+  try {
+    // Start sidebar animation concurrently — don't await it yet
+    const stepAnim = animateSteps(8);
+
+    // ── Read form values ──────────────────────────────────────────
+    const industry = document.getElementById('inp-industry')?.value || '';
+    const audience = document.getElementById('inp-audience')?.value || 'Executives, Operations, Analysts';
+    const currency = document.getElementById('inp-currency')?.value || 'AUD';
+    const fy       = document.getElementById('inp-fy')?.value || 'July';
+    const rls      = document.getElementById('inp-rls')?.value || 'yes';
+    const refresh  = document.getElementById('inp-refresh')?.value || 'Daily';
+    const schema   = document.getElementById('inp-schema')?.value?.trim() || '';
+    const fyEnd    = fy === 'July' ? '30/06' : fy === 'January' ? '31/12' : '31/03';
+
+    // ── Industry detection ────────────────────────────────────────
+    const inputText = (req + ' ' + schema).trim();
+    let resolvedIndustry = industry;
+    let industryExplicit = !!industry;
+    let detValidation    = null;
+
+    if (!resolvedIndustry && typeof detectIndustry === 'function') {
+      const det = detectIndustry(inputText);
+      if (det.validation?.overridden && det.candidates?.[1]) {
+        resolvedIndustry = det.candidates[1][0];
+      } else {
+        resolvedIndustry = det.industry || 'Professional Services';
+      }
+      detValidation = det.validation;
+    } else if (!resolvedIndustry) {
+      resolvedIndustry = 'Professional Services';
+    }
+
+    const demoOpts = {
+      audience, currency, fy, rls, refresh,
+      requirements: req, schema, industryExplicit,
+      validationResult: detValidation,
+    };
+
+    let bp;
+
+    // ── DEMO MODE ─────────────────────────────────────────────────
+    if (providerId === 'demo') {
+      const packUsed = typeof getPack === 'function'
+        ? getPack(resolvedIndustry) || getPack('Professional Services')
+        : null;
+      if (!packUsed || typeof buildDemoBlueprint !== 'function') {
+        throw new Error('Knowledge packs not loaded. Ensure knowledgepacks-1.js and knowledgepacks-2.js are loaded before app.js.');
+      }
+      bp = buildDemoBlueprint(resolvedIndustry, packUsed, demoOpts);
+
+    // ── API MODE ──────────────────────────────────────────────────
+    } else {
+      let systemPrompt, userPrompt;
+      if (typeof buildSystemPrompt === 'function' && typeof getPack === 'function') {
+        const pack2 = getPack(resolvedIndustry) || getPack('Professional Services');
+        systemPrompt = buildSystemPrompt(resolvedIndustry, pack2, { fy, currency, rls, refresh });
+        userPrompt   = typeof buildUserPrompt === 'function'
+          ? buildUserPrompt('requirements', req, schema, resolvedIndustry, audience, currency, fy, rls, refresh)
+          : `INDUSTRY: ${resolvedIndustry}\nAUDIENCE: ${audience}\nCURRENCY: ${currency}\nFISCAL YEAR: ${fy} (end ${fyEnd})\nRLS: ${rls}\nREFRESH: ${refresh}\nREQUIREMENTS:\n${req}\n${schema ? 'SCHEMA:\n' + schema : ''}\n\nReturn ONLY valid JSON DashboardBlueprint. No markdown fences.`;
+      } else {
+        systemPrompt = 'You are a Power BI Solution Architect. Return ONLY valid DashboardBlueprint JSON. No markdown.';
+        userPrompt   = `INDUSTRY: ${resolvedIndustry}\nREQUIREMENTS:\n${req}\n${schema ? 'SCHEMA:\n' + schema : ''}\nAUDIENCE: ${audience}\nCURRENCY: ${currency}\nFY: ${fy} (end ${fyEnd})\nRLS: ${rls}\nREFRESH: ${refresh}\n\nReturn ONLY valid JSON. No markdown fences.`;
+      }
+
+      let rawResponse = null;
+      try {
+        rawResponse = await callAI(systemPrompt, userPrompt);
+      } catch (apiErr) {
+        // API itself failed (network, auth, rate limit) — fall back to demo
+        console.error('[generateWrapper] API call failed:', apiErr);
+        const msg = apiErr.message || 'API error';
+        if (streamBox) { streamBox.textContent = '❌ API Error: ' + msg; streamBox.classList.add('visible'); }
+        if (genStatus) genStatus.textContent = '⚠️ API error — showing demo blueprint instead.';
+
+        const fallbackPack = typeof getPack === 'function'
+          ? getPack(resolvedIndustry) || getPack('Professional Services') : null;
+        if (fallbackPack && typeof buildDemoBlueprint === 'function') {
+          bp = buildDemoBlueprint(resolvedIndustry, fallbackPack, demoOpts);
+        } else {
+          throw new Error('API call failed: ' + msg);
+        }
+      }
+
+      // Parse the response if API succeeded
+      if (!bp && rawResponse !== null) {
+        const repairFn = typeof repairTruncatedJSON === 'function' ? repairTruncatedJSON : (raw) => {
+          if (!raw) return null;
+          let s = raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '').trim();
+          try { return JSON.parse(s); } catch (_) {}
+          return null;
+        };
+
+        const parsed = repairFn(rawResponse);
+        if (!parsed) {
+          if (streamBox) {
+            streamBox.textContent = '⚠️ Could not parse AI response. Showing demo blueprint.\n\nFirst 1200 chars of raw response:\n\n' + (rawResponse || '').substring(0, 1200);
+            streamBox.classList.add('visible');
+          }
+          const fallbackPack = typeof getPack === 'function'
+            ? getPack(resolvedIndustry) || getPack('Professional Services') : null;
+          if (fallbackPack && typeof buildDemoBlueprint === 'function') {
+            bp = buildDemoBlueprint(resolvedIndustry, fallbackPack, demoOpts);
+            if (genStatus) genStatus.textContent = '⚠️ AI response could not be parsed — showing demo blueprint.';
+          } else {
+            throw new Error('AI response could not be parsed and no demo fallback is available.');
+          }
+        } else {
+          bp = parsed;
+          // Augment with quality frameworks if AI didn't generate them
+          if (!bp.quality_frameworks && typeof buildQualityFrameworks === 'function') {
+            const m  = bp.measures || [];
+            const k  = bp.kpis    || [];
+            const p  = bp.pages   || [];
+            const sr = (bp.security?.roles || []);
+            bp.quality_frameworks = buildQualityFrameworks(m, k, p,
+              (typeof getPack === 'function' ? getPack(resolvedIndustry) : null) || {},
+              { rls, industry: resolvedIndustry });
+          }
+          if (!bp.governance && typeof buildGovernanceBlock === 'function') {
+            bp.governance = buildGovernanceBlock(resolvedIndustry,
+              (typeof getPack === 'function' ? getPack(resolvedIndustry) : null) || {}, demoOpts);
+          }
+          if (!bp.expected_targets && typeof buildExpectedTargets === 'function') {
+            const m  = bp.measures || [];
+            const k  = bp.kpis    || [];
+            const p  = bp.pages   || [];
+            const sr = bp.security?.roles || [];
+            bp.expected_targets = buildExpectedTargets(m, k, p, sr,
+              (typeof getPack === 'function' ? getPack(resolvedIndustry) : null) || {});
+          }
+        }
+      }
+    }
+
+    // ── Wait for animation to finish (max 2s) ─────────────────────
+    await Promise.race([stepAnim, new Promise(r => setTimeout(r, 2000))]);
+
+    if (!bp) throw new Error('Blueprint generation returned no data.');
+
+    currentBP = bp;
+
+    // Mark sidebar steps complete
+    for (let i = 1; i <= 8; i++) {
+      const el = document.getElementById('s' + i);
+      if (el) { el.classList.remove('active'); el.classList.add('done'); }
+    }
+
+    // Render all views
+    if (typeof renderAllViews  === 'function') renderAllViews(bp);
+    if (typeof updateNavCounters === 'function') updateNavCounters(bp);
+    renderBlueprint(bp);
+    renderRaw(bp);
+
+    const confScore = bp.confidence?.score || bp.confidenceScore || bp.detection?.confidence || '?';
+    if (genStatus && !genStatus.textContent.startsWith('⚠️')) {
+      genStatus.textContent = '✅ Generated — Confidence: ' + confScore + '/100';
+    }
+    document.getElementById('exportBtn').style.display = 'inline-flex';
+
+    setTimeout(() => {
+      if (overlay)    overlay.classList.remove('on');
+      if (agentPanel) agentPanel.classList.remove('visible');
+      showView('detection');
+    }, 400);
+
+  } catch (err) {
+    console.error('[generateWrapper] Fatal error:', err);
+    if (genStatus) genStatus.textContent = '❌ ' + (err.message || 'Unknown error');
+    if (streamBox && !streamBox.classList.contains('visible')) {
+      streamBox.textContent = 'Error details:\n' + (err.stack || err.message || err);
+      streamBox.classList.add('visible');
+    }
+  } finally {
+    clearTimeout(safetyTimer);
+    resetUI();
+  }
+}
+
+// ── Clarification UI ─────────────────────────────────────────────
+function showClarification(bp) {
+  const box  = document.getElementById('clarifyBox');
+  const txt  = document.getElementById('clarifyText');
+  const btns = document.getElementById('clarifyBtns');
+  box.classList.add('visible');
+  const cands = bp.candidateIndustries || [];
+  txt.textContent = 'Industry confidence is '+(bp.industryConfidence||'low')+'%. Top candidate industries detected:';
+  btns.innerHTML = '';
+  cands.forEach(c => {
+    const b = document.createElement('button');
+    b.className = 'candidate-btn';
+    b.textContent = c.name+' ('+(c.confidence||'?')+'%)';
+    b.onclick = () => {
+      document.getElementById('inp-industry').value = c.name;
+      box.classList.remove('visible');
+      generateWrapper();
+    };
+    btns.appendChild(b);
+  });
+  isGenerating = false;
+  const btn = document.getElementById('generateBtn');
+  if (btn) { btn.disabled = false; btn.innerHTML = '⚡ Generate Blueprint'; }
+  const ov = document.getElementById('loadingOverlay');
+  if (ov) ov.classList.remove('on');
+}
+
+// ── Render Blueprint (blueprint-generator.html style) ────────────
+function renderBlueprint(bp) {
+  const sm     = bp.semanticModel || bp.data_model || {};
+  const facts  = sm.factTables   || sm.fact_tables       || [];
+  const dims   = sm.dimensionTables || sm.dimension_tables || [];
+  const rels   = sm.relationships  || [];
+  const pages  = bp.dashboardPages || bp.pages            || [];
+  const kpis   = bp.kpis           || [];
+  const sec    = bp.security        || {};
+  const conf   = bp.confidenceScore || bp.confidence?.score || bp.industryConfidence || 0;
+  const assumes= bp.assumptions     || bp.confidence?.assumptions || [];
+  const dreqs  = bp.dataRequirements|| bp.confidence?.gaps || [];
+  const drills = bp.drillThroughPaths || [];
+
+  const pIcons={Executive:'🏛',Analytical:'📈',Operational:'⚙️',Detail:'🔍'};
+  const pTags ={Executive:'tag-purple',Analytical:'tag-blue',Operational:'tag-amber',Detail:'tag-green'};
+  const vIcons={Card:'🃏',KPI:'📊',Line:'📈',Bar:'📊',Column:'📊',Matrix:'🔢',Scatter:'⬤',Map:'🗺️',Treemap:'🌲',Gauge:'⏱️',Table:'📋',Waterfall:'🌊',Ribbon:'🎗️','Decomp Tree':'🌳',Donut:'🍩',Funnel:'📐'};
+
+  function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+
+  let h = '';
+
+  // 1. Identity
+  h += `<div class="bp-section">
+  <div class="sec-hdr-bp"><div class="sec-icon-bp">🏷</div><h2>1. Solution Identity</h2><div class="sec-div-bp"></div></div>
+  <div class="card">
+    <div class="bp-meta-grid">
+      <div class="bp-meta-item"><div class="bp-ml">Industry</div><div class="bp-mv">${esc(bp.industry||bp.meta?.industry||'—')}</div></div>
+      <div class="bp-meta-item"><div class="bp-ml">Confidence</div><div class="bp-mv">${conf}%</div></div>
+      <div class="bp-meta-item"><div class="bp-ml">Business Goal</div><div class="bp-mv" style="font-size:10px;font-weight:400">${esc((bp.businessGoal||bp.meta?.business_goal||'—').substring(0,80))}</div></div>
+      <div class="bp-meta-item"><div class="bp-ml">Audience</div><div class="bp-mv" style="font-size:10px;font-weight:400">${esc(bp.meta?.primary_audience||'—')}</div></div>
+    </div>
+    ${(bp.executiveSummary?.keyDecisionsSupported||[]).length ? `
+    <div style="margin-top:12px">
+      <div style="font-size:9px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Key Decisions Supported</div>
+      <div style="display:flex;flex-wrap:wrap;gap:5px">
+        ${(bp.executiveSummary.keyDecisionsSupported).map(d=>`<span class="tag tag-blue">${esc(d)}</span>`).join('')}
+      </div>
+    </div>` : ''}
+  </div></div>`;
+
+  // 2. Star Schema
+  h += `<div class="bp-section">
+  <div class="sec-hdr-bp"><div class="sec-icon-bp">🗄</div><h2>2. Star Schema — Data Model</h2><div class="sec-div-bp"></div></div>
+  <div class="card">`;
+  if (facts.length) {
+    h += `<div style="font-size:9px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Fact Tables</div>
+    <div class="tbl-wrap"><table><thead><tr><th>Table</th><th>Grain</th><th>Source</th><th>Columns</th></tr></thead><tbody>`;
+    facts.forEach(f => {
+      const cols = (f.columns||[]).map(c=>c.name||c).slice(0,5);
+      h += `<tr><td><strong>${esc(f.name)}</strong></td><td style="color:var(--text2)">${esc(f.grain||'—')}</td><td style="color:var(--text2)">${esc(f.source||'—')}</td><td><code>${cols.join(', ')}${(f.columns||[]).length>5?' +more':''}</code></td></tr>`;
+    });
+    h += `</tbody></table></div>`;
+  }
+  if (dims.length) {
+    h += `<div style="font-size:9px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin:14px 0 8px">Dimension Tables</div>
+    <div class="tbl-wrap"><table><thead><tr><th>Table</th><th>Type</th><th>Key Columns</th><th>Hierarchies</th></tr></thead><tbody>`;
+    dims.forEach(d => {
+      const cols=(d.columns||d.key_columns||[]).slice(0,4);
+      const hier=(d.hierarchies||[]);
+      h += `<tr><td><strong>${esc(d.name)}</strong></td><td><span class="tag ${d.type==='SCD2'?'tag-purple':'tag-blue'}">${esc(d.type||'Standard')}</span></td><td><code>${cols.join(', ')}${(d.columns||d.key_columns||[]).length>4?' +more':''}</code></td><td style="color:var(--text2);font-size:10px">${hier.join(' · ')}</td></tr>`;
+    });
+    h += `</tbody></table></div>`;
+  }
+  if (rels.length) {
+    h += `<div style="font-size:9px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin:14px 0 8px">Relationships</div>
+    <div class="tbl-wrap"><table><thead><tr><th>From</th><th>To</th><th>Cardinality</th><th>Active</th><th>Notes</th></tr></thead><tbody>`;
+    rels.forEach(r => {
+      h += `<tr><td><code style="color:#a8d8a8">${esc(r.from)}</code></td><td><code style="color:#a8d8a8">${esc(r.to)}</code></td><td><span class="tag tag-blue">${esc(r.cardinality||'Many:One')}</span></td><td>${r.active!==false?'✅':'⚠️ Inactive'}</td><td style="color:var(--text2);font-size:10px">${esc(r.notes||'—')}</td></tr>`;
+    });
+    h += `</tbody></table></div>`;
+  }
+  h += `</div></div>`;
+
+  // 3. Measures
+  const measures = bp.measures || [];
+  if (measures.length) {
+    h += `<div class="bp-section">
+    <div class="sec-hdr-bp"><div class="sec-icon-bp">⚡</div><h2>3. Measures</h2><div class="sec-div-bp"></div></div>
+    <div class="card"><div class="tbl-wrap"><table><thead><tr><th>Measure</th><th>Format</th><th>Folder</th><th>Description</th></tr></thead><tbody>`;
+    measures.forEach(m => {
+      h += `<tr><td><strong>${esc(m.name)}</strong></td><td><code>${esc(m.format||'')}</code></td><td style="color:var(--text2);font-size:10px">${esc(m.display_folder||m.displayFolder||m.folder||'—')}</td><td style="color:var(--text2);font-size:10px">${esc(m.description||m.desc||'—')}</td></tr>`;
+    });
+    h += `</tbody></table></div></div></div>`;
+  }
+
+  // 4. KPIs
+  if (kpis.length) {
+    h += `<div class="bp-section">
+    <div class="sec-hdr-bp"><div class="sec-icon-bp">🎯</div><h2>4. KPIs</h2><div class="sec-div-bp"></div></div>
+    <div class="bp-kpi-grid">`;
+    kpis.forEach(k => {
+      const t = k.thresholds||{};
+      h += `<div class="bp-kpi-card">
+        <div class="bp-kpi-name">${esc(k.name)}</div>
+        <div class="bp-kpi-tgt">Target: ${esc(k.target_logic||k.target||'—')}</div>
+        <div class="bp-kpi-thresh">
+          <div class="bp-kt"><div class="thresh-dot" style="background:var(--success)"></div><span style="color:var(--success)">Good</span>&nbsp;${esc(t.good||k.good||'—')}</div>
+          <div class="bp-kt"><div class="thresh-dot" style="background:var(--warn)"></div><span style="color:var(--warn)">Warn</span>&nbsp;${esc(t.warning||k.warn||'—')}</div>
+          <div class="bp-kt"><div class="thresh-dot" style="background:var(--danger)"></div><span style="color:var(--danger)">Critical</span>&nbsp;${esc(t.critical||k.critical||'—')}</div>
+        </div>
+        <div style="margin-top:8px;font-size:9px;color:var(--text3)">Owner: ${esc(k.owner||'—')} · ${esc(k.cadence||'—')}</div>
+      </div>`;
+    });
+    h += `</div></div>`;
+  }
+
+  // 5. Pages
+  if (pages.length) {
+    h += `<div class="bp-section" style="margin-top:6px">
+    <div class="sec-hdr-bp"><div class="sec-icon-bp">📄</div><h2>5. Dashboard Pages</h2><div class="sec-div-bp"></div></div>
+    <div class="bp-page-grid">`;
+    pages.forEach(p => {
+      const visuals = p.visuals||[];
+      const slicers = p.slicers||[];
+      const layout  = p.layout||'';
+      h += `<div class="bp-page-card">
+        <div class="bp-page-name"><span>${pIcons[layout]||'📄'}</span>${esc(p.name||p.pageName||'')} <span class="tag ${pTags[layout]||'tag-blue'}">${esc(layout)}</span></div>
+        <div class="bp-page-purpose">${esc(p.purpose||'')}</div>
+        ${slicers.length ? `<div style="margin-bottom:7px">${slicers.map(s=>`<span class="tag tag-blue">${esc(typeof s==='object'?s.field:s)}</span>`).join('')}</div>`:''}
+        <div class="vis-list">
+          ${visuals.map(v=>`<div class="vis-item"><span>${vIcons[v.type]||'📊'}</span><span class="tag tag-purple" style="font-size:8px">${esc(v.type)}</span>${esc(v.title||'')}</div>`).join('')}
+        </div>
+      </div>`;
+    });
+    h += `</div></div>`;
+  }
+
+  // 6. Drill-Through
+  if (drills.length) {
+    h += `<div class="bp-section">
+    <div class="sec-hdr-bp"><div class="sec-icon-bp">🔗</div><h2>6. Drill-Through Paths</h2><div class="sec-div-bp"></div></div>
+    <div class="card"><div class="tbl-wrap"><table><thead><tr><th>From</th><th>To</th><th>Description</th></tr></thead><tbody>`;
+    drills.forEach(d => {
+      h += `<tr><td><strong>${esc(d.from)}</strong></td><td><strong>${esc(d.to)}</strong></td><td style="color:var(--text2)">${esc(d.description||'')}</td></tr>`;
+    });
+    h += `</tbody></table></div></div></div>`;
+  }
+
+  // 7. Security
+  h += `<div class="bp-section">
+  <div class="sec-hdr-bp"><div class="sec-icon-bp">🔐</div><h2>7. Security &amp; Governance</h2><div class="sec-div-bp"></div></div>
+  <div class="card">
+    <div class="bp-meta-grid" style="margin-bottom:12px">
+      <div class="bp-meta-item"><div class="bp-ml">RLS Required</div><div class="bp-mv">${(sec.rlsRequired||sec.rls_required)?'✅ Yes':'❌ No'}</div></div>
+      <div class="bp-meta-item"><div class="bp-ml">Sensitivity</div><div class="bp-mv" style="font-size:11px">${esc(sec.sensitivityLabel||sec.sensitivity_label||'Internal')}</div></div>
+      <div class="bp-meta-item" style="grid-column:span 2"><div class="bp-ml">PII Columns</div><div class="bp-mv" style="font-size:10px;font-weight:400">${esc((sec.piiColumns||sec.pii_columns||[]).join(', ')||'None identified')}</div></div>
+    </div>
+    ${(sec.roles||[]).length ? `
+    <div class="tbl-wrap"><table><thead><tr><th>Role</th><th>Filter Table</th><th>DAX Filter</th></tr></thead><tbody>
+      ${(sec.roles||[]).map(r=>`<tr><td><strong>${esc(r.name||r.roleName||r.role)}</strong></td><td>${esc(r.filter_table||r.filterTable||'—')}</td><td><code>${esc(r.filter_dax||r.filterDax||r.daxFilter||'—')}</code></td></tr>`).join('')}
+    </tbody></table></div>` : ''}
+  </div></div>`;
+
+  // 8. Confidence
+  h += `<div class="bp-section">
+  <div class="sec-hdr-bp"><div class="sec-icon-bp">📊</div><h2>8. Confidence &amp; Assumptions</h2><div class="sec-div-bp"></div></div>
+  <div class="card">
+    <div class="bp-conf-score">${conf}</div>
+    <div class="bp-conf-label">Confidence Score / 100</div>
+    <div class="prog-wrap"><div class="prog-bar-bp"><div class="prog-fill-bp" style="width:${conf}%"></div></div></div>
+    ${(assumes.length||dreqs.length) ? `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px">
+      <div>
+        <div style="font-size:9px;font-weight:700;color:var(--warn);text-transform:uppercase;letter-spacing:.5px;margin-bottom:7px">Assumptions</div>
+        <div class="assump-list">${assumes.map(a=>`<div class="assump">${esc(a)}</div>`).join('')}</div>
+      </div>
+      ${dreqs.length ? `<div>
+        <div style="font-size:9px;font-weight:700;color:var(--danger);text-transform:uppercase;letter-spacing:.5px;margin-bottom:7px">Gaps / Data Requirements</div>
+        <div class="assump-list">${dreqs.map(d=>`<div class="assump" style="border-left-color:var(--danger)">${esc(d)}</div>`).join('')}</div>
+      </div>` : ''}
+    </div>` : ''}
+  </div></div>`;
+
+  document.getElementById('blueprintOut').innerHTML = h;
+}
+
+// ── Render Raw JSON ───────────────────────────────────────────────
+function renderRaw(bp) {
+  const pretty = JSON.stringify(bp, null, 2);
+  function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+  document.getElementById('rawOut').innerHTML = `
+    <div class="section-hdr" style="margin-bottom:12px">
+      <div class="section-icon">🗂️</div>
+      <div class="section-title">Raw Blueprint JSON</div>
+      <div class="section-divider"></div>
+      <button class="btn btn-secondary raw-copy-btn" onclick="copyRaw()">📋 Copy JSON</button>
+    </div>
+    <div class="dax-block" style="max-height:70vh;overflow-y:auto;font-size:11px;white-space:pre;color:var(--text)">${esc(pretty)}</div>`;
+}
+function copyRaw() {
+  if (!currentBP) return;
+  navigator.clipboard.writeText(JSON.stringify(currentBP, null, 2))
+    .then(() => alert('JSON copied to clipboard!'))
+    .catch(() => alert('Copy failed — please select and copy manually.'));
+}
+
+// ── PDF Export ────────────────────────────────────────────────────
+function exportPDF() {
+  if (!currentBP) { alert('Generate a blueprint first.'); return; }
+  const win = window.open('', '_blank');
+  win.document.write(buildPDF(currentBP));
+  win.document.close();
+  setTimeout(() => win.print(), 900);
+}
+
+function buildPDF(bp) {
+  const sm      = bp.semanticModel || bp.data_model || {};
+  const facts   = sm.factTables   || sm.fact_tables       || [];
+  const dims    = sm.dimensionTables || sm.dimension_tables || [];
+  const rels    = sm.relationships  || [];
+  const pages   = bp.dashboardPages || bp.pages            || [];
+  const measures= bp.measures        || [];
+  const kpis    = bp.kpis            || [];
+  const sr      = bp.selfReview      || bp.self_review      || {};
+  const sec     = bp.security         || {};
+  const conf    = bp.confidenceScore  || bp.confidence?.score || bp.industryConfidence || 0;
+  const now     = new Date().toLocaleDateString('en-AU',{day:'2-digit',month:'short',year:'numeric'});
+  const gates   = sr.gates || [];
+
+  const confColor = conf>=90?'#22c55e':conf>=75?'#4f72f7':conf>=50?'#f59e0b':'#ef4444';
+  const verdColor = (sr.verdict||sr.overall_verdict)==='PASS'?'#22c55e':(sr.verdict||sr.overall_verdict)==='PASS_WITH_NOTES'?'#f59e0b':'#ef4444';
+
+  function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+  function pill(txt,col){return '<span style="display:inline-block;font-size:9px;font-weight:700;padding:2px 7px;border-radius:4px;margin:2px;background:'+col+'22;color:'+col+'">'+esc(txt)+'</span>';}
+  function card(label,val){return '<div style="background:#1c2030;border:1px solid #2a3050;border-radius:8px;padding:12px"><div style="font-size:9px;font-weight:700;color:#8894b0;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">'+esc(label)+'</div><div style="font-size:13px;font-weight:700;color:#e2e8f0">'+val+'</div></div>';}
+  function secHead(num,icon,title){return '<div style="display:flex;align-items:center;gap:10px;margin-bottom:20px"><div style="width:30px;height:30px;border-radius:7px;background:rgba(79,114,247,.15);display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0">'+icon+'</div><div><div style="font-size:10px;font-weight:700;color:#4f72f7;text-transform:uppercase;letter-spacing:1px">Section '+num+'</div><h2 style="font-size:17px;font-weight:800;color:#e2e8f0;letter-spacing:-.3px">'+title+'</h2></div><div style="flex:1;height:1px;background:linear-gradient(90deg,#2a3050,transparent);margin-left:10px"></div></div>';}
+
+  // Star schema SVG
+  function starSVG() {
+    const W=900,H=600,cx=W/2,cy=H/2,fW=200,fH=88,dW=178,dH=76;
+    const fPos=facts.map((f,i)=>{const a=(i/Math.max(facts.length,1))*2*Math.PI-Math.PI/2,r=facts.length===1?0:80;return{x:cx+r*Math.cos(a),y:cy+r*Math.sin(a)};});
+    const dPos=dims.map((d,i)=>{const a=(i/Math.max(dims.length,1))*2*Math.PI-Math.PI/2;return{x:cx+240*Math.cos(a),y:cy+240*Math.sin(a)};});
+    let s='<svg viewBox="0 0 '+W+' '+H+'" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-height:560px;border-radius:10px;background:#0c0e14"><defs><marker id="ar" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#4f72f7" opacity=".7"/></marker><linearGradient id="fg" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#1e3a5f"/><stop offset="100%" stop-color="#0f2040"/></linearGradient><linearGradient id="dg" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#1a2e1a"/><stop offset="100%" stop-color="#0d1f0d"/></linearGradient></defs>';
+    rels.forEach(r=>{const fn=(r.from||'').split('[')[0].trim(),tn=(r.to||'').split('[')[0].trim(),fi=facts.findIndex(f=>f.name===fn),di=dims.findIndex(d=>d.name===tn);if(fi>=0&&di>=0){const fp=fPos[fi],dp=dPos[di],dash=r.active===false?'stroke-dasharray="6,4"':'';s+='<line x1="'+fp.x+'" y1="'+fp.y+'" x2="'+dp.x+'" y2="'+dp.y+'" stroke="#4f72f7" stroke-width="1.5" stroke-opacity=".45" marker-end="url(#ar)" '+dash+'/>';}});
+    facts.forEach((f,i)=>{const p=fPos[i],x=p.x-fW/2,y=p.y-fH/2,cols=(f.columns||[]).map(c=>c.name||c).slice(0,3).join(', ');s+='<rect x="'+x+'" y="'+y+'" width="'+fW+'" height="'+fH+'" rx="8" fill="url(#fg)" stroke="#4f72f7" stroke-width="2"/><rect x="'+x+'" y="'+y+'" width="'+fW+'" height="23" rx="8" fill="#4f72f7" opacity=".75"/><rect x="'+x+'" y="'+(y+15)+'" width="'+fW+'" height="8" fill="#4f72f7" opacity=".75"/><text x="'+p.x+'" y="'+(y+15)+'" text-anchor="middle" font-size="11" font-weight="700" fill="#fff" font-family="Segoe UI,sans-serif">⬡ '+esc(f.name)+'</text><text x="'+(x+8)+'" y="'+(y+40)+'" font-size="8.5" fill="#94a3b8" font-family="Segoe UI,sans-serif">'+esc((f.grain||'').substring(0,34))+'</text><text x="'+(x+8)+'" y="'+(y+55)+'" font-size="8" fill="#64748b" font-family="Segoe UI,sans-serif">'+esc(cols.substring(0,35))+'</text>';});
+    dims.forEach((d,i)=>{const p=dPos[i],x=p.x-dW/2,y=p.y-dH/2,tc=d.type==='SCD2'?'#a78bfa':'#22c55e',cols=(d.columns||d.key_columns||[]).slice(0,3).join(', ');s+='<rect x="'+x+'" y="'+y+'" width="'+dW+'" height="'+dH+'" rx="7" fill="url(#dg)" stroke="'+tc+'" stroke-width="1.5"/><rect x="'+x+'" y="'+y+'" width="'+dW+'" height="21" rx="7" fill="'+tc+'" opacity=".22"/><rect x="'+x+'" y="'+(y+13)+'" width="'+dW+'" height="8" fill="'+tc+'" opacity=".22"/><text x="'+p.x+'" y="'+(y+14)+'" text-anchor="middle" font-size="10" font-weight="700" fill="'+tc+'" font-family="Segoe UI,sans-serif">'+esc(d.name)+'</text><text x="'+(x+5)+'" y="'+(y+33)+'" font-size="8" fill="'+tc+'" font-family="Segoe UI,sans-serif">'+esc(d.type||'Std')+'</text><text x="'+(x+5)+'" y="'+(y+50)+'" font-size="8" fill="#64748b" font-family="Segoe UI,sans-serif">'+esc(String(cols).substring(0,28))+'</text><text x="'+(x+5)+'" y="'+(y+63)+'" font-size="7.5" fill="#475569" font-family="Segoe UI,sans-serif">'+esc((d.hierarchies||[]).join(' · ').substring(0,30))+'</text>';});
+    s+='</svg>';
+    return s;
+  }
+
+  // Page wireframes
+  function pageWireframes() {
+    const vIcons={Card:'▪',KPI:'◈',Line:'∿',Bar:'▬',Column:'▐',Matrix:'⊞',Scatter:'◉',Map:'⬡',Treemap:'▦',Gauge:'◔',Table:'≡',Waterfall:'╪',Ribbon:'≋','Decomp Tree':'⑂',Donut:'◎',Funnel:'▽'};
+    const lColors={Executive:'#8b5cf6',Analytical:'#4f72f7',Operational:'#f59e0b',Detail:'#22c55e'};
+    return pages.map(p=>{
+      const visuals=p.visuals||[],slicers=(p.slicers||[]).map(s=>typeof s==='object'?s.field:s).join(' · '),lc=lColors[p.layout]||'#4f72f7',cols=Math.min(Math.max(visuals.length,1),3),rows=Math.ceil(visuals.length/Math.max(cols,1)),W=500,H=250,pad=10,gap=6,vW=(W-pad*2-gap*(cols-1))/cols,yOff=slicers?52:34,adjVH=(H-yOff-pad-gap*(rows-1))/Math.max(rows,1);
+      let svg='<svg viewBox="0 0 '+W+' '+H+'" xmlns="http://www.w3.org/2000/svg" style="width:100%;border-radius:7px;background:#13161f;border:1px solid #2a3050"><rect width="'+W+'" height="27" fill="'+lc+'" opacity=".15"/><text x="10" y="17" font-size="11" font-weight="700" fill="'+lc+'" font-family="Segoe UI,sans-serif">'+esc(p.name||p.pageName||'')+'</text><text x="'+(W-8)+'" y="17" text-anchor="end" font-size="9" fill="#8894b0" font-family="Segoe UI,sans-serif">'+esc(p.layout||'')+'</text>';
+      if(slicers) svg+='<rect x="'+pad+'" y="30" width="'+(W-pad*2)+'" height="15" rx="3" fill="#1c2030" stroke="#2a3050" stroke-width="1"/><text x="'+(pad+5)+'" y="41" font-size="8" fill="#8894b0" font-family="Segoe UI,sans-serif">🔽 '+esc(slicers.substring(0,75))+'</text>';
+      visuals.forEach((v,i)=>{const col=i%cols,row=Math.floor(i/cols),x=pad+col*(vW+gap),y=yOff+row*(adjVH+gap),ic=vIcons[v.type]||'▪',vc=v.type==='Card'||v.type==='KPI'?'#f59e0b':v.type==='Line'||v.type==='Bar'||v.type==='Column'?'#4f72f7':v.type==='Map'?'#22c55e':'#8b5cf6';svg+='<rect x="'+x+'" y="'+y+'" width="'+vW+'" height="'+adjVH+'" rx="4" fill="#1c2030" stroke="'+vc+'" stroke-width="1" stroke-opacity=".5"/><text x="'+(x+vW/2)+'" y="'+(y+adjVH/2-4)+'" text-anchor="middle" font-size="13" fill="'+vc+'" opacity=".4" font-family="Segoe UI,sans-serif">'+ic+'</text><text x="'+(x+vW/2)+'" y="'+(y+adjVH/2+10)+'" text-anchor="middle" font-size="7.5" fill="#64748b" font-family="Segoe UI,sans-serif">'+esc((v.title||v.type||'').substring(0,20))+'</text>';});
+      svg+='</svg>';
+      return '<div style="break-inside:avoid;margin-bottom:18px"><div style="display:flex;align-items:center;gap:7px;margin-bottom:7px"><span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:'+lc+'"></span><span style="font-size:12px;font-weight:700;color:#e2e8f0">'+esc(p.name||p.pageName||'')+'</span><span style="font-size:10px;color:#8894b0">— '+esc(p.purpose||'')+'</span></div>'+svg+'</div>';
+    }).join('');
+  }
+
+  // Gate cards
+  function gateCards() {
+    return gates.map(g=>{
+      const sc=g.score||0,col=g.status==='PASS'?'#22c55e':g.status==='WARN'?'#f59e0b':'#ef4444',icon=g.status==='PASS'?'✅':g.status==='WARN'?'⚠️':'❌';
+      return '<div style="background:#1c2030;border:1px solid #2a3050;border-radius:8px;padding:12px;text-align:center"><div style="font-size:9px;color:#8894b0;margin-bottom:4px">'+esc(g.gate_name||g.name||'—')+'</div><div style="font-size:24px;font-weight:800;color:'+col+'">'+sc+'</div><div style="font-size:10px;color:'+col+'">'+icon+' '+esc(g.status)+'</div><div style="height:4px;background:#0c0e14;border-radius:2px;margin-top:8px"><div style="height:4px;border-radius:2px;background:'+col+';width:'+sc+'%"></div></div>'+(g.notes||g.findings?.join(' ')?'<div style="font-size:9px;color:#8894b0;margin-top:5px">'+esc((g.notes||g.findings?.join('. ')||''))+'</div>':'')+'</div>';
+    }).join('');
+  }
+
+  // KPI cards for PDF
+  function kpiCardsPDF() {
+    return kpis.map(k=>{const t=k.thresholds||{};return '<div style="background:#1c2030;border:1px solid #2a3050;border-radius:8px;padding:12px;break-inside:avoid"><div style="font-size:11px;font-weight:700;color:#e2e8f0;margin-bottom:5px">'+esc(k.name)+'</div><div style="font-size:10px;color:#8894b0;margin-bottom:8px">Target: '+esc(k.target_logic||k.target||'—')+'</div><div style="font-size:10px;color:#22c55e;margin-bottom:3px">● Good &nbsp;'+esc(t.good||k.good||'—')+'</div><div style="font-size:10px;color:#f59e0b;margin-bottom:3px">● Warn &nbsp;'+esc(t.warning||k.warn||'—')+'</div><div style="font-size:10px;color:#ef4444;margin-bottom:8px">● Critical &nbsp;'+esc(t.critical||k.critical||'—')+'</div><div style="font-size:9px;color:#64748b">'+esc(k.owner||'—')+' · '+esc(k.cadence||'—')+'</div></div>';}).join('');
+  }
+
+  function measuresRows() {
+    return measures.map(m=>'<tr><td style="font-weight:600;color:#e2e8f0;padding:7px 10px;border-bottom:1px solid #2a3050">'+esc(m.name)+'</td><td style="font-family:monospace;font-size:9px;color:#a8d8a8;padding:7px 10px;border-bottom:1px solid #2a3050">'+esc(m.format||'')+'</td><td style="color:#8894b0;font-size:10px;padding:7px 10px;border-bottom:1px solid #2a3050">'+esc(m.display_folder||m.displayFolder||m.folder||'')+'</td><td style="color:#8894b0;font-size:10px;padding:7px 10px;border-bottom:1px solid #2a3050">'+esc(m.description||m.desc||'')+'</td><td style="font-family:monospace;font-size:9px;color:#a8d8a8;padding:7px 10px;border-bottom:1px solid #2a3050;max-width:220px;word-break:break-all">'+esc(m.dax||'').replace(/\n/g,'<br>')+'</td></tr>').join('');
+  }
+
+  function relRows() {
+    return rels.map(r=>'<tr><td style="font-family:monospace;font-size:9px;color:#a8d8a8;padding:6px 10px;border-bottom:1px solid #2a3050">'+esc(r.from||'')+'</td><td style="font-family:monospace;font-size:9px;color:#a8d8a8;padding:6px 10px;border-bottom:1px solid #2a3050">'+esc(r.to||'')+'</td><td style="padding:6px 10px;border-bottom:1px solid #2a3050">'+pill(r.cardinality||'Many:One','#4f72f7')+'</td><td style="padding:6px 10px;border-bottom:1px solid #2a3050">'+(r.active!==false?'<span style="color:#22c55e">✓ Active</span>':'<span style="color:#f59e0b">⚠ Inactive</span>')+'</td><td style="color:#8894b0;font-size:9px;padding:6px 10px;border-bottom:1px solid #2a3050">'+esc(r.notes||'—')+'</td></tr>').join('');
+  }
+
+  function asItem(a,col){return '<div style="display:flex;gap:8px;padding:8px 12px;background:#1c2030;border-radius:6px;font-size:11px;color:#8894b0;border-left:2px solid '+(col||'#f59e0b')+';margin-bottom:6px">'+esc(a)+'</div>';}
+
+  const css=['*{box-sizing:border-box;margin:0;padding:0}','body{background:#0c0e14;color:#e2e8f0;font-family:"Segoe UI",system-ui,sans-serif;font-size:12px;line-height:1.5}','@media print{body{background:#0c0e14;-webkit-print-color-adjust:exact;print-color-adjust:exact}.no-print{display:none!important}.page-break{page-break-before:always}}','table{width:100%;border-collapse:collapse}','th{text-align:left;padding:8px 10px;background:#1c2030;color:#8894b0;font-size:9px;text-transform:uppercase;letter-spacing:.8px;border-bottom:2px solid #2a3050}','.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}','.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}','.grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}','.sec{padding:36px 46px}.sec+.sec{border-top:1px solid #2a3050}','.pb{page-break-before:always}','.print-btn{position:fixed;bottom:22px;right:22px;background:linear-gradient(135deg,#4f72f7,#8b5cf6);color:#fff;border:none;border-radius:10px;padding:11px 18px;font-size:13px;font-weight:700;cursor:pointer;z-index:999}'].join('');
+
+  const parts=[];
+  parts.push('<!DOCTYPE html><html lang="en">');
+  parts.push('<head><meta charset="UTF-8"><title>'+esc(bp.industry||bp.meta?.industry||'Blueprint')+' — Power BI Blueprint</title><style>'+css+'</style></head>');
+  parts.push('<body>');
+  parts.push('<button class="print-btn no-print" onclick="window.print()">🖨 Print / Save PDF</button>');
+  // Cover
+  parts.push('<div style="background:linear-gradient(135deg,#0c0e14,#13161f 50%,#1c2030);min-height:100vh;display:flex;flex-direction:column;justify-content:center;padding:56px;position:relative;overflow:hidden">');
+  parts.push('<div style="position:absolute;inset:0;background:radial-gradient(ellipse at 30% 50%,rgba(79,114,247,.1),transparent 60%),radial-gradient(ellipse at 70% 30%,rgba(139,92,246,.07),transparent 50%)"></div>');
+  parts.push('<div style="position:relative;z-index:1">');
+  parts.push('<div style="display:flex;align-items:center;gap:12px;margin-bottom:56px"><div style="width:42px;height:42px;border-radius:12px;background:linear-gradient(135deg,#4f72f7,#8b5cf6);display:flex;align-items:center;justify-content:center;font-size:20px">📊</div><div><div style="font-size:15px;font-weight:700;color:#e2e8f0">Power BI Blueprint Generator</div><span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:rgba(139,92,246,.2);border:1px solid #8b5cf6;color:#a78bfa;letter-spacing:.5px">AI-Generated · Enterprise Edition</span></div></div>');
+  parts.push('<div style="font-size:12px;font-weight:600;color:#4f72f7;text-transform:uppercase;letter-spacing:2px;margin-bottom:14px">'+esc(bp.industry||bp.meta?.industry||'Industry')+'</div>');
+  parts.push('<div style="font-size:40px;font-weight:800;letter-spacing:-1px;line-height:1.1;margin-bottom:22px;background:linear-gradient(135deg,#e2e8f0,#8894b0);-webkit-background-clip:text;-webkit-text-fill-color:transparent">'+esc(bp.industry||bp.meta?.industry||'')+'  Dashboard Blueprint</div>');
+  parts.push('<div style="font-size:14px;color:#8894b0;max-width:560px;line-height:1.7;margin-bottom:44px">'+esc(bp.executiveSummary?.overview||bp.businessGoal||bp.meta?.business_goal||'')+'</div>');
+  parts.push('<div style="width:56px;height:3px;background:linear-gradient(90deg,#4f72f7,#8b5cf6);border-radius:2px;margin-bottom:32px"></div>');
+  parts.push('<div style="display:flex;gap:20px;flex-wrap:wrap">');
+  parts.push('<div style="background:rgba(42,48,80,.5);border:1px solid #2a3050;border-radius:10px;padding:14px 20px"><div style="font-size:9px;font-weight:700;color:#8894b0;text-transform:uppercase;letter-spacing:.8px;margin-bottom:4px">Confidence</div><div style="font-size:64px;font-weight:800;color:'+confColor+';line-height:1">'+conf+'</div></div>');
+  [['Fact Tables',facts.length],['Dimensions',dims.length],['Measures',measures.length],['KPIs',kpis.length],['Pages',pages.length]].forEach(item=>{parts.push('<div style="background:rgba(42,48,80,.5);border:1px solid #2a3050;border-radius:10px;padding:14px 20px"><div style="font-size:9px;font-weight:700;color:#8894b0;text-transform:uppercase;letter-spacing:.8px;margin-bottom:4px">'+item[0]+'</div><div style="font-size:22px;font-weight:700;color:#e2e8f0">'+item[1]+'</div></div>');});
+  parts.push('<div style="background:rgba(42,48,80,.5);border:1px solid #2a3050;border-radius:10px;padding:14px 20px"><div style="font-size:9px;font-weight:700;color:#8894b0;text-transform:uppercase;letter-spacing:.8px;margin-bottom:4px">Self-Review</div><div style="font-size:16px;font-weight:700;color:'+verdColor+'">'+esc(sr.verdict||sr.overall_verdict||'—')+'</div></div>');
+  parts.push('</div></div>');
+  parts.push('<div style="position:absolute;bottom:28px;left:56px;right:56px;display:flex;justify-content:space-between;font-size:10px;color:#8894b0;border-top:1px solid #2a3050;padding-top:14px"><span>Generated: '+now+'</span><span>Power BI Blueprint Generator · AI-Powered · Australian Business Context</span><span>Confidential — Internal Use Only</span></div>');
+  parts.push('</div>');
+  // S1 Star Schema
+  parts.push('<div class="pb"></div><div class="sec">'+secHead('1','🗄','Semantic Model — Star Schema Diagram'));
+  parts.push('<p style="color:#8894b0;font-size:11px;margin-bottom:18px">'+esc(bp.industry||bp.meta?.industry||'')+' semantic model. Fact tables (blue) at centre, dimension tables (green/purple) in outer ring.</p>');
+  parts.push(starSVG()+'</div>');
+  // S1.1 Relationships
+  parts.push('<div class="sec">'+secHead('1.1','🔗','Relationship Register'));
+  parts.push('<table><thead><tr><th>From Column</th><th>To Column</th><th>Cardinality</th><th>Status</th><th>Notes</th></tr></thead><tbody>'+relRows()+'</tbody></table></div>');
+  // S2 Page Wireframes
+  parts.push('<div class="pb"></div><div class="sec">'+secHead('2','📄','Report Page Wireframes'));
+  parts.push('<p style="color:#8894b0;font-size:11px;margin-bottom:22px">Visual layout blueprint. Amber=KPI/Card, Blue=trend/bar, Purple=matrix, Green=map.</p>');
+  parts.push('<div class="grid2">'+pageWireframes()+'</div></div>');
+  // S3 KPIs
+  parts.push('<div class="pb"></div><div class="sec">'+secHead('3','🎯','KPI Definitions &amp; Thresholds'));
+  parts.push('<div class="grid3">'+kpiCardsPDF()+'</div></div>');
+  // S4 Measures
+  parts.push('<div class="sec pb">'+secHead('4','⚡','DAX Measure Catalogue'));
+  parts.push('<table><thead><tr><th>Measure</th><th>Format</th><th>Folder</th><th>Description</th><th>DAX Expression</th></tr></thead><tbody>'+measuresRows()+'</tbody></table></div>');
+  // S5 Self-Review
+  parts.push('<div class="pb"></div><div class="sec">'+secHead('5','🔍','Self-Review Report'));
+  parts.push('<div style="display:flex;align-items:center;gap:10px;margin-bottom:22px"><span style="font-size:12px;font-weight:700;color:#e2e8f0">Verdict:</span><span style="font-size:11px;font-weight:700;padding:4px 12px;border-radius:20px;background:rgba(34,197,94,.1);color:'+verdColor+';border:1px solid '+verdColor+'">'+esc(sr.verdict||sr.overall_verdict||'—')+'</span></div>');
+  parts.push('<div class="grid3" style="margin-bottom:22px">'+gateCards()+'</div>');
+  if((sr.warnings||[]).length){parts.push('<div style="margin-bottom:18px"><div style="font-size:10px;font-weight:700;color:#f59e0b;text-transform:uppercase;letter-spacing:.8px;margin-bottom:10px">⚠️ Warnings</div>'+(sr.warnings||[]).map(w=>asItem(w,'#f59e0b')).join('')+'</div>');}
+  if((sr.design_recommendations||[]).length){const dr=sr.design_recommendations||[];parts.push('<div style="margin-bottom:18px"><div style="font-size:10px;font-weight:700;color:#4f72f7;text-transform:uppercase;letter-spacing:.8px;margin-bottom:10px">💡 Design Recommendations</div>'+dr.map(r=>'<div style="display:flex;gap:8px;align-items:flex-start;padding:7px 10px;background:#1c2030;border-radius:6px;margin-bottom:4px"><span style="font-size:8px;font-weight:700;padding:2px 6px;border-radius:3px;background:#4f72f722;color:#4f72f7;flex-shrink:0">'+esc(r.category||'Design')+'</span><div><div style="font-size:10px;color:#e2e8f0">'+esc(r.recommendation||'')+'</div>'+(r.rationale?'<div style="font-size:9px;color:#8894b0;margin-top:2px">'+esc(r.rationale)+'</div>':'')+'</div></div>').join('')+'</div>');}
+  parts.push('<div class="grid3">');
+  if((sr.strengths||[]).length) parts.push('<div><div style="font-size:10px;font-weight:700;color:#22c55e;text-transform:uppercase;letter-spacing:.8px;margin-bottom:10px">Strengths</div>'+(sr.strengths||[]).map(s=>asItem(s,'#22c55e')).join('')+'</div>');
+  if((sr.weaknesses||[]).length) parts.push('<div><div style="font-size:10px;font-weight:700;color:#f59e0b;text-transform:uppercase;letter-spacing:.8px;margin-bottom:10px">Weaknesses</div>'+(sr.weaknesses||[]).map(s=>asItem(s,'#f59e0b')).join('')+'</div>');
+  if((sr.recommendedImprovements||[]).length) parts.push('<div><div style="font-size:10px;font-weight:700;color:#4f72f7;text-transform:uppercase;letter-spacing:.8px;margin-bottom:10px">Improvements</div>'+(sr.recommendedImprovements||[]).map(s=>asItem(s,'#4f72f7')).join('')+'</div>');
+  parts.push('</div></div>');
+  // S6 Assumptions + Security
+  parts.push('<div class="sec pb">'+secHead('6','📊','Assumptions, Data Requirements &amp; Security'));
+  const assumes=bp.assumptions||bp.confidence?.assumptions||[];
+  const dreqs=bp.dataRequirements||bp.confidence?.gaps||[];
+  parts.push('<div class="grid2" style="margin-bottom:24px"><div><div style="font-size:10px;font-weight:700;color:#f59e0b;text-transform:uppercase;letter-spacing:.8px;margin-bottom:10px">Assumptions Made</div>'+(assumes.length?assumes.map(a=>asItem(a,'#f59e0b')).join(''):asItem('None recorded.','#f59e0b'))+'</div><div><div style="font-size:10px;font-weight:700;color:#ef4444;text-transform:uppercase;letter-spacing:.8px;margin-bottom:10px">Gaps / Data Requirements</div>'+(dreqs.length?dreqs.map(d=>asItem(d,'#ef4444')).join(''):asItem('None recorded.','#ef4444'))+'</div></div>');
+  parts.push('<div class="grid4">'+card('RLS Required',(sec.rlsRequired||sec.rls_required)?'✅ Yes':'❌ No')+card('Sensitivity',esc(sec.sensitivityLabel||sec.sensitivity_label||'—'))+card('PII Columns',esc((sec.piiColumns||sec.pii_columns||[]).join(', ')||'—'))+card('RLS Roles',esc((sec.roles||[]).map(r=>r.name||r.role||'').join(', ')||'—'))+'</div></div>');
+  parts.push('<div style="text-align:center;padding:24px;background:#13161f;border-top:1px solid #2a3050"><div style="font-size:10px;color:#8894b0">Generated by Power BI Blueprint Generator - AI-Powered - '+now+' - Confidential - Internal Use Only</div></div>');
+  parts.push('</body></html>');
+  return parts.join('\n');
+}
+</script>
+<!-- config.js: copy config.sample.js → config.js and fill in your values.
+     If config.js is absent the app runs in Demo Mode with no logging. -->
+<script src="config.js" onerror="console.info('[beta] config.js not found — running in Demo Mode. Copy config.sample.js to config.js to enable logging.')"></script>
+<script src="beta.js"></script>
+</body>
+</html>
