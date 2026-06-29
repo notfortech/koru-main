@@ -76,8 +76,8 @@ public sealed class AiGateway : IAiGateway
             RequestId = correlationId,
             Status = BlueprintStatuses.Pending,
             RequestPayloadJson = JsonSerializer.Serialize(request, JsonOptions),
-            GeneratePdf = request.GeneratePdf,
-            GenerateJson = request.GenerateJson,
+            GeneratePdf = false,
+            GenerateJson = true,
             CreatedBy = createdBy
         };
 

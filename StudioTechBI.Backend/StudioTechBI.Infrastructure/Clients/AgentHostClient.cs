@@ -37,9 +37,12 @@ public class AgentHostClient : IAgentHostClient
             "Calling AgentHost /api/blueprints/generate. CorrelationId={CorrelationId} Tenant={TenantId} Client={ClientId}",
             correlationId, request.TenantId, request.ClientId);
 
+        var requestId = Guid.NewGuid();
+        var agentHostRequest = AgentHostBlueprintRequest.From(request, requestId);
+
         var httpRequest = new HttpRequestMessage(HttpMethod.Post, "api/blueprints/generate");
         httpRequest.Headers.Add("X-Correlation-Id", correlationId);
-        httpRequest.Content = JsonContent.Create(request, options: JsonOptions);
+        httpRequest.Content = JsonContent.Create(agentHostRequest, options: JsonOptions);
 
         var sw = System.Diagnostics.Stopwatch.StartNew();
 

@@ -16,23 +16,66 @@ public class GenerateBlueprintRequest
 
     public string? ProjectId { get; set; }
 
-    public string? BusinessRequirements { get; set; }
-
     [Required, MaxLength(200)]
     public string Industry { get; set; } = string.Empty;
 
     public string? KnowledgePack { get; set; }
 
-    public string? ExistingSchema { get; set; }
+    [Required]
+    public string BusinessCapability { get; set; } = string.Empty;
 
-    public string? SampleData { get; set; }
+    [Required]
+    public string BusinessGoal { get; set; } = string.Empty;
 
-    public List<string>? DataConnections { get; set; }
+    public string? BusinessRequirements { get; set; }
 
-    public List<string>? ExistingReports { get; set; }
+    public List<SourceSystemDto>? SourceSystems { get; set; }
 
-    public string OutputLanguage { get; set; } = "en";
+    public List<DatasetMetadataDto>? DatasetMetadata { get; set; }
 
-    public bool GeneratePdf { get; set; } = true;
-    public bool GenerateJson { get; set; } = true;
+    public string? PreferredProvider { get; set; }
+
+    public string? PreferredModel { get; set; }
+
+    public double? Temperature { get; set; }
+
+    public int? MaxTokens { get; set; }
+
+    public string? OutputFormat { get; set; }
+}
+
+public class SourceSystemDto
+{
+    [Required]
+    public string Name { get; set; } = string.Empty;
+
+    public string? Type { get; set; }
+
+    public string? Description { get; set; }
+
+    public List<string>? Tables { get; set; }
+}
+
+public class DatasetMetadataDto
+{
+    [Required]
+    public string Name { get; set; } = string.Empty;
+
+    public string? Description { get; set; }
+
+    public List<ColumnMetadataDto>? Columns { get; set; }
+}
+
+public class ColumnMetadataDto
+{
+    [Required]
+    public string Name { get; set; } = string.Empty;
+
+    public string? DataType { get; set; }
+
+    public string? Description { get; set; }
+
+    public bool? IsPrimaryKey { get; set; }
+
+    public bool? IsNullable { get; set; }
 }

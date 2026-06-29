@@ -10,8 +10,8 @@ namespace StudioTechBI.Infrastructure.AI;
 
 /// <summary>
 /// Long-running background worker that drains the BlueprintGenerationQueue.
-/// Each generation job calls STBI-AgentHost, stores artefacts, and updates
-/// the BlueprintGeneration record to Completed or Failed.
+/// Each generation job calls STBI-AgentHost, stores the Blueprint JSON artefact,
+/// and updates the BlueprintGeneration record to Completed or Failed.
 /// Uses IServiceScopeFactory to obtain scoped services (EF, repositories).
 /// </summary>
 public sealed class BlueprintGenerationBackgroundService : BackgroundService
@@ -108,24 +108,18 @@ public sealed class BlueprintGenerationBackgroundService : BackgroundService
                 Id = Guid.NewGuid(),
                 BlueprintId = blueprint.Id,
                 VersionNumber = newVersionNumber,
-                PromptVersion = "1.0",
+                PromptVersion = response.Diagnostics?.PromptPackVersion,
                 Confidence = response.Confidence,
                 GeneratedDate = DateTime.UtcNow,
-                ExecutionTimeMs = response.ExecutionTime,
+                ExecutionTimeMs = response.ExecutionTimeMs,
                 IsActive = true,
                 CreatedBy = generation.CreatedBy
             };
 
-            if (generation.GenerateJson && !string.IsNullOrWhiteSpace(response.AnalyticsDeploymentContractJson))
+            if (!string.IsNullOrWhiteSpace(response.BlueprintJson))
             {
                 version.JsonBlobPath = await storage.StoreJsonAsync(
-                    blueprint.Id, newVersionNumber, response.AnalyticsDeploymentContractJson, ct);
-            }
-
-            if (generation.GeneratePdf && response.BlueprintPdfBytes is { Length: > 0 })
-            {
-                version.PdfBlobPath = await storage.StorePdfAsync(
-                    blueprint.Id, newVersionNumber, response.BlueprintPdfBytes, ct);
+                    blueprint.Id, newVersionNumber, response.BlueprintJson, ct);
             }
 
             await repo.AddVersionAsync(version, ct);
@@ -145,8 +139,9 @@ public sealed class BlueprintGenerationBackgroundService : BackgroundService
             await repo.SaveChangesAsync(ct);
 
             _logger.LogInformation(
-                "Blueprint generation completed. GenerationId={GenerationId} VersionNumber={Version} Confidence={Confidence}",
-                generationId, newVersionNumber, response.Confidence);
+                "Blueprint generation completed. GenerationId={GenerationId} VersionNumber={Version} Provider={Provider} Model={Model} LatencyMs={LatencyMs}",
+                generationId, newVersionNumber, response.Provider, response.Model,
+                response.Diagnostics?.ProviderLatencyMs);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -206,10 +201,10 @@ public sealed class BlueprintGenerationBackgroundService : BackgroundService
 
     private static void ValidateResponse(BlueprintGenerationResponse response)
     {
-        if (string.IsNullOrWhiteSpace(response.RequestId))
-            throw new InvalidOperationException("AgentHost response is missing RequestId.");
+        if (response.BlueprintId == Guid.Empty)
+            throw new InvalidOperationException("AgentHost response is missing BlueprintId.");
 
-        if (string.IsNullOrWhiteSpace(response.Status))
-            throw new InvalidOperationException("AgentHost response is missing Status.");
+        if (response.Blueprint is null)
+            throw new InvalidOperationException("AgentHost response contains no Blueprint document.");
     }
 }
