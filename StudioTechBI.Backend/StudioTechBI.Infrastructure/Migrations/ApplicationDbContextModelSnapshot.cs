@@ -1466,6 +1466,207 @@ namespace StudioTechBI.Infrastructure.Migrations
                     b.ToTable("UserRoles");
                 });
 
+            modelBuilder.Entity("StudioTechBI.Domain.Entities.Blueprint", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("ClientId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ProjectId")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("Industry")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("KnowledgePack")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<int>("VersionCount")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("CreatedBy")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "ClientId", "ProjectId")
+                        .HasDatabaseName("IX_Blueprints_TenantId_ClientId_ProjectId")
+                        .HasFilter("[IsDeleted] = 0");
+
+                    b.ToTable("Blueprints", (string)null);
+                });
+
+            modelBuilder.Entity("StudioTechBI.Domain.Entities.BlueprintVersion", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("BlueprintId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("VersionNumber")
+                        .HasColumnType("int");
+
+                    b.Property<string>("PromptVersion")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<double>("Confidence")
+                        .HasColumnType("float");
+
+                    b.Property<string>("JsonBlobPath")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("PdfBlobPath")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<DateTime>("GeneratedDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<long>("ExecutionTimeMs")
+                        .HasColumnType("bigint");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("CreatedBy")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BlueprintId", "IsActive")
+                        .HasDatabaseName("IX_BlueprintVersions_BlueprintId_IsActive")
+                        .HasFilter("[IsDeleted] = 0");
+
+                    b.ToTable("BlueprintVersions", (string)null);
+                });
+
+            modelBuilder.Entity("StudioTechBI.Domain.Entities.BlueprintGeneration", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("BlueprintId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("RequestId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("RequestPayloadJson")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("GeneratePdf")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("GenerateJson")
+                        .HasColumnType("bit");
+
+                    b.Property<double?>("ConfidenceScore")
+                        .HasColumnType("float");
+
+                    b.Property<string>("Warnings")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<string>("ErrorMessage")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<DateTime?>("ProcessingStartedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("CompletedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("BlueprintVersionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("CreatedBy")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BlueprintId")
+                        .HasDatabaseName("IX_BlueprintGenerations_BlueprintId");
+
+                    b.HasIndex("Status")
+                        .HasDatabaseName("IX_BlueprintGenerations_Status")
+                        .HasFilter("[IsDeleted] = 0");
+
+                    b.HasIndex("BlueprintVersionId")
+                        .HasDatabaseName("IX_BlueprintGenerations_BlueprintVersionId");
+
+                    b.ToTable("BlueprintGenerations", (string)null);
+                });
+
             modelBuilder.Entity("StudioTechBI.Domain.Entities.BankConnection", b =>
                 {
                     b.HasOne("StudioTechBI.Domain.Entities.Company", "Company")
@@ -1712,6 +1913,42 @@ namespace StudioTechBI.Infrastructure.Migrations
 
                     b.Navigation("UserRoles");
                 });
+            modelBuilder.Entity("StudioTechBI.Domain.Entities.BlueprintVersion", b =>
+                {
+                    b.HasOne("StudioTechBI.Domain.Entities.Blueprint", "Blueprint")
+                        .WithMany("Versions")
+                        .HasForeignKey("BlueprintId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Blueprint");
+                });
+
+            modelBuilder.Entity("StudioTechBI.Domain.Entities.BlueprintGeneration", b =>
+                {
+                    b.HasOne("StudioTechBI.Domain.Entities.Blueprint", "Blueprint")
+                        .WithMany("Generations")
+                        .HasForeignKey("BlueprintId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("StudioTechBI.Domain.Entities.BlueprintVersion", "BlueprintVersion")
+                        .WithMany()
+                        .HasForeignKey("BlueprintVersionId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("Blueprint");
+
+                    b.Navigation("BlueprintVersion");
+                });
+
+            modelBuilder.Entity("StudioTechBI.Domain.Entities.Blueprint", b =>
+                {
+                    b.Navigation("Versions");
+
+                    b.Navigation("Generations");
+                });
+
 #pragma warning restore 612, 618
         }
     }
