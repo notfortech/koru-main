@@ -29,9 +29,8 @@ public class BlueprintController : ControllerBase
     }
 
     /// <summary>
-    /// Generates a blueprint by sending the business requirement to STBI AgentHost.
-    /// Returns a secure PDF download URL and updated credit balance.
-    /// The PDF will download automatically on the frontend when the URL is received.
+    /// Sends the business requirement to STBI AgentHost and returns a secure PDF download URL.
+    /// The frontend triggers an auto-download popup when pdfDownloadUrl is received.
     /// </summary>
     [HttpPost("generate")]
     public async Task<IActionResult> Generate([FromBody] BlueprintGenerateRequestDto body, CancellationToken ct)
@@ -39,7 +38,7 @@ public class BlueprintController : ControllerBase
         if (body == null || string.IsNullOrWhiteSpace(body.BusinessRequirement))
             return BadRequest(new { success = false, message = "businessRequirement is required." });
 
-        var clientCode = await ResolveClientCodeAsync(body.UseSelectedClient, body.ClientCode, ct);
+        var clientCode = ResolveClientCode(body.UseSelectedClient, body.ClientCode);
         if (clientCode == null)
             return BadRequest(new { success = false, message = "clientCode is required (missing client_code claim)." });
 
@@ -88,24 +87,23 @@ public class BlueprintController : ControllerBase
         });
     }
 
-    /// <summary>
-    /// Returns the client's current credit balance based on the most recent blueprint request.
-    /// </summary>
+    /// <summary>Returns the client's current credit balance from the most recent blueprint.</summary>
     [HttpGet("credits")]
     public async Task<IActionResult> GetCredits(
         [FromQuery] string? clientCode,
         [FromQuery] bool useSelectedClient = false,
         CancellationToken ct = default)
     {
-        var code = await ResolveClientCodeAsync(useSelectedClient, clientCode, ct);
-        if (code == null) return Ok(new { creditsRemaining = (int?)null, message = "No client associated with this account." });
+        var code = ResolveClientCode(useSelectedClient, clientCode);
+        if (code == null)
+            return Ok(new { creditsRemaining = (int?)null, message = "No client associated with this account." });
 
         var accessError = await EnsureClientAccessAsync(code, ct);
         if (accessError != null) return accessError;
 
         var credits = await _blueprintService.GetCreditsAsync(code, ct);
         if (credits == null)
-            return Ok(new { creditsRemaining = (int?)null, message = "No blueprint requests have been made yet." });
+            return Ok(new { creditsRemaining = (int?)null, message = "No blueprints have been generated yet." });
 
         return Ok(new
         {
@@ -116,68 +114,62 @@ public class BlueprintController : ControllerBase
         });
     }
 
-    /// <summary>
-    /// Lists past blueprint requests for the client, newest first.
-    /// </summary>
+    /// <summary>Lists past blueprints for the client, newest first.</summary>
     [HttpGet("requests")]
     public async Task<IActionResult> GetRequests(
         [FromQuery] string? clientCode,
         [FromQuery] bool useSelectedClient = false,
         CancellationToken ct = default)
     {
-        var code = await ResolveClientCodeAsync(useSelectedClient, clientCode, ct);
+        var code = ResolveClientCode(useSelectedClient, clientCode);
         if (code == null) return Ok(Array.Empty<object>());
 
         var accessError = await EnsureClientAccessAsync(code, ct);
         if (accessError != null) return accessError;
 
-        var requests = await _blueprintService.GetRequestsAsync(code, ct);
+        var blueprints = await _blueprintService.GetRequestsAsync(code, ct);
 
-        return Ok(requests.Select(r => new
+        return Ok(blueprints.Select(b => new
         {
-            requestId = r.RequestId,
-            status = r.Status,
-            businessRequirement = r.BusinessRequirement,
-            industry = r.Industry,
-            pdfDownloadUrl = r.PdfDownloadUrl,
-            creditsConsumed = r.CreditsConsumed,
-            creditsRemaining = r.CreditsRemaining,
-            subscriptionPlan = r.SubscriptionPlan,
-            resetDate = r.ResetDate,
-            requestedByEmail = r.RequestedByEmail,
-            createdAtUtc = r.CreatedAtUtc,
-            completedAtUtc = r.CompletedAtUtc
+            requestId = b.Id,
+            status = b.Status,
+            businessRequirement = b.BusinessRequirement,
+            industry = b.Industry,
+            pdfDownloadUrl = b.PdfDownloadUrl,
+            creditsConsumed = b.CreditsConsumed,
+            creditsRemaining = b.CreditsRemaining,
+            subscriptionPlan = b.SubscriptionPlan,
+            resetDate = b.ResetDate,
+            requestedByEmail = b.RequestedByEmail,
+            createdAtUtc = b.CreatedAt,
+            completedAtUtc = b.CompletedAtUtc
         }));
     }
 
     /// <summary>
-    /// Proxies the PDF download from AgentHost. The frontend should call this endpoint to trigger
-    /// the auto-download — it streams the PDF directly to the browser.
+    /// Proxies the PDF stream from AgentHost to the browser.
+    /// The frontend calls this URL to trigger the auto-download.
     /// </summary>
-    [HttpGet("{requestId:guid}/pdf")]
-    public async Task<IActionResult> DownloadPdf(Guid requestId, CancellationToken ct)
+    [HttpGet("{blueprintId:guid}/pdf")]
+    public async Task<IActionResult> DownloadPdf(Guid blueprintId, CancellationToken ct)
     {
-        var email = User.FindFirstValue(ClaimTypes.Email);
-        var claimCode = User.FindFirstValue("client_code");
-
         var accessible = await GetAccessibleClientCodesAsync(ct);
         if (accessible.Count == 0)
             return StatusCode(403, new { success = false, message = "No client access." });
 
-        // Find which of the user's accessible clients owns this requestId.
         foreach (var (code, _) in accessible)
         {
-            var stream = await _blueprintService.GetPdfStreamAsync(code, requestId, ct);
+            var stream = await _blueprintService.GetPdfStreamAsync(code, blueprintId, ct);
             if (stream != null)
-                return File(stream, "application/pdf", $"blueprint-{requestId}.pdf");
+                return File(stream, "application/pdf", $"blueprint-{blueprintId}.pdf");
         }
 
         return NotFound(new { success = false, message = "PDF not found or not yet ready." });
     }
 
-    // --- helpers (mirrors ReportsController pattern) ---
+    // ── helpers (mirrors ReportsController pattern) ──────────────────────────
 
-    private async Task<string?> ResolveClientCodeAsync(bool useSelectedClient, string? providedCode, CancellationToken ct)
+    private string? ResolveClientCode(bool useSelectedClient, string? providedCode)
     {
         if (useSelectedClient)
             return string.IsNullOrWhiteSpace(providedCode) ? null : providedCode.Trim();
@@ -191,8 +183,10 @@ public class BlueprintController : ControllerBase
         if (string.IsNullOrEmpty(email)) return Array.Empty<(string, Guid)>();
 
         var fromCompanies = await _clientByCompanyQuery.GetClientsForUserEmailAsync(email, ct);
-        var list = fromCompanies.Select(c => (Code: c.ClientCode ?? "", c.ClientId))
-            .Where(x => !string.IsNullOrEmpty(x.Code)).ToList();
+        var list = fromCompanies
+            .Select(c => (Code: c.ClientCode ?? "", c.ClientId))
+            .Where(x => !string.IsNullOrEmpty(x.Code))
+            .ToList();
 
         var claimCode = User.FindFirstValue("client_code");
         if (!string.IsNullOrEmpty(claimCode) && list.All(x => !string.Equals(x.Code, claimCode, StringComparison.OrdinalIgnoreCase)))
