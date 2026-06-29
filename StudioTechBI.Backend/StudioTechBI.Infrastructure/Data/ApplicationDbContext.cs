@@ -41,6 +41,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<ModelConsent> ModelConsents => Set<ModelConsent>();
     public DbSet<DataConnection> DataConnections => Set<DataConnection>();
     public DbSet<OAuthConnectionState> OAuthConnectionStates => Set<OAuthConnectionState>();
+    public DbSet<BlueprintRequest> BlueprintRequests => Set<BlueprintRequest>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
