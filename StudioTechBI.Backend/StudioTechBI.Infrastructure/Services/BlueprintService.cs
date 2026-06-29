@@ -51,26 +51,25 @@ public sealed class BlueprintService : IBlueprintService
         var effectiveIndustry = (!string.IsNullOrWhiteSpace(industry) ? industry : client.Industry)
             ?? string.Empty;
 
-        var blueprintRequest = new BlueprintRequest
+        var blueprint = new Blueprint
         {
-            RequestId = Guid.NewGuid(),
+            Id = Guid.NewGuid(),
             ClientId = client.ClientId,
             BusinessRequirement = businessRequirement,
             Industry = effectiveIndustry,
             ExistingSchema = string.IsNullOrWhiteSpace(existingSchema) ? null : existingSchema,
             Status = "Pending",
-            RequestedByEmail = requestedByEmail,
-            CreatedAtUtc = DateTime.UtcNow
+            RequestedByEmail = requestedByEmail
         };
 
-        _db.BlueprintRequests.Add(blueprintRequest);
+        _db.Blueprints.Add(blueprint);
         await _db.SaveChangesAsync(ct);
 
         var agentRequest = new StbAgentHostRequestDto
         {
             BusinessRequirement = businessRequirement,
             Industry = effectiveIndustry,
-            ExistingSchema = blueprintRequest.ExistingSchema
+            ExistingSchema = blueprint.ExistingSchema
         };
 
         StbAgentHostResponseDto agentResponse;
@@ -78,15 +77,14 @@ public sealed class BlueprintService : IBlueprintService
         {
             var tenantId = client.ClientCode ?? client.ClientId.ToString();
             var tenantName = client.ClientName;
-
             agentResponse = await _agentHost.GenerateBlueprintAsync(agentRequest, tenantId, tenantName, ct);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "StbAgentHost call failed for client {ClientCode}", clientCode);
-            blueprintRequest.Status = "Failed";
-            blueprintRequest.ErrorMessage = ex.Message;
-            blueprintRequest.CompletedAtUtc = DateTime.UtcNow;
+            blueprint.Status = "Failed";
+            blueprint.ErrorMessage = ex.Message;
+            blueprint.CompletedAtUtc = DateTime.UtcNow;
             await _db.SaveChangesAsync(ct);
             throw new InvalidOperationException("Blueprint generation service is temporarily unavailable.", ex);
         }
@@ -96,37 +94,35 @@ public sealed class BlueprintService : IBlueprintService
         try
         {
             var responseJson = JsonSerializer.Serialize(agentResponse, JsonOptions);
-            var blobName = $"{clientCode}/blueprints/{blueprintRequest.RequestId}/response.json";
+            var blobName = $"{clientCode}/blueprints/{blueprint.Id}/response.json";
             using var jsonStream = new MemoryStream(Encoding.UTF8.GetBytes(responseJson));
             await _blob.UploadClientBlobAsync(blobName, jsonStream, "application/json");
             blobPath = blobName;
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to store blueprint response JSON to blob for request {RequestId}", blueprintRequest.RequestId);
+            _logger.LogWarning(ex, "Failed to store blueprint response JSON to blob for blueprint {Id}", blueprint.Id);
         }
 
-        var warningsJson = agentResponse.Warnings?.Count > 0
+        blueprint.Status = agentResponse.Status ?? "Completed";
+        blueprint.PdfDownloadUrl = agentResponse.PdfDownloadUrl;
+        blueprint.CreditsRemaining = agentResponse.CreditsRemaining;
+        blueprint.CreditsConsumed = agentResponse.CreditsConsumed;
+        blueprint.SubscriptionPlan = agentResponse.SubscriptionPlan;
+        blueprint.ResetDate = agentResponse.ResetDate;
+        blueprint.ResponseBlobPath = blobPath;
+        blueprint.WarningsJson = agentResponse.Warnings?.Count > 0
             ? JsonSerializer.Serialize(agentResponse.Warnings)
             : null;
-
-        blueprintRequest.Status = agentResponse.Status ?? "Completed";
-        blueprintRequest.PdfDownloadUrl = agentResponse.PdfDownloadUrl;
-        blueprintRequest.CreditsRemaining = agentResponse.CreditsRemaining;
-        blueprintRequest.CreditsConsumed = agentResponse.CreditsConsumed;
-        blueprintRequest.SubscriptionPlan = agentResponse.SubscriptionPlan;
-        blueprintRequest.ResetDate = agentResponse.ResetDate;
-        blueprintRequest.ResponseBlobPath = blobPath;
-        blueprintRequest.WarningsJson = warningsJson;
-        blueprintRequest.CompletedAtUtc = DateTime.UtcNow;
+        blueprint.CompletedAtUtc = DateTime.UtcNow;
 
         await _db.SaveChangesAsync(ct);
 
         return new BlueprintGenerateResponseDto
         {
-            RequestId = blueprintRequest.RequestId,
-            Status = blueprintRequest.Status,
-            PdfDownloadUrl = blueprintRequest.PdfDownloadUrl,
+            RequestId = blueprint.Id,
+            Status = blueprint.Status,
+            PdfDownloadUrl = blueprint.PdfDownloadUrl,
             CreditsConsumed = agentResponse.CreditsConsumed,
             CreditsRemaining = agentResponse.CreditsRemaining,
             SubscriptionPlan = agentResponse.SubscriptionPlan,
@@ -140,10 +136,10 @@ public sealed class BlueprintService : IBlueprintService
         var client = await _clientService.GetByClientCodeOrIdAsync(clientCode, ct);
         if (client == null) return null;
 
-        var latest = await _db.BlueprintRequests
+        var latest = await _db.Blueprints
             .AsNoTracking()
-            .Where(r => r.ClientId == client.ClientId && r.CreditsRemaining != null)
-            .OrderByDescending(r => r.CreatedAtUtc)
+            .Where(b => b.ClientId == client.ClientId && !b.IsDeleted && b.CreditsRemaining != null)
+            .OrderByDescending(b => b.CreatedAt)
             .FirstOrDefaultAsync(ct);
 
         if (latest == null) return null;
@@ -157,30 +153,30 @@ public sealed class BlueprintService : IBlueprintService
         };
     }
 
-    public async Task<IReadOnlyList<BlueprintRequest>> GetRequestsAsync(string clientCode, CancellationToken ct = default)
+    public async Task<IReadOnlyList<Blueprint>> GetRequestsAsync(string clientCode, CancellationToken ct = default)
     {
         var client = await _clientService.GetByClientCodeOrIdAsync(clientCode, ct);
-        if (client == null) return Array.Empty<BlueprintRequest>();
+        if (client == null) return Array.Empty<Blueprint>();
 
-        return await _db.BlueprintRequests
+        return await _db.Blueprints
             .AsNoTracking()
-            .Where(r => r.ClientId == client.ClientId)
-            .OrderByDescending(r => r.CreatedAtUtc)
+            .Where(b => b.ClientId == client.ClientId && !b.IsDeleted)
+            .OrderByDescending(b => b.CreatedAt)
             .ToListAsync(ct);
     }
 
-    public async Task<Stream?> GetPdfStreamAsync(string clientCode, Guid requestId, CancellationToken ct = default)
+    public async Task<Stream?> GetPdfStreamAsync(string clientCode, Guid blueprintId, CancellationToken ct = default)
     {
         var client = await _clientService.GetByClientCodeOrIdAsync(clientCode, ct);
         if (client == null) return null;
 
-        var request = await _db.BlueprintRequests
+        var blueprint = await _db.Blueprints
             .AsNoTracking()
-            .FirstOrDefaultAsync(r => r.RequestId == requestId && r.ClientId == client.ClientId, ct);
+            .FirstOrDefaultAsync(b => b.Id == blueprintId && b.ClientId == client.ClientId && !b.IsDeleted, ct);
 
-        if (request == null || string.IsNullOrWhiteSpace(request.PdfDownloadUrl))
+        if (blueprint == null || string.IsNullOrWhiteSpace(blueprint.PdfDownloadUrl))
             return null;
 
-        return await _agentHost.DownloadPdfAsync(request.PdfDownloadUrl, ct);
+        return await _agentHost.DownloadPdfAsync(blueprint.PdfDownloadUrl, ct);
     }
 }
