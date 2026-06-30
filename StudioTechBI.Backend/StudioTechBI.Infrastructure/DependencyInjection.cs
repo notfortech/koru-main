@@ -121,31 +121,6 @@ public static class DependencyInjection
         services.AddScoped<SharePointConnector>();
         services.AddScoped<IDataConnectorRegistry, DataConnectorRegistry>();
 
-        // STBI AgentHost — blueprint generation
-        services.Configure<StbAgentHostOptions>(configuration.GetSection(StbAgentHostOptions.SectionName));
-        services.AddHttpClient<StbAgentHostClient>()
-            .ConfigureHttpClient((sp, client) =>
-            {
-                var o = sp.GetRequiredService<IOptionsMonitor<StbAgentHostOptions>>().CurrentValue;
-                client.Timeout = TimeSpan.FromSeconds(o.TimeoutSeconds > 0 ? o.TimeoutSeconds : 120);
-                if (!string.IsNullOrWhiteSpace(o.BaseUrl))
-                    client.BaseAddress = new Uri(o.BaseUrl.TrimEnd('/') + "/");
-                client.DefaultRequestHeaders.Accept.Clear();
-                client.DefaultRequestHeaders.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
-                var key = (o.ApiKey ?? "").Trim();
-                if (!string.IsNullOrEmpty(key))
-                    client.DefaultRequestHeaders.Add("X-Api-Key", key);
-            })
-            .AddPolicyHandler(
-                HttpPolicyExtensions
-                    .HandleTransientHttpError()
-                    .OrResult(r => (int)r.StatusCode == 429)
-                    .WaitAndRetryAsync(
-                        retryCount: 3,
-                        sleepDurationProvider: attempt => TimeSpan.FromSeconds(Math.Pow(2, attempt))));
-        services.AddScoped<IStbAgentHostClient>(sp => sp.GetRequiredService<StbAgentHostClient>());
-        services.AddScoped<IBlueprintService, BlueprintService>();
-
         return services;
     }
 }
