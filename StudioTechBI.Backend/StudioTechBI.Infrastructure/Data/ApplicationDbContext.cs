@@ -41,6 +41,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<ModelConsent> ModelConsents => Set<ModelConsent>();
     public DbSet<DataConnection> DataConnections => Set<DataConnection>();
     public DbSet<OAuthConnectionState> OAuthConnectionStates => Set<OAuthConnectionState>();
+    public DbSet<Blueprint> Blueprints => Set<Blueprint>();
 
     // AI Gateway — Blueprint module
     public DbSet<Blueprint> Blueprints => Set<Blueprint>();
