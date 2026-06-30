@@ -118,6 +118,7 @@ public sealed class BlueprintGenerationBackgroundService : BackgroundService
 
             if (!string.IsNullOrWhiteSpace(response.BlueprintJson))
             {
+                version.GeneratedJsonContent = response.BlueprintJson;
                 version.JsonBlobPath = await storage.StoreJsonAsync(
                     blueprint.Id, newVersionNumber, response.BlueprintJson, ct);
             }

@@ -1633,6 +1633,9 @@ namespace StudioTechBI.Infrastructure.Migrations
                         .HasMaxLength(1000)
                         .HasColumnType("nvarchar(1000)");
 
+                    b.Property<string>("GeneratedJsonContent")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<DateTime>("GeneratedDate")
                         .HasColumnType("datetime2");
 

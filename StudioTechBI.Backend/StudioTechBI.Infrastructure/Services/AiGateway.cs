@@ -179,7 +179,8 @@ public sealed class AiGateway : IAiGateway
                 GeneratedDate = activeVersion.GeneratedDate,
                 ExecutionTimeMs = activeVersion.ExecutionTimeMs,
                 HasJson = activeVersion.JsonBlobPath is not null,
-                HasPdf = activeVersion.PdfBlobPath is not null
+                HasPdf = activeVersion.PdfBlobPath is not null,
+                GeneratedJsonContent = activeVersion.GeneratedJsonContent
             }
         };
     }

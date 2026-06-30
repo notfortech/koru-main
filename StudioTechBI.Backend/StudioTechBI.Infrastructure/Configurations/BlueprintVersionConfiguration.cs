@@ -16,6 +16,7 @@ public class BlueprintVersionConfiguration : IEntityTypeConfiguration<BlueprintV
         builder.Property(e => e.PdfBlobPath).HasMaxLength(1000);
         builder.Property(e => e.CreatedBy).HasMaxLength(500);
         builder.Property(e => e.UpdatedBy).HasMaxLength(500);
+        builder.Property(e => e.GeneratedJsonContent).HasColumnType("nvarchar(max)");
 
         builder.HasIndex(e => new { e.BlueprintId, e.IsActive })
             .HasFilter("[IsDeleted] = 0");
