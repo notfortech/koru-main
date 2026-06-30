@@ -1,37 +1,23 @@
 namespace StudioTechBI.Domain.Entities;
 
-/// <summary>Persisted result of a Generate Blueprint call to the STBI AgentHost API.</summary>
-public sealed class Blueprint : BaseEntity
+/// <summary>
+/// Top-level aggregate representing a dashboard blueprint for a tenant/client/project.
+/// One Blueprint per project; each regeneration produces a new BlueprintVersion.
+/// </summary>
+public class Blueprint : BaseEntity
 {
+    public Guid TenantId { get; set; }
     public Guid ClientId { get; set; }
-    public Client Client { get; set; } = null!;
-
-    public string BusinessRequirement { get; set; } = string.Empty;
+    public string? ProjectId { get; set; }
     public string Industry { get; set; } = string.Empty;
+    public string? KnowledgePack { get; set; }
 
-    /// <summary>Optional JSON describing existing data schema sent to AgentHost.</summary>
-    public string? ExistingSchema { get; set; }
+    /// <summary>Active or Archived.</summary>
+    public string Status { get; set; } = BlueprintStatuses.Active;
 
-    /// <summary>Completed | PartiallyValid | Failed | Pending</summary>
-    public string Status { get; set; } = "Pending";
+    /// <summary>Monotonically increasing counter — used as the version number on each BlueprintVersion.</summary>
+    public int VersionCount { get; set; }
 
-    /// <summary>Secure PDF download URL returned by AgentHost.</summary>
-    public string? PdfDownloadUrl { get; set; }
-
-    public int? CreditsConsumed { get; set; }
-    public int? CreditsRemaining { get; set; }
-    public string? SubscriptionPlan { get; set; }
-
-    /// <summary>Date the credit pool resets (from AgentHost response).</summary>
-    public DateTimeOffset? ResetDate { get; set; }
-
-    /// <summary>Blob path where the full AgentHost JSON response is stored for AI training.</summary>
-    public string? ResponseBlobPath { get; set; }
-
-    /// <summary>Serialized JSON array of warnings from AgentHost.</summary>
-    public string? WarningsJson { get; set; }
-
-    public string? RequestedByEmail { get; set; }
-    public string? ErrorMessage { get; set; }
-    public DateTime? CompletedAtUtc { get; set; }
+    public ICollection<BlueprintVersion> Versions { get; set; } = new List<BlueprintVersion>();
+    public ICollection<BlueprintGeneration> Generations { get; set; } = new List<BlueprintGeneration>();
 }

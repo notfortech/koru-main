@@ -9,6 +9,7 @@ using Microsoft.OpenApi.Models;
 using Polly;
 using Polly.Extensions.Http;
 using Serilog;
+using StudioTechBI.Infrastructure.Extensions;
 using StudioTechBI.API.Authorization;
 using StudioTechBI.API.Configuration;
 using StudioTechBI.API.Integrations.Common;
@@ -68,6 +69,10 @@ MapEnvOverride("GOOGLE_AUTH_CLIENT_ID", "GoogleAuth:ClientId");
 MapEnvOverride("GOOGLE_AUTH_CLIENT_SECRET", "GoogleAuth:ClientSecret");
 MapEnvOverride("GOOGLE_AUTH_REDIRECT_URI", "GoogleAuth:RedirectUri");
 MapEnvOverride("GOOGLE_AUTH_SUCCESS_REDIRECT_URI", "GoogleAuth:SuccessRedirectUri");
+MapEnvOverride("AGENT_HOST_BASE_URL", "AgentHost:BaseUrl");
+MapEnvOverride("AGENT_HOST_API_KEY", "AgentHost:ApiKey");
+MapEnvOverride("AGENT_HOST_TIMEOUT_SECONDS", "AgentHost:TimeoutSeconds");
+MapEnvOverride("AGENT_HOST_RETRY_COUNT", "AgentHost:RetryCount");
 MapEnvOverride("DOMAIN_API_CLIENT_ID", "DomainApi:ClientId");
 MapEnvOverride("DOMAIN_API_CLIENT_SECRET", "DomainApi:ClientSecret");
 MapEnvOverride("DOMAIN_API_BASE_URL", "DomainApi:BaseUrl");
@@ -280,6 +285,7 @@ builder.Services.AddCors(options =>
 
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
+builder.Services.AddAgentHostIntegration();
 builder.Services.Configure<PasswordResetOptions>(
     builder.Configuration.GetSection(PasswordResetOptions.SectionName));
 builder.Services.Configure<InsightEngineOptions>(
