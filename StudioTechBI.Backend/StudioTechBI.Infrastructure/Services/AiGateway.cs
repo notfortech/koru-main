@@ -40,17 +40,20 @@ public sealed class AiGateway : IAiGateway
         string createdBy,
         CancellationToken cancellationToken = default)
     {
+        var tenantId = request.TenantId ?? Guid.Empty;
+        var clientId = request.ClientId ?? Guid.Empty;
+
         // Find or create the Blueprint aggregate
         var blueprint = await _repo.GetByProjectAsync(
-            request.TenantId, request.ClientId, request.ProjectId ?? string.Empty, cancellationToken);
+            tenantId, clientId, request.ProjectId ?? string.Empty, cancellationToken);
 
         if (blueprint is null)
         {
             blueprint = new Blueprint
             {
                 Id = Guid.NewGuid(),
-                TenantId = request.TenantId,
-                ClientId = request.ClientId,
+                TenantId = tenantId,
+                ClientId = clientId,
                 ProjectId = request.ProjectId,
                 Industry = request.Industry,
                 KnowledgePack = request.KnowledgePack,

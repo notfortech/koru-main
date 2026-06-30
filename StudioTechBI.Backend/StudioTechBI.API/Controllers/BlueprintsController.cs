@@ -19,11 +19,13 @@ namespace StudioTechBI.API.Controllers;
 public class BlueprintsController : BaseApiController
 {
     private readonly IAiGateway _gateway;
+    private readonly IClientService _clientService;
     private readonly ILogger<BlueprintsController> _logger;
 
-    public BlueprintsController(IAiGateway gateway, ILogger<BlueprintsController> logger)
+    public BlueprintsController(IAiGateway gateway, IClientService clientService, ILogger<BlueprintsController> logger)
     {
         _gateway = gateway;
+        _clientService = clientService;
         _logger = logger;
     }
 
@@ -31,6 +33,7 @@ public class BlueprintsController : BaseApiController
 
     /// <summary>
     /// Queue a new dashboard blueprint generation request.
+    /// ClientId/TenantId are optional in the body — resolved from the JWT client_code claim when absent.
     /// Returns 202 Accepted with a generationId for status polling.
     /// </summary>
     [HttpPost("generate")]
@@ -42,6 +45,32 @@ public class BlueprintsController : BaseApiController
     {
         if (!ModelState.IsValid)
             return ValidationProblem(ModelState);
+
+        // Resolve ClientId from JWT client_code claim when not supplied in the request body.
+        if (request.ClientId is null || request.ClientId == Guid.Empty)
+        {
+            var clientCode = request.ClientCode?.Trim()
+                ?? User.FindFirstValue("client_code")?.Trim();
+
+            if (string.IsNullOrWhiteSpace(clientCode))
+                return BadRequest(ApiResponse<object>.ErrorResponse(
+                    "clientId or a resolvable client_code claim is required."));
+
+            var client = await _clientService.GetByClientCodeOrIdAsync(clientCode, cancellationToken);
+            if (client is null)
+                return BadRequest(ApiResponse<object>.ErrorResponse(
+                    $"Client '{clientCode}' not found."));
+
+            request.ClientId = client.ClientId;
+
+            // TenantId: use the organisation's tenant if available, else fall back to ClientId as the tenant scope.
+            if (request.TenantId is null || request.TenantId == Guid.Empty)
+                request.TenantId = client.ClientId;
+        }
+        else if (request.TenantId is null || request.TenantId == Guid.Empty)
+        {
+            request.TenantId = request.ClientId;
+        }
 
         var createdBy = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "unknown";
 
@@ -78,18 +107,32 @@ public class BlueprintsController : BaseApiController
     // ── List / Detail ─────────────────────────────────────────────────────────
 
     /// <summary>
-    /// List all blueprints for a tenant (paginated).
+    /// List all blueprints for the current user's client (paginated).
+    /// tenantId query param is optional — resolved from JWT client_code when absent.
     /// </summary>
     [HttpGet]
     [ProducesResponseType(typeof(ApiResponse<PaginatedResult<BlueprintDto>>), StatusCodes.Status200OK)]
     public async Task<IActionResult> GetAll(
-        [FromQuery] Guid tenantId,
+        [FromQuery] Guid? tenantId,
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 20,
         CancellationToken cancellationToken = default)
     {
+        var resolvedTenantId = tenantId ?? Guid.Empty;
+
+        if (resolvedTenantId == Guid.Empty)
+        {
+            var clientCode = User.FindFirstValue("client_code")?.Trim();
+            if (!string.IsNullOrWhiteSpace(clientCode))
+            {
+                var client = await _clientService.GetByClientCodeOrIdAsync(clientCode, cancellationToken);
+                if (client is not null)
+                    resolvedTenantId = client.ClientId;
+            }
+        }
+
         pageSize = Math.Clamp(pageSize, 1, 100);
-        var (items, total) = await _gateway.GetBlueprintsAsync(tenantId, page, pageSize, cancellationToken);
+        var (items, total) = await _gateway.GetBlueprintsAsync(resolvedTenantId, page, pageSize, cancellationToken);
 
         var result = new PaginatedResult<BlueprintDto>
         {
