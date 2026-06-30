@@ -11,6 +11,17 @@ namespace StudioTechBI.Infrastructure.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
+            // Drop old Blueprint tables if they exist with an incompatible schema
+            // (created by the earlier AddBlueprintsTable migration before this module was introduced).
+            migrationBuilder.Sql(@"
+                IF OBJECT_ID('dbo.BlueprintGenerations', 'U') IS NOT NULL
+                    DROP TABLE dbo.BlueprintGenerations;
+                IF OBJECT_ID('dbo.BlueprintVersions', 'U') IS NOT NULL
+                    DROP TABLE dbo.BlueprintVersions;
+                IF OBJECT_ID('dbo.Blueprints', 'U') IS NOT NULL
+                    DROP TABLE dbo.Blueprints;
+            ");
+
             migrationBuilder.CreateTable(
                 name: "Blueprints",
                 columns: table => new
