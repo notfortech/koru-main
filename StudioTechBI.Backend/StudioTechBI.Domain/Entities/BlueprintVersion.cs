@@ -24,4 +24,7 @@ public class BlueprintVersion : BaseEntity
 
     /// <summary>Only one version per Blueprint is active at a time.</summary>
     public bool IsActive { get; set; }
+
+    /// <summary>Analytics contract JSON stored inline for fast retrieval without blob I/O.</summary>
+    public string? GeneratedJsonContent { get; set; }
 }

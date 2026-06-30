@@ -27,4 +27,5 @@ public class BlueprintVersionDto
     public long ExecutionTimeMs { get; set; }
     public bool HasJson { get; set; }
     public bool HasPdf { get; set; }
+    public string? GeneratedJsonContent { get; set; }
 }
