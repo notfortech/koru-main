@@ -11,7 +11,7 @@ public interface IBlueprintRepository
     Task<Blueprint?> GetByProjectAsync(
         Guid tenantId,
         Guid clientId,
-        string projectId,
+        string? projectId,
         CancellationToken cancellationToken = default);
 
     Task<(IEnumerable<Blueprint> Items, int TotalCount)> GetPagedByTenantAsync(

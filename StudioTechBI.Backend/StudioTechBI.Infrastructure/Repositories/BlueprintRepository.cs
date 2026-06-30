@@ -25,13 +25,15 @@ public class BlueprintRepository : IBlueprintRepository
     public Task<Blueprint?> GetByProjectAsync(
         Guid tenantId,
         Guid clientId,
-        string projectId,
+        string? projectId,
         CancellationToken cancellationToken = default) =>
         _context.Blueprints
             .Where(b => !b.IsDeleted
                      && b.TenantId == tenantId
                      && b.ClientId == clientId
-                     && b.ProjectId == projectId)
+                     && (string.IsNullOrEmpty(projectId)
+                         ? b.ProjectId == null
+                         : b.ProjectId == projectId))
             .FirstOrDefaultAsync(cancellationToken);
 
     public async Task<(IEnumerable<Blueprint> Items, int TotalCount)> GetPagedByTenantAsync(

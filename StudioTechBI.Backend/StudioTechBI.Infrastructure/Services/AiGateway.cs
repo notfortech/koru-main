@@ -45,7 +45,7 @@ public sealed class AiGateway : IAiGateway
 
         // Find or create the Blueprint aggregate
         var blueprint = await _repo.GetByProjectAsync(
-            tenantId, clientId, request.ProjectId ?? string.Empty, cancellationToken);
+            tenantId, clientId, request.ProjectId, cancellationToken);
 
         if (blueprint is null)
         {
