@@ -14,7 +14,6 @@ namespace StudioTechBI.API.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/blueprints")]
-[Route("api/blueprint")]
 [Authorize]
 [Produces("application/json")]
 public class BlueprintsController : BaseApiController
