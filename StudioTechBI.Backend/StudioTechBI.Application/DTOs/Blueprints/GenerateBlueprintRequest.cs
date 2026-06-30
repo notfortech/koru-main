@@ -8,11 +8,20 @@ namespace StudioTechBI.Application.DTOs.Blueprints;
 /// </summary>
 public class GenerateBlueprintRequest
 {
-    [Required]
-    public Guid TenantId { get; set; }
+    /// <summary>
+    /// Optional — resolved server-side from the JWT client_code claim when absent.
+    /// Frontend only needs to supply this if overriding the JWT-bound client.
+    /// </summary>
+    public Guid? TenantId { get; set; }
 
-    [Required]
-    public Guid ClientId { get; set; }
+    /// <summary>
+    /// Optional — resolved server-side from the JWT client_code claim when absent.
+    /// Frontend only needs to supply this if overriding the JWT-bound client.
+    /// </summary>
+    public Guid? ClientId { get; set; }
+
+    /// <summary>Client code (e.g. AU-004). Used server-side to look up ClientId when ClientId is not supplied.</summary>
+    public string? ClientCode { get; set; }
 
     public string? ProjectId { get; set; }
 
