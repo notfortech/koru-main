@@ -44,6 +44,13 @@ public class AgentHostClient : IAgentHostClient
         httpRequest.Headers.Add("X-Correlation-Id", correlationId);
         httpRequest.Content = JsonContent.Create(agentHostRequest, options: JsonOptions);
 
+        // Diagnostic: confirm the factory-configured HttpClient (with BaseAddress) is in use.
+        // BaseAddress null here means DI bypassed IHttpClientFactory — see AgentHostIntegrationExtensions.
+        _logger.LogInformation(
+            "AgentHost BaseAddress={BaseAddress} RequestUri={RequestUri}",
+            _httpClient.BaseAddress,
+            httpRequest.RequestUri);
+
         var sw = System.Diagnostics.Stopwatch.StartNew();
 
         using var response = await _httpClient.SendAsync(httpRequest, cancellationToken);

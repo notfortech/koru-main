@@ -27,7 +27,12 @@ public static class AgentHostIntegrationExtensions
             .ValidateOnStart();
 
         // ── Typed HTTP client with Polly retry + circuit breaker ───────────────
-        services.AddHttpClient<AgentHostClient>()
+        // Must be keyed to the INTERFACE so that IHttpClientFactory's ConfigureHttpClient
+        // delegate (which sets BaseAddress) runs whenever IAgentHostClient is resolved.
+        // Using AddHttpClient<AgentHostClient> + AddScoped<IAgentHostClient, AgentHostClient>
+        // bypasses the factory: AddScoped resolves AgentHostClient via standard DI, injecting
+        // a plain HttpClient with BaseAddress = null.
+        services.AddHttpClient<IAgentHostClient, AgentHostClient>()
             .ConfigureHttpClient((sp, client) =>
             {
                 var opts = sp.GetRequiredService<Microsoft.Extensions.Options.IOptionsMonitor<AgentHostOptions>>()
@@ -52,8 +57,10 @@ public static class AgentHostIntegrationExtensions
             .AddPolicyHandler(BuildCircuitBreakerPolicy());
 
         // ── Interfaces → Implementations ───────────────────────────────────────
+        // IAgentHostClient is already registered by AddHttpClient<IAgentHostClient, AgentHostClient>()
+        // above — no separate AddScoped needed (that would re-register the interface via plain DI,
+        // bypassing the factory and losing BaseAddress).
         services.AddSingleton<IBlueprintGenerationQueue, BlueprintGenerationQueue>();
-        services.AddScoped<IAgentHostClient, AgentHostClient>();
         services.AddScoped<IBlueprintRepository, BlueprintRepository>();
         services.AddScoped<IBlueprintStorageService, BlueprintStorageService>();
         services.AddScoped<IAiGateway, AiGateway>();
