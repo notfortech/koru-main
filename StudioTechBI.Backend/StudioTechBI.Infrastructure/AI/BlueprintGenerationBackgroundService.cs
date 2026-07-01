@@ -151,7 +151,8 @@ public sealed class BlueprintGenerationBackgroundService : BackgroundService
                 generationId, generation.BlueprintId);
 
             generation.Status = BlueprintStatuses.Failed;
-            generation.ErrorMessage = ex.Message;
+            var fullError = ex.ToString();
+            generation.ErrorMessage = fullError.Length <= 2000 ? fullError : fullError[..2000];
             generation.CompletedAt = DateTime.UtcNow;
 
             try

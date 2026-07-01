@@ -21,6 +21,7 @@ public static class AgentHostIntegrationExtensions
         // ── Configuration ──────────────────────────────────────────────────────
         services.AddOptions<AgentHostOptions>()
             .BindConfiguration(AgentHostOptions.SectionName)
+            .ValidateDataAnnotations()
             .ValidateOnStart();
 
         // ── Typed HTTP client with Polly retry + circuit breaker ───────────────
