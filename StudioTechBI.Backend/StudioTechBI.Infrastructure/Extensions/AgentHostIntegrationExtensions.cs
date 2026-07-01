@@ -21,7 +21,9 @@ public static class AgentHostIntegrationExtensions
         // ── Configuration ──────────────────────────────────────────────────────
         services.AddOptions<AgentHostOptions>()
             .BindConfiguration(AgentHostOptions.SectionName)
-            .ValidateDataAnnotations()
+            .Validate(
+                opts => !string.IsNullOrWhiteSpace(opts.BaseUrl),
+                "AgentHost:BaseUrl is required. Set the AGENT_HOST_BASE_URL environment variable.")
             .ValidateOnStart();
 
         // ── Typed HTTP client with Polly retry + circuit breaker ───────────────
