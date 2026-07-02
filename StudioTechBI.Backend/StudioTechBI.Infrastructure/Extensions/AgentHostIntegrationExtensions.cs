@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Polly;
 using Polly.Extensions.Http;
 using StudioTechBI.Application.Interfaces;
@@ -54,7 +55,21 @@ public static class AgentHostIntegrationExtensions
                                    .CurrentValue.RetryCount;
                 return BuildRetryPolicy(retryCount > 0 ? retryCount : 3);
             })
-            .AddPolicyHandler(BuildCircuitBreakerPolicy());
+            // ── Configurable circuit breaker ──────────────────────────────────
+            .AddPolicyHandler((sp, _) =>
+            {
+                var opts = sp.GetRequiredService<IOptionsMonitor<AgentHostOptions>>().CurrentValue;
+                return opts.EnableCircuitBreaker
+                    ? BuildCircuitBreakerPolicy(opts.CircuitFailureThreshold, opts.CircuitBreakDurationSeconds)
+                    : Policy.NoOpAsync<HttpResponseMessage>();
+            });
+
+        // ── Health check ───────────────────────────────────────────────────────
+        services.AddHealthChecks()
+            .AddCheck<AgentHostHealthCheck>(
+                name: "agenthost",
+                failureStatus: Microsoft.Extensions.Diagnostics.HealthChecks.HealthStatus.Degraded,
+                tags: new[] { "agenthost", "ready" });
 
         // ── Interfaces → Implementations ───────────────────────────────────────
         // IAgentHostClient is already registered by AddHttpClient<IAgentHostClient, AgentHostClient>()
@@ -82,10 +97,12 @@ public static class AgentHostIntegrationExtensions
                 attempt => TimeSpan.FromSeconds(Math.Pow(2, attempt))
                          + TimeSpan.FromMilliseconds(Random.Shared.Next(0, 300)));
 
-    private static IAsyncPolicy<HttpResponseMessage> BuildCircuitBreakerPolicy() =>
+    private static IAsyncPolicy<HttpResponseMessage> BuildCircuitBreakerPolicy(
+        int failureThreshold,
+        int breakDurationSeconds) =>
         HttpPolicyExtensions
             .HandleTransientHttpError()
             .CircuitBreakerAsync(
-                handledEventsAllowedBeforeBreaking: 5,
-                durationOfBreak: TimeSpan.FromSeconds(30));
+                handledEventsAllowedBeforeBreaking: failureThreshold > 0 ? failureThreshold : 5,
+                durationOfBreak: TimeSpan.FromSeconds(breakDurationSeconds > 0 ? breakDurationSeconds : 30));
 }

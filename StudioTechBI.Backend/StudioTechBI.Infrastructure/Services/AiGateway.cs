@@ -21,17 +21,20 @@ public sealed class AiGateway : IAiGateway
     private readonly IBlueprintRepository _repo;
     private readonly IBlueprintGenerationQueue _queue;
     private readonly IBlueprintStorageService _storage;
+    private readonly IAgentHostClient _agentHostClient;
     private readonly ILogger<AiGateway> _logger;
 
     public AiGateway(
         IBlueprintRepository repo,
         IBlueprintGenerationQueue queue,
         IBlueprintStorageService storage,
+        IAgentHostClient agentHostClient,
         ILogger<AiGateway> logger)
     {
         _repo = repo;
         _queue = queue;
         _storage = storage;
+        _agentHostClient = agentHostClient;
         _logger = logger;
     }
 
@@ -42,6 +45,19 @@ public sealed class AiGateway : IAiGateway
     {
         var tenantId = request.TenantId ?? Guid.Empty;
         var clientId = request.ClientId ?? Guid.Empty;
+
+        // Pre-flight: verify AgentHost is reachable before persisting a generation record.
+        var agentHostHealthy = await _agentHostClient.CheckHealthAsync(cancellationToken);
+        if (!agentHostHealthy)
+        {
+            _logger.LogWarning(
+                "QueueBlueprintGenerationAsync aborted — AgentHost health check failed. " +
+                "TenantId={TenantId} ClientId={ClientId} ProjectId={ProjectId}",
+                tenantId, clientId, request.ProjectId);
+
+            throw new InvalidOperationException(
+                "AgentHost is currently unavailable. Blueprint generation cannot be queued at this time.");
+        }
 
         // Find or create the Blueprint aggregate
         var blueprint = await _repo.GetByProjectAsync(
@@ -90,8 +106,8 @@ public sealed class AiGateway : IAiGateway
         await _queue.EnqueueAsync(generation.Id, cancellationToken);
 
         _logger.LogInformation(
-            "Queued blueprint generation. GenerationId={GenerationId} BlueprintId={BlueprintId} " +
-            "Tenant={TenantId} Client={ClientId} Project={ProjectId} CorrelationId={CorrelationId}",
+            "BlueprintGeneration.Queued GenerationId={GenerationId} BlueprintId={BlueprintId} " +
+            "TenantId={TenantId} ClientId={ClientId} ProjectId={ProjectId} CorrelationId={CorrelationId}",
             generation.Id, blueprint.Id, request.TenantId, request.ClientId,
             request.ProjectId, correlationId);
 
