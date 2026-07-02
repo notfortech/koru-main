@@ -2,8 +2,10 @@ using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using StudioTechBI.Application.DTOs.Blueprints;
 using StudioTechBI.Application.Interfaces;
+using StudioTechBI.Application.Models;
 using StudioTechBI.Domain.Entities;
 
 namespace StudioTechBI.Infrastructure.AI;
@@ -25,20 +27,33 @@ public sealed class BlueprintGenerationBackgroundService : BackgroundService
     private readonly IBlueprintGenerationQueue _queue;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<BlueprintGenerationBackgroundService> _logger;
+    private readonly AgentHostOptions _agentHostOpts;
 
     public BlueprintGenerationBackgroundService(
         IBlueprintGenerationQueue queue,
         IServiceScopeFactory scopeFactory,
-        ILogger<BlueprintGenerationBackgroundService> logger)
+        ILogger<BlueprintGenerationBackgroundService> logger,
+        IOptions<AgentHostOptions> agentHostOptions)
     {
         _queue = queue;
         _scopeFactory = scopeFactory;
         _logger = logger;
+        _agentHostOpts = agentHostOptions.Value;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _logger.LogInformation("Blueprint generation background service started.");
+        _logger.LogInformation(
+            "BlueprintGenerationBackgroundService starting. " +
+            "AgentHost:BaseUrl={BaseUrl} TimeoutSeconds={TimeoutSeconds} RetryCount={RetryCount} " +
+            "EnableCircuitBreaker={EnableCircuitBreaker} CircuitFailureThreshold={CircuitFailureThreshold} " +
+            "CircuitBreakDurationSeconds={CircuitBreakDurationSeconds}",
+            MaskUrl(_agentHostOpts.BaseUrl),
+            _agentHostOpts.TimeoutSeconds,
+            _agentHostOpts.RetryCount,
+            _agentHostOpts.EnableCircuitBreaker,
+            _agentHostOpts.CircuitFailureThreshold,
+            _agentHostOpts.CircuitBreakDurationSeconds);
 
         // On restart, re-queue any generations that were stuck in Pending/Processing.
         await RequeueStuckGenerationsAsync(stoppingToken);
@@ -79,15 +94,17 @@ public sealed class BlueprintGenerationBackgroundService : BackgroundService
         await repo.SaveChangesAsync(ct);
 
         _logger.LogInformation(
-            "Processing blueprint generation. GenerationId={GenerationId} BlueprintId={BlueprintId}",
+            "BlueprintGeneration.Started GenerationId={GenerationId} BlueprintId={BlueprintId}",
             generationId, generation.BlueprintId);
 
+        var sw = System.Diagnostics.Stopwatch.StartNew();
         try
         {
             var request = DeserialiseRequest(generation.RequestPayloadJson);
 
             var response = await agentHost.GenerateBlueprintAsync(
                 request, generation.RequestId, ct);
+            sw.Stop();
 
             ValidateResponse(response);
 
@@ -140,19 +157,39 @@ public sealed class BlueprintGenerationBackgroundService : BackgroundService
             await repo.SaveChangesAsync(ct);
 
             _logger.LogInformation(
-                "Blueprint generation completed. GenerationId={GenerationId} VersionNumber={Version} Provider={Provider} Model={Model} LatencyMs={LatencyMs}",
-                generationId, newVersionNumber, response.Provider, response.Model,
+                "BlueprintGeneration.Completed GenerationId={GenerationId} VersionNumber={VersionNumber} " +
+                "DurationMs={DurationMs} Provider={Provider} Model={Model} LatencyMs={LatencyMs}",
+                generationId, newVersionNumber,
+                (long)(generation.CompletedAt!.Value - generation.ProcessingStartedAt!.Value).TotalMilliseconds,
+                response.Provider, response.Model,
                 response.Diagnostics?.ProviderLatencyMs);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
+            sw.Stop();
+
             _logger.LogError(ex,
-                "Blueprint generation failed. GenerationId={GenerationId} BlueprintId={BlueprintId}",
-                generationId, generation.BlueprintId);
+                "BlueprintGeneration.Failed GenerationId={GenerationId} BlueprintId={BlueprintId} " +
+                "ErrorType={ErrorType} DurationMs={DurationMs}",
+                generationId, generation.BlueprintId,
+                ex.GetType().Name,
+                sw.ElapsedMilliseconds);
+
+            var statusCode = ex is HttpRequestException httpEx ? (int?)httpEx.StatusCode : null;
+            var errorJson = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                type = ex.GetType().Name,
+                status = statusCode,
+                msg = ex.Message.Length > 200 ? ex.Message[..200] : ex.Message,
+                correlationId = generation.RequestId,
+                durationMs = sw.ElapsedMilliseconds,
+                inner = ex.InnerException?.Message is { } im
+                    ? (im.Length > 100 ? im[..100] : im)
+                    : null
+            });
 
             generation.Status = BlueprintStatuses.Failed;
-            var fullError = ex.ToString();
-            generation.ErrorMessage = fullError.Length <= 2000 ? fullError : fullError[..2000];
+            generation.ErrorMessage = errorJson.Length <= 2000 ? errorJson : errorJson[..2000];
             generation.CompletedAt = DateTime.UtcNow;
 
             try
@@ -199,6 +236,20 @@ public sealed class BlueprintGenerationBackgroundService : BackgroundService
 
         return JsonSerializer.Deserialize<GenerateBlueprintRequest>(json, JsonOptions)
             ?? throw new InvalidOperationException("RequestPayloadJson could not be deserialised.");
+    }
+
+    private static string MaskUrl(string url)
+    {
+        if (string.IsNullOrWhiteSpace(url)) return "(not configured)";
+        try
+        {
+            var uri = new Uri(url);
+            return $"{uri.Scheme}://{uri.Host}";
+        }
+        catch
+        {
+            return "(invalid url)";
+        }
     }
 
     private static void ValidateResponse(BlueprintGenerationResponse response)

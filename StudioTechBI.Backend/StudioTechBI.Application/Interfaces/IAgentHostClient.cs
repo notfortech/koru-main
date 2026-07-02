@@ -12,4 +12,10 @@ public interface IAgentHostClient
         GenerateBlueprintRequest request,
         string correlationId,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Pings the AgentHost health endpoint. Returns true if the service reports healthy.
+    /// Implementations must not throw — return false on any connectivity failure.
+    /// </summary>
+    Task<bool> CheckHealthAsync(CancellationToken cancellationToken = default);
 }
