@@ -159,8 +159,8 @@ public class ReportDesignerClient : IReportDesignerClient
         (int)statusCode switch
         {
             400 => "Report Designer AI rejected the schema payload.",
-            401 => "Report Designer AI authentication failed. Verify REPORT_DESIGNER_API_KEY.",
-            403 => "Report Designer AI API key rejected or insufficient permissions.",
+            401 => "Report Designer AI authentication failed. Verify TRANSFORMERS_AGENTS_API_KEY.",
+            403 => "Report Designer AI API key rejected or insufficient permissions. Verify TRANSFORMERS_AGENTS_API_KEY.",
             404 => "Report Designer AI endpoint not found. Check REPORT_DESIGNER_BASE_URL.",
             429 => "Report Designer AI rate limit exceeded.",
             500 => "Report Designer AI internal error.",
