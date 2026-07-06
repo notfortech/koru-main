@@ -48,7 +48,7 @@ public sealed class SharePointSchemaService
         var drive = await graph.Sites[site.Id].Drive.GetAsync(cancellationToken: cancellationToken)
             ?? throw new InvalidOperationException("Could not resolve the default document library for this SharePoint site.");
 
-        var result = await graph.Drives[drive.Id].Root.Children.GetAsync(r =>
+        var result = await graph.Drives[drive.Id].Items["root"].Children.GetAsync(r =>
         {
             r.QueryParameters.Top = 200;
             r.QueryParameters.Select = new[] { "id", "name", "file", "folder", "size" };
