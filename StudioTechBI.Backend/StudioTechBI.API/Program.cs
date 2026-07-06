@@ -75,6 +75,7 @@ MapEnvOverride("AGENT_HOST_TIMEOUT_SECONDS", "AgentHost:TimeoutSeconds");
 MapEnvOverride("AGENT_HOST_RETRY_COUNT", "AgentHost:RetryCount");
 MapEnvOverride("REPORT_DESIGNER_BASE_URL", "ReportDesigner:BaseUrl");
 MapEnvOverride("REPORT_DESIGNER_API_KEY", "ReportDesigner:ApiKey");
+MapEnvOverride("TRANSFORMERS_AGENTS_API_KEY", "ReportDesigner:ApiKey");  // canonical env var for stbi_transformers
 MapEnvOverride("REPORT_DESIGNER_TIMEOUT_SECONDS", "ReportDesigner:TimeoutSeconds");
 MapEnvOverride("AGENT_HOST_ENABLE_CIRCUIT_BREAKER", "AgentHost:EnableCircuitBreaker");
 MapEnvOverride("AGENT_HOST_CIRCUIT_FAILURE_THRESHOLD", "AgentHost:CircuitFailureThreshold");
