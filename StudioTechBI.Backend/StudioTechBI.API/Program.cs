@@ -73,6 +73,9 @@ MapEnvOverride("AGENT_HOST_BASE_URL", "AgentHost:BaseUrl");
 MapEnvOverride("AGENT_HOST_API_KEY", "AgentHost:ApiKey");
 MapEnvOverride("AGENT_HOST_TIMEOUT_SECONDS", "AgentHost:TimeoutSeconds");
 MapEnvOverride("AGENT_HOST_RETRY_COUNT", "AgentHost:RetryCount");
+MapEnvOverride("REPORT_DESIGNER_BASE_URL", "ReportDesigner:BaseUrl");
+MapEnvOverride("REPORT_DESIGNER_API_KEY", "ReportDesigner:ApiKey");
+MapEnvOverride("REPORT_DESIGNER_TIMEOUT_SECONDS", "ReportDesigner:TimeoutSeconds");
 MapEnvOverride("AGENT_HOST_ENABLE_CIRCUIT_BREAKER", "AgentHost:EnableCircuitBreaker");
 MapEnvOverride("AGENT_HOST_CIRCUIT_FAILURE_THRESHOLD", "AgentHost:CircuitFailureThreshold");
 MapEnvOverride("AGENT_HOST_CIRCUIT_BREAK_DURATION", "AgentHost:CircuitBreakDurationSeconds");
@@ -290,6 +293,7 @@ builder.Services.AddCors(options =>
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddAgentHostIntegration();
+builder.Services.AddReportDesignerIntegration();
 builder.Services.Configure<PasswordResetOptions>(
     builder.Configuration.GetSection(PasswordResetOptions.SectionName));
 builder.Services.Configure<InsightEngineOptions>(
