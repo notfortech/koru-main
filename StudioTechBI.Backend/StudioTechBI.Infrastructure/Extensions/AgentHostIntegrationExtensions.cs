@@ -44,9 +44,14 @@ public static class AgentHostIntegrationExtensions
 
                 client.Timeout = TimeSpan.FromSeconds(opts.TimeoutSeconds > 0 ? opts.TimeoutSeconds : 300);
 
-                // API key sent as X-Api-Key header — matches ApiKeyAuthMiddleware on AgentHost.
+                // Send both headers to cover different AgentHost middleware configurations.
+                // X-Api-Key is the standard API key header; Bearer covers JWT-style middleware.
                 if (!string.IsNullOrWhiteSpace(opts.ApiKey))
+                {
                     client.DefaultRequestHeaders.Add("X-Api-Key", opts.ApiKey);
+                    client.DefaultRequestHeaders.Authorization =
+                        new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", opts.ApiKey);
+                }
             })
             .AddPolicyHandler((sp, _) =>
             {
@@ -88,9 +93,15 @@ public static class AgentHostIntegrationExtensions
     // ── Polly policies ─────────────────────────────────────────────────────────
 
     private static IAsyncPolicy<HttpResponseMessage> BuildRetryPolicy(int retryCount) =>
-        HttpPolicyExtensions
-            .HandleTransientHttpError()
-            .OrResult(r => (int)r.StatusCode == 429)
+        Policy<HttpResponseMessage>
+            .Handle<HttpRequestException>()
+            .OrResult(r =>
+            {
+                var code = (int)r.StatusCode;
+                // Retry on 408, 429, and 5xx. Never retry 401/403 — auth failures are permanent
+                // until config is corrected; retrying only delays the error and obscures the cause.
+                return code == 408 || code == 429 || (code >= 500 && code < 600);
+            })
             .WaitAndRetryAsync(
                 retryCount,
                 attempt => TimeSpan.FromSeconds(Math.Pow(2, attempt))
