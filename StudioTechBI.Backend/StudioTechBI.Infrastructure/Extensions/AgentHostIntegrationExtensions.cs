@@ -44,10 +44,9 @@ public static class AgentHostIntegrationExtensions
 
                 client.Timeout = TimeSpan.FromSeconds(opts.TimeoutSeconds > 0 ? opts.TimeoutSeconds : 300);
 
-                // API Key as Bearer token (supports future migration to Managed Identity)
+                // API key sent as X-Api-Key header — matches ApiKeyAuthMiddleware on AgentHost.
                 if (!string.IsNullOrWhiteSpace(opts.ApiKey))
-                    client.DefaultRequestHeaders.Authorization =
-                        new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", opts.ApiKey);
+                    client.DefaultRequestHeaders.Add("X-Api-Key", opts.ApiKey);
             })
             .AddPolicyHandler((sp, _) =>
             {
