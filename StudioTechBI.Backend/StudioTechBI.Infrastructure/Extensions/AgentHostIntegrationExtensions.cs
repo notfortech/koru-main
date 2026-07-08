@@ -46,11 +46,14 @@ public static class AgentHostIntegrationExtensions
 
                 // Send both headers to cover different AgentHost middleware configurations.
                 // X-Api-Key is the standard API key header; Bearer covers JWT-style middleware.
-                if (!string.IsNullOrWhiteSpace(opts.ApiKey))
+                if (string.IsNullOrWhiteSpace(opts.ApiKey))
                 {
-                    client.DefaultRequestHeaders.Add("X-Api-Key", opts.ApiKey);
-                    client.DefaultRequestHeaders.Authorization =
-                        new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", opts.ApiKey);
+                    throw new InvalidOperationException(
+                "AgentHost API key is not configured. Configure AGENT_HOST_API_KEY or AgentHost__ApiKey.");
+                }
+                else
+                {
+                    client.DefaultRequestHeaders.Add("X-Api-Key", opts.ApiKey);                   
                 }
             })
             .AddPolicyHandler((sp, _) =>
