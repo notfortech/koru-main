@@ -40,12 +40,20 @@ public class AgentHostClient : IAgentHostClient
     string correlationId,
     CancellationToken cancellationToken = default)
 {
+    if (request.TenantId is null || request.TenantId == Guid.Empty)
+    {
+        throw new InvalidOperationException(
+            "GenerateBlueprintAsync requires a resolved TenantId. " +
+            "This should already be set by BlueprintsController before the request is queued.");
+    }
+
     var payload = JsonSerializer.Serialize(
         AgentHostBlueprintRequest.From(request, Guid.NewGuid()),
         JsonOptions);
 
     var httpRequest = new HttpRequestMessage(HttpMethod.Post, "api/blueprints/generate");
     httpRequest.Headers.Add("X-Correlation-Id", correlationId);
+    httpRequest.Headers.Add("X-Tenant-Id", request.TenantId.Value.ToString());
     httpRequest.Content = new StringContent(payload, System.Text.Encoding.UTF8, "application/json");
 
     _logger.LogInformation(
