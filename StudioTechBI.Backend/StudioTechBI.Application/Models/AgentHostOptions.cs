@@ -12,5 +12,5 @@ public class AgentHostOptions
     public bool EnableCircuitBreaker { get; set; } = true;
     public int CircuitFailureThreshold { get; set; } = 5;
     public int CircuitBreakDurationSeconds { get; set; } = 30;
-    public string HealthCheckPath { get; set; } = "health";
+    public string HealthCheckPath { get; set; } = "api/health";
 }
