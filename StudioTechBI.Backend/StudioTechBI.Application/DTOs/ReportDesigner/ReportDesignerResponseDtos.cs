@@ -1,10 +1,14 @@
+using System.Text.Json;
+
 namespace StudioTechBI.Application.DTOs.ReportDesigner;
 
 public record GenerateReportModelResponse(
-    StarSchemaDto StarSchema,
-    List<ReportTemplateRecommendation> Templates,
     string CorrelationId,
-    long DurationMs);
+    long DurationMs,
+    JsonElement Blueprint,                              // raw blueprint JSON from stbi_transformers
+    string SessionId,
+    StarSchemaDto? StarSchema = null,                   // populated when transformers returns star-schema summary
+    List<ReportTemplateRecommendation>? Templates = null);
 
 public record StarSchemaDto(
     string FactTable,
@@ -21,3 +25,4 @@ public record ReportTemplateRecommendation(
     string ThemeId,
     string ThemeName,
     double Score);
+
