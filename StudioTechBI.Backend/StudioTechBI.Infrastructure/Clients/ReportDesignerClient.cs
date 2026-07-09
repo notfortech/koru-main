@@ -9,7 +9,7 @@ using StudioTechBI.Application.Models;
 namespace StudioTechBI.Infrastructure.Clients;
 
 /// <summary>
-/// Typed HTTP client for the Report Designer AI endpoint.
+/// Typed HTTP client for the stbi_transformers pipeline.
 /// Sends only structural schema metadata (table/column names and types).
 /// Never sends actual data values, connection strings, passwords, or tokens.
 /// All AI boundary events are logged via structured log templates.
@@ -48,110 +48,174 @@ public class ReportDesignerClient : IReportDesignerClient
         if (string.IsNullOrWhiteSpace(correlationId))
             throw new InvalidOperationException("correlationId must not be empty.");
 
-        string payloadJson;
-        try
-        {
-            payloadJson = JsonSerializer.Serialize(request, JsonOptions);
-        }
-        catch (Exception ex)
-        {
-            throw new InvalidOperationException("Failed to serialize GenerateReportModelRequest.", ex);
-        }
-
         // ── AI boundary log — BEFORE sending ─────────────────────────────────
         // Logs only structural metadata: table names, column counts, source.
         // Never logs actual data values, connection strings, passwords, or API keys.
         _logger.LogInformation(
             "ReportDesigner.SchemaSentToAI CorrelationId={CorrelationId} Source={Source} " +
             "FileName={FileName} TableCount={TableCount} Tables={TableNames} " +
-            "TotalColumns={TotalColumns} PreferredTheme={PreferredTheme} PayloadBytes={PayloadBytes}",
+            "TotalColumns={TotalColumns} PreferredTheme={PreferredTheme}",
             correlationId,
             request.Schema.Source,
             request.Schema.FileName,
             request.Schema.Tables.Count,
             string.Join(",", request.Schema.Tables.Select(t => t.TableName)),
             request.Schema.Tables.Sum(t => t.Columns.Count),
-            request.PreferredTheme ?? "(none)",
-            payloadJson.Length);
-
-        var httpRequest = new HttpRequestMessage(HttpMethod.Post, "api/report-designer/generate");
-        httpRequest.Headers.Add("X-Correlation-Id", correlationId);
-        httpRequest.Content = new StringContent(payloadJson, System.Text.Encoding.UTF8, "application/json");
+            request.PreferredTheme ?? "(none)");
 
         var sw = System.Diagnostics.Stopwatch.StartNew();
 
-        HttpResponseMessage response;
+        // ── Step 1: Connect — send schema, receive sessionId ─────────────────
+        var connectPayload = JsonSerializer.Serialize(request, JsonOptions);
+        var connectRequest = new HttpRequestMessage(HttpMethod.Post, "api/pipeline/connect");
+        connectRequest.Headers.Add("X-Correlation-Id", correlationId);
+        connectRequest.Content = new StringContent(connectPayload, System.Text.Encoding.UTF8, "application/json");
+
+        HttpResponseMessage connectResponse;
         try
         {
-            response = await _httpClient.SendAsync(httpRequest, cancellationToken);
+            connectResponse = await _httpClient.SendAsync(connectRequest, cancellationToken);
         }
         catch (TaskCanceledException ex) when (!cancellationToken.IsCancellationRequested)
         {
             sw.Stop();
             _logger.LogError(
-                "ReportDesigner.AIRequestTimeout DurationMs={DurationMs} CorrelationId={CorrelationId}",
+                "ReportDesigner.ConnectTimeout DurationMs={DurationMs} CorrelationId={CorrelationId}",
                 sw.ElapsedMilliseconds, correlationId);
             throw new HttpRequestException(
-                "Report Designer AI request timed out.", ex, HttpStatusCode.RequestTimeout);
+                "Report Designer connect request timed out.", ex, HttpStatusCode.RequestTimeout);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             sw.Stop();
             _logger.LogError(
-                "ReportDesigner.AIRequestFailed ExceptionType={ExceptionType} Message={Message} " +
+                "ReportDesigner.ConnectFailed ExceptionType={ExceptionType} Message={Message} " +
                 "DurationMs={DurationMs} CorrelationId={CorrelationId}",
                 ex.GetType().Name, ex.Message, sw.ElapsedMilliseconds, correlationId);
             throw;
         }
 
-        using (response)
+        string sessionId;
+        using (connectResponse)
         {
-            sw.Stop();
-            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            var connectBody = await connectResponse.Content.ReadAsStringAsync(cancellationToken);
 
-            if (!response.IsSuccessStatusCode)
+            if (!connectResponse.IsSuccessStatusCode)
             {
+                sw.Stop();
                 _logger.LogWarning(
-                    "ReportDesigner.AIRequestFailed StatusCode={StatusCode} DurationMs={DurationMs} " +
+                    "ReportDesigner.ConnectFailed StatusCode={StatusCode} DurationMs={DurationMs} " +
                     "CorrelationId={CorrelationId}",
-                    (int)response.StatusCode, sw.ElapsedMilliseconds, correlationId);
+                    (int)connectResponse.StatusCode, sw.ElapsedMilliseconds, correlationId);
 
                 throw new HttpRequestException(
-                    MapStatusCode(response.StatusCode, body),
+                    MapStatusCode(connectResponse.StatusCode, connectBody),
                     inner: null,
-                    statusCode: response.StatusCode);
+                    statusCode: connectResponse.StatusCode);
             }
 
-            GenerateReportModelResponse result;
+            PipelineConnectResponse connectResult;
             try
             {
-                result = JsonSerializer.Deserialize<GenerateReportModelResponse>(body, JsonOptions)
-                    ?? throw new InvalidOperationException("Report Designer AI returned an empty response body.");
+                connectResult = JsonSerializer.Deserialize<PipelineConnectResponse>(connectBody, JsonOptions)
+                    ?? throw new InvalidOperationException("Pipeline connect returned an empty response body.");
+            }
+            catch (JsonException ex)
+            {
+                sw.Stop();
+                _logger.LogError(ex,
+                    "ReportDesigner.ConnectParseError CorrelationId={CorrelationId} Body={Body}",
+                    correlationId, Truncate(connectBody, 1000));
+                throw new InvalidOperationException(
+                    "Report Designer connect response could not be parsed.", ex);
+            }
+
+            sessionId = connectResult.SessionId;
+        }
+
+        _logger.LogInformation(
+            "ReportDesigner.ConnectSuccess SessionId={SessionId} CorrelationId={CorrelationId}",
+            sessionId, correlationId);
+
+        // ── Step 2: Generate — send preferredTheme, receive blueprint ────────
+        var generatePayload = JsonSerializer.Serialize(
+            new { preferredTheme = request.PreferredTheme }, JsonOptions);
+        var generateRequest = new HttpRequestMessage(
+            HttpMethod.Post, $"api/pipeline/{Uri.EscapeDataString(sessionId)}/generate");
+        generateRequest.Headers.Add("X-Correlation-Id", correlationId);
+        generateRequest.Content = new StringContent(generatePayload, System.Text.Encoding.UTF8, "application/json");
+
+        HttpResponseMessage generateResponse;
+        try
+        {
+            generateResponse = await _httpClient.SendAsync(generateRequest, cancellationToken);
+        }
+        catch (TaskCanceledException ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            sw.Stop();
+            _logger.LogError(
+                "ReportDesigner.GenerateTimeout DurationMs={DurationMs} CorrelationId={CorrelationId}",
+                sw.ElapsedMilliseconds, correlationId);
+            throw new HttpRequestException(
+                "Report Designer generate request timed out.", ex, HttpStatusCode.RequestTimeout);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            sw.Stop();
+            _logger.LogError(
+                "ReportDesigner.GenerateFailed ExceptionType={ExceptionType} Message={Message} " +
+                "DurationMs={DurationMs} CorrelationId={CorrelationId}",
+                ex.GetType().Name, ex.Message, sw.ElapsedMilliseconds, correlationId);
+            throw;
+        }
+
+        using (generateResponse)
+        {
+            sw.Stop();
+            var generateBody = await generateResponse.Content.ReadAsStringAsync(cancellationToken);
+
+            if (!generateResponse.IsSuccessStatusCode)
+            {
+                _logger.LogWarning(
+                    "ReportDesigner.GenerateFailed StatusCode={StatusCode} DurationMs={DurationMs} " +
+                    "CorrelationId={CorrelationId}",
+                    (int)generateResponse.StatusCode, sw.ElapsedMilliseconds, correlationId);
+
+                throw new HttpRequestException(
+                    MapStatusCode(generateResponse.StatusCode, generateBody),
+                    inner: null,
+                    statusCode: generateResponse.StatusCode);
+            }
+
+            JsonElement blueprint;
+            try
+            {
+                using var doc = JsonDocument.Parse(generateBody);
+                blueprint = doc.RootElement.Clone();
             }
             catch (JsonException ex)
             {
                 _logger.LogError(ex,
-                    "ReportDesigner.AIResponseParseError CorrelationId={CorrelationId} Body={Body}",
-                    correlationId, Truncate(body, 1000));
+                    "ReportDesigner.GenerateParseError CorrelationId={CorrelationId} Body={Body}",
+                    correlationId, Truncate(generateBody, 1000));
                 throw new InvalidOperationException(
-                    "Report Designer AI response could not be parsed.", ex);
+                    "Report Designer generate response could not be parsed.", ex);
             }
 
             // ── AI boundary log — AFTER receiving ────────────────────────────
-            // Logs only structural summary of what was received — no data values.
+            // Logs only structural summary — no data values.
             _logger.LogInformation(
                 "ReportDesigner.AIResponseReceived CorrelationId={CorrelationId} " +
-                "FactTable={FactTable} DimensionCount={DimensionCount} " +
-                "RelationshipCount={RelationshipCount} TemplatesReturned={TemplatesReturned} " +
-                "DurationMs={DurationMs}",
+                "SessionId={SessionId} DurationMs={DurationMs}",
                 correlationId,
-                result.StarSchema.FactTable,
-                result.StarSchema.DimensionTables.Count,
-                result.StarSchema.Relationships.Count,
-                result.Templates.Count,
+                sessionId,
                 sw.ElapsedMilliseconds);
 
-            return result with { CorrelationId = correlationId, DurationMs = sw.ElapsedMilliseconds };
+            return new GenerateReportModelResponse(
+                CorrelationId: correlationId,
+                DurationMs: sw.ElapsedMilliseconds,
+                Blueprint: blueprint,
+                SessionId: sessionId);
         }
     }
 
@@ -170,4 +234,6 @@ public class ReportDesignerClient : IReportDesignerClient
 
     private static string Truncate(string s, int max) =>
         s.Length <= max ? s : string.Concat(s.AsSpan(0, max), "…");
+
+    private record PipelineConnectResponse(string SessionId);
 }
