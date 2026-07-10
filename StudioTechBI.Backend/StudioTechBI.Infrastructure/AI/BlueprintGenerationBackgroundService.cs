@@ -140,6 +140,33 @@ public sealed class BlueprintGenerationBackgroundService : BackgroundService
                     blueprint.Id, newVersionNumber, response.BlueprintJson, ct);
             }
 
+            if (!string.IsNullOrWhiteSpace(response.PdfDownloadUrl))
+            {
+                try
+                {
+                    var pdfBytes = await agentHost.DownloadPdfAsync(response.PdfDownloadUrl, ct);
+                    if (pdfBytes is { Length: > 0 })
+                    {
+                        version.PdfBlobPath = await storage.StorePdfAsync(
+                            blueprint.Id, newVersionNumber, pdfBytes, ct);
+                    }
+                    else
+                    {
+                        _logger.LogWarning(
+                            "BlueprintGeneration.PdfFetchEmpty GenerationId={GenerationId} PdfUrl={PdfUrl}",
+                            generationId, response.PdfDownloadUrl);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // PDF is a nice-to-have — the JSON contract is the primary artefact.
+                    // Don't fail the whole generation if AgentHost's PDF can't be fetched.
+                    _logger.LogWarning(ex,
+                        "BlueprintGeneration.PdfFetchFailed GenerationId={GenerationId} PdfUrl={PdfUrl}",
+                        generationId, response.PdfDownloadUrl);
+                }
+            }
+
             await repo.AddVersionAsync(version, ct);
 
             blueprint.VersionCount = newVersionNumber;

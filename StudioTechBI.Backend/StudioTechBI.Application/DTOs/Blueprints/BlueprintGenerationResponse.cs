@@ -25,6 +25,13 @@ public class BlueprintGenerationResponse
 
     public List<string>? Warnings { get; set; }
 
+    /// <summary>
+    /// Absolute URL to AgentHost's own PDF download endpoint for this generation.
+    /// Only present when AgentHost's SaveBlueprints setting is enabled. Koru fetches
+    /// the bytes from this URL and re-stores them in its own blob storage.
+    /// </summary>
+    public string? PdfDownloadUrl { get; set; }
+
     // ── Derived helpers ──────────────────────────────────────────────────────────
 
     public string? BlueprintJson => Blueprint?.GetRawText();
