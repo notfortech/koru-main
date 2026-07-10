@@ -48,7 +48,7 @@ public class AgentHostClient : IAgentHostClient
     }
 
     var payload = JsonSerializer.Serialize(
-        AgentHostBlueprintRequest.From(request, Guid.NewGuid()),
+        AgentHostBlueprintRequest.From(request),
         JsonOptions);
 
     var httpRequest = new HttpRequestMessage(HttpMethod.Post, "api/blueprints/generate");
