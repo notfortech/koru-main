@@ -109,6 +109,30 @@ public class AgentHostClient : IAgentHostClient
         }
     }
 
+    public async Task<byte[]?> DownloadPdfAsync(string pdfUrl, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(pdfUrl))
+            return null;
+
+        try
+        {
+            using var response = await _httpClient.GetAsync(pdfUrl, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning(
+                    "AgentHost.DownloadPdf failed — {StatusCode} from {Url}.", (int)response.StatusCode, pdfUrl);
+                return null;
+            }
+
+            return await response.Content.ReadAsByteArrayAsync(cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(ex, "AgentHost.DownloadPdf failed — could not reach {Url}.", pdfUrl);
+            return null;
+        }
+    }
+
     private static string MapStatusCode(HttpStatusCode statusCode, string body) =>
         (int)statusCode switch
         {

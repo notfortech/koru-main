@@ -18,4 +18,11 @@ public interface IAgentHostClient
     /// Implementations must not throw — return false on any connectivity failure.
     /// </summary>
     Task<bool> CheckHealthAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Downloads the PDF bytes from an AgentHost-hosted PDF URL (as returned in
+    /// BlueprintGenerationResponse.PdfDownloadUrl). Returns null on any failure or
+    /// non-success response — implementations must not throw.
+    /// </summary>
+    Task<byte[]?> DownloadPdfAsync(string pdfUrl, CancellationToken cancellationToken = default);
 }

@@ -146,4 +146,44 @@ public class AgentHostClientTests
         await Assert.ThrowsAsync<HttpRequestException>(
             () => client.GenerateBlueprintAsync(ValidRequest(Guid.NewGuid()), correlationId: "corr-1"));
     }
+
+    // ── DownloadPdfAsync ──────────────────────────────────────────────────
+
+    [Fact]
+    public async Task DownloadPdfAsync_SuccessResponse_ReturnsBytes()
+    {
+        var pdfBytes = new byte[] { 0x25, 0x50, 0x44, 0x46 }; // "%PDF"
+        var handler = new FakeHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new ByteArrayContent(pdfBytes)
+        });
+        var client = CreateClient(handler, new Uri("https://agenthost.example.com/"));
+
+        var result = await client.DownloadPdfAsync("https://agenthost.example.com/api/blueprints/abc/pdf");
+
+        Assert.Equal(pdfBytes, result);
+    }
+
+    [Fact]
+    public async Task DownloadPdfAsync_NonSuccessResponse_ReturnsNullWithoutThrowing()
+    {
+        var handler = new FakeHttpMessageHandler(HttpStatusCode.NotFound);
+        var client = CreateClient(handler, new Uri("https://agenthost.example.com/"));
+
+        var result = await client.DownloadPdfAsync("https://agenthost.example.com/api/blueprints/abc/pdf");
+
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public async Task DownloadPdfAsync_NullOrEmptyUrl_ReturnsNullWithoutSendingRequest()
+    {
+        var handler = new FakeHttpMessageHandler(HttpStatusCode.OK);
+        var client = CreateClient(handler, new Uri("https://agenthost.example.com/"));
+
+        var result = await client.DownloadPdfAsync("");
+
+        Assert.Null(result);
+        Assert.Null(handler.LastRequest);
+    }
 }
