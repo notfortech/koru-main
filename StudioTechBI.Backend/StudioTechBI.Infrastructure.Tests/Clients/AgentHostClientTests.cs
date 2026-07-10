@@ -36,12 +36,14 @@ public class AgentHostClientTests
 
     private const string ValidResponseJson = """
         {
-          "blueprintId": "5b1f3c2e-6a3d-4e8c-9f1a-2b3c4d5e6f7a",
-          "provider": "anthropic",
-          "model": "claude",
-          "generationDuration": "00:00:01",
-          "warnings": [],
-          "diagnostics": { "schemaValid": true }
+          "requestId": "5b1f3c2e-6a3d-4e8c-9f1a-2b3c4d5e6f7a",
+          "status": "Completed",
+          "provider": "OpenAI",
+          "model": "gpt-4o",
+          "processingTimeMs": 1000,
+          "confidence": 85,
+          "blueprint": { "schemaVersion": "1.0" },
+          "warnings": []
         }
         """;
 

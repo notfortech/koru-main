@@ -125,8 +125,8 @@ public sealed class BlueprintGenerationBackgroundService : BackgroundService
                 Id = Guid.NewGuid(),
                 BlueprintId = blueprint.Id,
                 VersionNumber = newVersionNumber,
-                PromptVersion = response.Diagnostics?.PromptPackVersion,
-                Confidence = response.Confidence,
+                PromptVersion = null,
+                Confidence = response.ConfidenceFraction,
                 GeneratedDate = DateTime.UtcNow,
                 ExecutionTimeMs = response.ExecutionTimeMs,
                 IsActive = true,
@@ -148,7 +148,7 @@ public sealed class BlueprintGenerationBackgroundService : BackgroundService
             generation.Status = BlueprintStatuses.Completed;
             generation.BlueprintVersionId = version.Id;
             generation.CompletedAt = DateTime.UtcNow;
-            generation.ConfidenceScore = response.Confidence;
+            generation.ConfidenceScore = response.ConfidenceFraction;
             generation.Warnings = response.Warnings is { Count: > 0 }
                 ? string.Join(";", response.Warnings)
                 : null;
@@ -158,11 +158,10 @@ public sealed class BlueprintGenerationBackgroundService : BackgroundService
 
             _logger.LogInformation(
                 "BlueprintGeneration.Completed GenerationId={GenerationId} VersionNumber={VersionNumber} " +
-                "DurationMs={DurationMs} Provider={Provider} Model={Model} LatencyMs={LatencyMs}",
+                "DurationMs={DurationMs} Provider={Provider} Model={Model}",
                 generationId, newVersionNumber,
                 (long)(generation.CompletedAt!.Value - generation.ProcessingStartedAt!.Value).TotalMilliseconds,
-                response.Provider, response.Model,
-                response.Diagnostics?.ProviderLatencyMs);
+                response.Provider, response.Model);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -254,9 +253,6 @@ public sealed class BlueprintGenerationBackgroundService : BackgroundService
 
     private static void ValidateResponse(BlueprintGenerationResponse response)
     {
-        if (response.BlueprintId == Guid.Empty)
-            throw new InvalidOperationException("AgentHost response is missing BlueprintId.");
-
         if (response.Blueprint is null)
             throw new InvalidOperationException("AgentHost response contains no Blueprint document.");
     }

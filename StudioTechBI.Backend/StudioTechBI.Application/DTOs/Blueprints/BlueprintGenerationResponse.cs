@@ -5,48 +5,32 @@ namespace StudioTechBI.Application.DTOs.Blueprints;
 /// <summary>
 /// Raw response received from STBI-AgentHost POST /api/blueprints/generate.
 /// Koru stores the Blueprint JSON artefact and never exposes this directly to the React portal.
+/// Field shape matches AgentHost's actual BlueprintGenerationResult contract — it has no
+/// BlueprintId (Koru's own Blueprint.Id is used instead) and no nested "diagnostics" object;
+/// confidence is a flat 0-100 int on the root object.
 /// </summary>
 public class BlueprintGenerationResponse
 {
-    public Guid BlueprintId { get; set; }
-
     public string? Provider { get; set; }
 
     public string? Model { get; set; }
 
-    public TimeSpan GenerationDuration { get; set; }
+    public long ProcessingTimeMs { get; set; }
+
+    /// <summary>Blueprint confidence score 0–100, as returned by AgentHost.</summary>
+    public int Confidence { get; set; }
 
     /// <summary>The generated Analytics Deployment Contract document (structured JSON).</summary>
     public JsonElement? Blueprint { get; set; }
 
     public List<string>? Warnings { get; set; }
 
-    public GenerationDiagnostics? Diagnostics { get; set; }
-
     // ── Derived helpers ──────────────────────────────────────────────────────────
 
     public string? BlueprintJson => Blueprint?.GetRawText();
 
-    public long ExecutionTimeMs => (long)GenerationDuration.TotalMilliseconds;
+    public long ExecutionTimeMs => ProcessingTimeMs;
 
-    public double Confidence => Diagnostics?.SchemaValid == true ? 1.0 : 0.0;
-}
-
-public class GenerationDiagnostics
-{
-    public string? CorrelationId { get; set; }
-
-    public int? Tokens { get; set; }
-
-    public int? Attempts { get; set; }
-
-    public bool FallbackUsed { get; set; }
-
-    public bool SchemaValid { get; set; }
-
-    public long? ProviderLatencyMs { get; set; }
-
-    public string? PromptPackVersion { get; set; }
-
-    public string? Status { get; set; }
+    /// <summary>Confidence as a 0-1 fraction, matching the scale stored on BlueprintVersion/BlueprintGeneration.</summary>
+    public double ConfidenceFraction => Confidence / 100.0;
 }
