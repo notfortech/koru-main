@@ -66,7 +66,12 @@ public class ReportDesignerClient : IReportDesignerClient
         var sw = System.Diagnostics.Stopwatch.StartNew();
 
         // ── Step 1: Connect — send schema, receive sessionId ─────────────────
-        var connectPayload = JsonSerializer.Serialize(request, JsonOptions);
+        // stbi_transformers' /connect endpoint natively expects a raw file upload or a
+        // live DB connection string. koru-main already extracted structural metadata
+        // upstream (excel/sql/sharepoint) and must never forward raw file bytes or
+        // connection strings here, so we use its provider="schema" mode, which accepts
+        // pre-extracted metadata directly and performs no data access of its own.
+        var connectPayload = JsonSerializer.Serialize(BuildConnectPayload(request.Schema), JsonOptions);
         var connectRequest = new HttpRequestMessage(HttpMethod.Post, "api/pipeline/connect");
         connectRequest.Headers.Add("X-Correlation-Id", correlationId);
         connectRequest.Content = new StringContent(connectPayload, System.Text.Encoding.UTF8, "application/json");
@@ -305,6 +310,32 @@ public class ReportDesignerClient : IReportDesignerClient
 
         return new StarSchemaDto(factTableName, dimensionTables, relationships);
     }
+
+    /// <summary>
+    /// Maps koru-main's already-extracted schema into stbi_transformers' provider="schema"
+    /// connect contract. No file content or connection details are ever included here —
+    /// only table/column structural metadata.
+    /// </summary>
+    private static object BuildConnectPayload(ExtractedSchemaDto schema) => new
+    {
+        provider = "schema",
+        fileName = schema.FileName,
+        schema = new
+        {
+            databaseName = schema.FileName,
+            tables = schema.Tables.Select(t => new
+            {
+                tableName = t.TableName,
+                approximateRowCount = t.RowCount > 0 ? (long?)t.RowCount : null,
+                columns = t.Columns.Select(c => new
+                {
+                    columnName = c.ColumnName,
+                    dataType = c.DataType,
+                    isNullable = c.IsNullable
+                })
+            })
+        }
+    };
 
     /// <summary>Parses "TableName[ColumnName]" into ("TableName", "ColumnName").</summary>
     private static (string Table, string Column) SplitTableColumn(string reference)
