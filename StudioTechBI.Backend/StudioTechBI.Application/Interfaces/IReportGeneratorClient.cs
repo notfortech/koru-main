@@ -16,6 +16,7 @@ public interface IReportGeneratorClient
         Stream fileStream,
         string fileName,
         string? templateId,
+        string? filtersJson,
         string correlationId,
         CancellationToken cancellationToken = default);
 }

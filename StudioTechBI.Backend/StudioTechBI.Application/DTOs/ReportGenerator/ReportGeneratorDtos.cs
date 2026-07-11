@@ -13,7 +13,13 @@ public record GeneratedReportDto(
     string? PrimaryTable,
     List<ReportKpiDto> Kpis,
     List<ReportChartDto> Charts,
+    List<ReportSlicerDto> Slicers,
+    Dictionary<string, string> AppliedFilters,
     List<string> Warnings);
+
+public record ReportSlicerDto(
+    string Column,
+    List<string> Values);
 
 public record ReportKpiDto(
     string Label,

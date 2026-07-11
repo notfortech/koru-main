@@ -59,6 +59,7 @@ public class ReportGeneratorClient : IReportGeneratorClient
         Stream fileStream,
         string fileName,
         string? templateId,
+        string? filtersJson,
         string correlationId,
         CancellationToken cancellationToken = default)
     {
@@ -79,6 +80,8 @@ public class ReportGeneratorClient : IReportGeneratorClient
         content.Add(streamContent, "file", fileName);
         if (!string.IsNullOrWhiteSpace(templateId))
             content.Add(new StringContent(templateId), "templateId");
+        if (!string.IsNullOrWhiteSpace(filtersJson))
+            content.Add(new StringContent(filtersJson), "filters");
 
         var request = new HttpRequestMessage(HttpMethod.Post, "api/reports/generate") { Content = content };
         request.Headers.Add("X-Correlation-Id", correlationId);
