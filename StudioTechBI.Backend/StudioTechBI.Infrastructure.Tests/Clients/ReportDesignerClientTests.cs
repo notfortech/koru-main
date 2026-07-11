@@ -119,4 +119,35 @@ public class ReportDesignerClientTests
         Assert.Null(response.StarSchema);
         Assert.NotNull(response.Templates);
     }
+
+    [Fact]
+    public async Task GenerateReportModelAsync_ConnectPayload_MatchesTransformersSchemaProviderContract()
+    {
+        string? connectBody = null;
+        var handler = new FakeHttpMessageHandler(req =>
+        {
+            if (req.RequestUri!.AbsolutePath.EndsWith("/connect"))
+                connectBody = req.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+
+            return RouteByPath(req, DesignsResponseJson, HttpStatusCode.OK, BlueprintWithDataModelJson);
+        });
+        var client = CreateClient(handler);
+
+        await client.GenerateReportModelAsync(ValidRequest(), correlationId: "corr-1");
+
+        Assert.NotNull(connectBody);
+        using var doc = System.Text.Json.JsonDocument.Parse(connectBody!);
+        var root = doc.RootElement;
+
+        Assert.Equal("schema", root.GetProperty("provider").GetString());
+        var table = root.GetProperty("schema").GetProperty("tables")[0];
+        Assert.Equal("Invoices", table.GetProperty("tableName").GetString());
+        var column = table.GetProperty("columns")[0];
+        Assert.Equal("InvoiceId", column.GetProperty("columnName").GetString());
+        Assert.Equal("int", column.GetProperty("dataType").GetString());
+
+        // Must never leak raw file/connection payloads through this path.
+        Assert.False(root.TryGetProperty("connectionString", out _));
+        Assert.False(root.TryGetProperty("fileBase64", out _));
+    }
 }
