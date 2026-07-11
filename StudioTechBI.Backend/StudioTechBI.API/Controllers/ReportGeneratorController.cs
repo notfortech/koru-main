@@ -61,6 +61,7 @@ public class ReportGeneratorController : ControllerBase
     public async Task<IActionResult> GenerateAsync(
         IFormFile file,
         [FromForm] string? templateId,
+        [FromForm] string? filters,
         CancellationToken cancellationToken)
     {
         if (file is null || file.Length == 0)
@@ -80,7 +81,7 @@ public class ReportGeneratorController : ControllerBase
         {
             await using var stream = file.OpenReadStream();
             var result = await _reportGeneratorClient.GenerateReportAsync(
-                stream, file.FileName, templateId, correlationId, cancellationToken);
+                stream, file.FileName, templateId, filters, correlationId, cancellationToken);
 
             return Ok(ApiResponse<GeneratedReportDto>.SuccessResponse(result, "Report generated successfully."));
         }

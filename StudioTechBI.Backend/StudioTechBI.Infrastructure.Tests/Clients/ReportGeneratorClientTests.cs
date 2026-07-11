@@ -28,6 +28,8 @@ public class ReportGeneratorClientTests
           "charts": [
             { "type": "line", "title": "Amount Trend", "x": ["Jan 2024"], "categories": null, "series": [ { "name": "Amount", "values": [120.5] } ] }
           ],
+          "slicers": [ { "column": "Region", "values": ["North", "South"] } ],
+          "appliedFilters": { "Region": "North" },
           "warnings": []
         }
         """;
@@ -62,7 +64,7 @@ public class ReportGeneratorClientTests
         var client = CreateClient(handler);
 
         using var stream = new MemoryStream(Encoding.UTF8.GetBytes("OrderId,Amount\n1,120.5\n"));
-        var result = await client.GenerateReportAsync(stream, "sales.csv", templateId: null, correlationId: "corr-1");
+        var result = await client.GenerateReportAsync(stream, "sales.csv", templateId: null, filtersJson: null, correlationId: "corr-1");
 
         Assert.Equal("generic-overview", result.TemplateId);
         Assert.Single(result.Kpis);
@@ -70,6 +72,9 @@ public class ReportGeneratorClientTests
         Assert.Single(result.Charts);
         Assert.Equal("Amount Trend", result.Charts[0].Title);
         Assert.Equal(["Jan 2024"], result.Charts[0].X);
+        Assert.Single(result.Slicers);
+        Assert.Equal("Region", result.Slicers[0].Column);
+        Assert.Equal("North", result.AppliedFilters["Region"]);
     }
 
     [Fact]
@@ -79,12 +84,27 @@ public class ReportGeneratorClientTests
         var client = CreateClient(handler);
 
         using var stream = new MemoryStream(Encoding.UTF8.GetBytes("OrderId,Amount\n1,120.5\n"));
-        await client.GenerateReportAsync(stream, "sales.csv", templateId: "generic-overview", correlationId: "corr-1");
+        await client.GenerateReportAsync(stream, "sales.csv", templateId: "generic-overview", filtersJson: null, correlationId: "corr-1");
 
         Assert.NotNull(handler.LastRequestBody);
         Assert.Contains("sales.csv", handler.LastRequestBody);
         Assert.Contains("name=\"templateId\"", handler.LastRequestBody);
         Assert.Contains("generic-overview", handler.LastRequestBody);
+    }
+
+    [Fact]
+    public async Task GenerateReportAsync_SendsFiltersAsMultipartField()
+    {
+        var handler = new FakeHttpMessageHandler(HttpStatusCode.OK, GenerateResponseJson);
+        var client = CreateClient(handler);
+
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes("OrderId,Amount\n1,120.5\n"));
+        await client.GenerateReportAsync(
+            stream, "sales.csv", templateId: null, filtersJson: """{"Region":"North"}""", correlationId: "corr-1");
+
+        Assert.NotNull(handler.LastRequestBody);
+        Assert.Contains("name=\"filters\"", handler.LastRequestBody);
+        Assert.Contains("""{"Region":"North"}""", handler.LastRequestBody);
     }
 
     [Fact]
@@ -95,6 +115,6 @@ public class ReportGeneratorClientTests
 
         using var stream = new MemoryStream(Encoding.UTF8.GetBytes("OrderId,Amount\n1,120.5\n"));
         await Assert.ThrowsAsync<HttpRequestException>(
-            () => client.GenerateReportAsync(stream, "sales.csv", templateId: null, correlationId: "corr-1"));
+            () => client.GenerateReportAsync(stream, "sales.csv", templateId: null, filtersJson: null, correlationId: "corr-1"));
     }
 }
