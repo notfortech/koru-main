@@ -26,3 +26,8 @@ public record ReportTemplateRecommendation(
     string ThemeName,
     double Score);
 
+public record ReportDesignerConsentResponse(
+    bool Granted,
+    string SchemaHash,
+    DateTimeOffset DecidedAt);
+

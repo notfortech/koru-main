@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using StudioTechBI.Application.DTOs.Common;
@@ -24,15 +25,24 @@ public class ReportDesignerController : ControllerBase
     private readonly IReportDesignerClient _reportDesignerClient;
     private readonly SqlSchemaReaderService _sqlSchemaReader;
     private readonly SharePointSchemaService _sharePointSchemaService;
+    private readonly IReportDesignerConsentService _consentService;
+    private readonly IClientResolver _clientResolver;
+    private readonly ILogger<ReportDesignerController> _logger;
 
     public ReportDesignerController(
         IReportDesignerClient reportDesignerClient,
         SqlSchemaReaderService sqlSchemaReader,
-        SharePointSchemaService sharePointSchemaService)
+        SharePointSchemaService sharePointSchemaService,
+        IReportDesignerConsentService consentService,
+        IClientResolver clientResolver,
+        ILogger<ReportDesignerController> logger)
     {
         _reportDesignerClient = reportDesignerClient;
         _sqlSchemaReader = sqlSchemaReader;
         _sharePointSchemaService = sharePointSchemaService;
+        _consentService = consentService;
+        _clientResolver = clientResolver;
+        _logger = logger;
     }
 
     /// <summary>
@@ -194,18 +204,82 @@ public class ReportDesignerController : ControllerBase
     }
 
     /// <summary>
+    /// POST /api/report-designer/consent
+    /// Records (or declines) a client's consent to send a specific schema shape's
+    /// metadata to the Report Designer AI. Must be granted before /generate-model
+    /// will accept that (client, schema) pair. Declining is logged, not persisted —
+    /// callers should fall back to manual template selection.
+    /// </summary>
+    [HttpPost("consent")]
+    public async Task<IActionResult> RecordConsentAsync(
+        [FromBody] ReportDesignerConsentRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(request.ClientId))
+            return BadRequest(ApiResponse<object>.ErrorResponse("ClientId is required."));
+        if (string.IsNullOrWhiteSpace(request.SchemaHash))
+            return BadRequest(ApiResponse<object>.ErrorResponse("SchemaHash is required."));
+
+        var client = await _clientResolver.ResolveAsync(request.ClientId, cancellationToken);
+        if (client is null)
+            return NotFound(ApiResponse<object>.ErrorResponse("Client not found."));
+
+        var decidedAt = DateTimeOffset.UtcNow;
+
+        if (!request.ConsentGranted)
+        {
+            var email = User.FindFirstValue(ClaimTypes.Email) ?? "unknown";
+            _logger.LogInformation(
+                "ReportDesigner.ConsentDeclined ClientId={ClientId} SchemaHash={SchemaHash} DecidedBy={DecidedBy}",
+                client.Id, request.SchemaHash, email);
+
+            return Ok(ApiResponse<ReportDesignerConsentResponse>.SuccessResponse(
+                new ReportDesignerConsentResponse(Granted: false, request.SchemaHash, decidedAt),
+                "Consent declined. AI matching will be skipped for this schema — choose a template manually."));
+        }
+
+        var approvedBy = User.FindFirstValue(ClaimTypes.Email) ?? "unknown";
+        await _consentService.GrantConsentAsync(client.Id, request.SchemaHash, approvedBy, cancellationToken);
+
+        return Ok(ApiResponse<ReportDesignerConsentResponse>.SuccessResponse(
+            new ReportDesignerConsentResponse(Granted: true, request.SchemaHash, decidedAt),
+            "Consent recorded."));
+    }
+
+    /// <summary>
     /// POST /api/report-designer/generate-model
     /// Sends extracted schema metadata (no data values) to the Report Designer AI endpoint.
     /// Returns a star schema recommendation and template scores.
+    /// Requires that POST /consent was already called with ConsentGranted = true for the
+    /// same (ClientId, Schema.SchemaHash) pair — the AI is never called without it.
     /// </summary>
     [HttpPost("generate-model")]
     public async Task<IActionResult> GenerateReportModelAsync(
         [FromBody] GenerateReportModelRequest request,
         CancellationToken cancellationToken)
     {
+        if (string.IsNullOrWhiteSpace(request.ClientId))
+            return BadRequest(ApiResponse<object>.ErrorResponse("ClientId is required."));
+
         if (request.Schema is null || request.Schema.Tables.Count == 0)
             return BadRequest(ApiResponse<object>.ErrorResponse(
                 "Schema is required and must contain at least one table."));
+
+        var client = await _clientResolver.ResolveAsync(request.ClientId, cancellationToken);
+        if (client is null)
+            return NotFound(ApiResponse<object>.ErrorResponse("Client not found."));
+
+        var hasConsent = await _consentService.HasConsentAsync(client.Id, request.Schema.SchemaHash, cancellationToken);
+        if (!hasConsent)
+        {
+            _logger.LogWarning(
+                "ReportDesigner.GenerateBlockedNoConsent ClientId={ClientId} SchemaHash={SchemaHash}",
+                client.Id, request.Schema.SchemaHash);
+
+            return StatusCode(403, ApiResponse<object>.ErrorResponse(
+                "AI consent is required before generating a report model. " +
+                "Call POST /api/report-designer/consent with ConsentGranted = true for this schema first."));
+        }
 
         var correlationId = Guid.NewGuid().ToString();
 
