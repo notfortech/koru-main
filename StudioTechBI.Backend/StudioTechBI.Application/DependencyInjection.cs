@@ -26,6 +26,7 @@ public static class DependencyInjection
         services.AddScoped<IInsightTemplateVerificationService, InsightTemplateVerificationService>();
         services.AddScoped<ITemplateMatchingService, TemplateMatchingService>();
         services.AddScoped<IReportDesignerConsentService, ReportDesignerConsentService>();
+        services.AddScoped<ISchemaModelService, SchemaModelService>();
 
         return services;
     }
