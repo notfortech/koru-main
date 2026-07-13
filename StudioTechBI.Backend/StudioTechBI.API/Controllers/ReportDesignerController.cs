@@ -26,6 +26,7 @@ public class ReportDesignerController : ControllerBase
     private readonly SqlSchemaReaderService _sqlSchemaReader;
     private readonly SharePointSchemaService _sharePointSchemaService;
     private readonly IReportDesignerConsentService _consentService;
+    private readonly IReportMatchService _reportMatchService;
     private readonly IClientResolver _clientResolver;
     private readonly ILogger<ReportDesignerController> _logger;
 
@@ -34,6 +35,7 @@ public class ReportDesignerController : ControllerBase
         SqlSchemaReaderService sqlSchemaReader,
         SharePointSchemaService sharePointSchemaService,
         IReportDesignerConsentService consentService,
+        IReportMatchService reportMatchService,
         IClientResolver clientResolver,
         ILogger<ReportDesignerController> logger)
     {
@@ -41,6 +43,7 @@ public class ReportDesignerController : ControllerBase
         _sqlSchemaReader = sqlSchemaReader;
         _sharePointSchemaService = sharePointSchemaService;
         _consentService = consentService;
+        _reportMatchService = reportMatchService;
         _clientResolver = clientResolver;
         _logger = logger;
     }
@@ -305,6 +308,58 @@ public class ReportDesignerController : ControllerBase
         {
             return StatusCode(500, ApiResponse<object>.ErrorResponse(
                 "An error occurred while generating the report model."));
+        }
+    }
+
+    /// <summary>
+    /// POST /api/report-designer/match
+    /// Scores the extracted schema against the Approved SchemaModel directory (deterministic —
+    /// no external AI call in this version) and persists the result as a ReportMatchDraft.
+    /// Requires the same prior consent grant as /generate-model, since the eventual
+    /// AI-proposed-new-model escalation path will live on this same endpoint.
+    /// </summary>
+    [HttpPost("match")]
+    public async Task<IActionResult> MatchAsync(
+        [FromBody] ReportMatchRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(request.ClientId))
+            return BadRequest(ApiResponse<object>.ErrorResponse("ClientId is required."));
+
+        if (request.Schema is null || request.Schema.Tables.Count == 0)
+            return BadRequest(ApiResponse<object>.ErrorResponse(
+                "Schema is required and must contain at least one table."));
+
+        var client = await _clientResolver.ResolveAsync(request.ClientId, cancellationToken);
+        if (client is null)
+            return NotFound(ApiResponse<object>.ErrorResponse("Client not found."));
+
+        var hasConsent = await _consentService.HasConsentAsync(client.Id, request.Schema.SchemaHash, cancellationToken);
+        if (!hasConsent)
+        {
+            _logger.LogWarning(
+                "ReportDesigner.MatchBlockedNoConsent ClientId={ClientId} SchemaHash={SchemaHash}",
+                client.Id, request.Schema.SchemaHash);
+
+            return StatusCode(403, ApiResponse<object>.ErrorResponse(
+                "AI consent is required before matching against the model directory. " +
+                "Call POST /api/report-designer/consent with ConsentGranted = true for this schema first."));
+        }
+
+        try
+        {
+            var result = await _reportMatchService.MatchAsync(client.Id, request.Schema, cancellationToken);
+
+            var message = result.SchemaModelId is null
+                ? "No confident match found in the model directory."
+                : $"Matched '{result.SchemaModelName}' (confidence {result.Confidence:P0}).";
+
+            return Ok(ApiResponse<ReportMatchResultDto>.SuccessResponse(result, message));
+        }
+        catch (Exception)
+        {
+            return StatusCode(500, ApiResponse<object>.ErrorResponse(
+                "An error occurred while matching the schema against the model directory."));
         }
     }
 }
