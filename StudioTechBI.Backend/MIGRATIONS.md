@@ -52,21 +52,47 @@ available in the environment they were authored in, so they couldn't be generate
 test-applied against a real SQL Server. They're written defensively (guarded with
 `IF OBJECT_ID(...) IS NULL`, and the new `Templates.ModelId` foreign key uses `WITH
 NOCHECK` so it won't fail if pre-existing `ModelId` values don't resolve to a real
-`SchemaModel` row), and neither has a `*.Designer.cs` partial — the `[Migration(...)]`
-attribute is declared directly on the migration class instead, which is sufficient
-for `Database.MigrateAsync()` to discover and apply them at runtime. What that
-attribute placement does **not** do is keep `ApplicationDbContextModelSnapshot.cs` in
-sync — that snapshot still has no knowledge of `ReportDesignerConsents`,
-`SchemaModels`, or `SchemaModelFields`.
+`SchemaModel` row), and neither has a `*.Designer.cs` partial — instead the
+`[Migration(...)]` attribute is declared directly on the migration class.
 
-**Practical effect / open follow-up:** the next time anyone with the `dotnet` SDK
-runs `dotnet ef migrations add <Name>`, EF will diff against the stale snapshot,
-conclude those three tables don't exist yet, and generate a migration with real
-`migrationBuilder.CreateTable(...)` calls for them — which will fail when applied,
-since the tables already exist in the database by then. Whoever hits this needs to
-either strip the erroneous `CreateTable` calls out of that generated migration before
-applying it, or reconcile `ApplicationDbContextModelSnapshot.cs` by hand first so the
-next `migrations add` diffs cleanly. This has been left as a documented follow-up
-rather than fixed now, since it only matters once EF tooling is available to do it
-properly — attempting the snapshot edit by hand carries more risk than leaving it
-for whoever has the real tooling.
+**This was tried in production on 2026-07-13 and did not work as expected.**
+`Database.MigrateAsync()` logged `"Migrations applied."` on every retry, but the very
+next query against `SchemaModels` failed with `Invalid object name 'SchemaModels'` —
+i.e. EF reported success while never actually creating the table. Root cause was not
+confirmed (no EF CLI available to reproduce/debug it properly); missing `[DbContext]`
+on the migration class is the leading theory and has since been added to both files,
+but that fix has **not** been re-verified against real tooling either — treat it as a
+plausible improvement, not a confirmed fix.
+
+**Consequence that made this more than a minor bug:** `SchemaModelSeeder.SeedAsync`
+ran immediately after the (silently no-op) migration step, inside the same retry loop
+that gates `_readiness.MarkDatabaseReady()`. When it hit the missing table, the
+exception propagated out of the retry loop entirely after 5 attempts, so
+`MarkDatabaseReady()` was never called — which took down **all** `/api/*` traffic,
+including login, since those routes are gated on that readiness flag. A reference-data
+seeding failure should never have been able to do that.
+
+**Fix applied (same day):**
+1. `HandwrittenMigrationsBootstrapper.EnsureTablesExistAsync`
+   (`StudioTechBI.Infrastructure/Data/HandwrittenMigrationsBootstrapper.cs`) runs the
+   exact same guarded DDL directly via `ExecuteSqlRawAsync`, independent of whether EF
+   ever recognizes the two migrations as pending. This is now the real source of truth
+   for whether `ReportDesignerConsents`, `SchemaModels`, `SchemaModelFields`, and the
+   `Templates.ModelId` FK actually exist — not the migration files themselves.
+2. `StartupDbTasksHostedService.SeedSchemaModelsNonFatalAsync` wraps
+   `SchemaModelSeeder.SeedAsync` in its own try/catch, structurally separate from the
+   critical path (connect → migrate → `RoleSeeder` → `AdminUserSeeder`) that gates
+   readiness. A schema-model seeding failure now logs a warning and lets the app
+   become ready anyway — it can't take down login again, regardless of cause.
+
+**Still-open follow-up:** `ApplicationDbContextModelSnapshot.cs` has no knowledge of
+`ReportDesignerConsents`, `SchemaModels`, or `SchemaModelFields`. The next time anyone
+with the `dotnet` SDK runs `dotnet ef migrations add <Name>`, EF will diff against
+that stale snapshot, conclude those tables don't exist yet, and generate a migration
+with real `migrationBuilder.CreateTable(...)` calls for them — which will fail when
+applied, since the tables already exist by then (created by the bootstrapper).
+Whoever hits this needs to either strip those `CreateTable` calls out of the generated
+migration before applying it, or reconcile the snapshot by hand first so the next
+`migrations add` diffs cleanly. Left as documentation rather than fixed now — the
+snapshot edit is exactly the kind of thing that's low-risk with real EF tooling to
+verify against, and higher-risk without it.

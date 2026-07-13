@@ -53,9 +53,9 @@ public sealed class StartupDbTasksHostedService : BackgroundService
                 await RoleSeeder.SeedAsync(db);
                 await DemoUsersSeeder.SeedAsync(db, _configuration);
                 await AdminUserSeeder.SeedAsync(db, _configuration);
-                await SchemaModelSeeder.SeedAsync(db, stoppingToken);
+                await SeedSchemaModelsNonFatalAsync(db, stoppingToken);
                 _readiness.MarkDatabaseReady();
-                _logger.LogInformation("Demo storage ready. Roles/users/admin/schema models seeded.");
+                _logger.LogInformation("Demo storage ready. Roles/users/admin seeded.");
                 return;
             }
 
@@ -72,7 +72,15 @@ public sealed class StartupDbTasksHostedService : BackgroundService
                     _logger.LogInformation("Migrations applied. Seeding roles/admin...");
                     await RoleSeeder.SeedAsync(db);
                     await AdminUserSeeder.SeedAsync(db, _configuration);
-                    await SchemaModelSeeder.SeedAsync(db, stoppingToken);
+
+                    // Everything above this line is required for core login/API access and stays
+                    // inside the retry loop. SchemaModel seeding is not on that critical path —
+                    // it must never be able to block readiness, so it gets its own fault boundary.
+                    // Also runs the hand-authored migrations' guarded DDL directly (belt-and-braces
+                    // — see HandwrittenMigrationsBootstrapper / MIGRATIONS.md for why).
+                    await HandwrittenMigrationsBootstrapper.EnsureTablesExistAsync(db, _logger, stoppingToken);
+                    await SeedSchemaModelsNonFatalAsync(db, stoppingToken);
+
                     _readiness.MarkDatabaseReady();
                     _logger.LogInformation("Database ready (migrations + seed complete).");
                     return;
@@ -90,6 +98,24 @@ public sealed class StartupDbTasksHostedService : BackgroundService
         {
             // Critical: never crash the web host during warmup.
             _logger.LogError(ex, "Startup DB tasks failed (non-fatal).");
+        }
+    }
+
+    /// <summary>
+    /// SchemaModel reference-data seeding must never be able to block app readiness — a failure
+    /// here previously propagated up through the retry loop and prevented
+    /// _readiness.MarkDatabaseReady() from ever being called, which took down login entirely
+    /// (every /api/* call gated on readiness returned 503). See MIGRATIONS.md.
+    /// </summary>
+    private async Task SeedSchemaModelsNonFatalAsync(ApplicationDbContext db, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await SchemaModelSeeder.SeedAsync(db, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "SchemaModel seeding failed; continuing without it. Core app readiness is unaffected.");
         }
     }
 }
