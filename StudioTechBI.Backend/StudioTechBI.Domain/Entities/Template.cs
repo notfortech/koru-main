@@ -10,9 +10,12 @@ public class Template : BaseEntity
     public string? BlobPath { get; set; }
 
     /// <summary>
-    /// External semantic model identifier (matches dbo.Templates.ModelId, uniqueidentifier in SQL).
+    /// References the reference schema (see <see cref="SchemaModel"/>) this dashboard template
+    /// visualizes. Matches dbo.Templates.ModelId, uniqueidentifier NULL in SQL — several
+    /// Templates may share the same ModelId (one Model, multiple dashboard layouts).
     /// </summary>
     public Guid? ModelId { get; set; }
+    public SchemaModel? Model { get; set; }
 
     /// <summary>
     /// JSON array of required column names used to match client schemas.

@@ -53,8 +53,9 @@ public sealed class StartupDbTasksHostedService : BackgroundService
                 await RoleSeeder.SeedAsync(db);
                 await DemoUsersSeeder.SeedAsync(db, _configuration);
                 await AdminUserSeeder.SeedAsync(db, _configuration);
+                await SchemaModelSeeder.SeedAsync(db, stoppingToken);
                 _readiness.MarkDatabaseReady();
-                _logger.LogInformation("Demo storage ready. Roles/users/admin seeded.");
+                _logger.LogInformation("Demo storage ready. Roles/users/admin/schema models seeded.");
                 return;
             }
 
@@ -71,6 +72,7 @@ public sealed class StartupDbTasksHostedService : BackgroundService
                     _logger.LogInformation("Migrations applied. Seeding roles/admin...");
                     await RoleSeeder.SeedAsync(db);
                     await AdminUserSeeder.SeedAsync(db, _configuration);
+                    await SchemaModelSeeder.SeedAsync(db, stoppingToken);
                     _readiness.MarkDatabaseReady();
                     _logger.LogInformation("Database ready (migrations + seed complete).");
                     return;

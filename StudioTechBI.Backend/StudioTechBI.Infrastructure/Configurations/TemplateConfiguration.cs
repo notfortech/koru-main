@@ -19,5 +19,10 @@ public class TemplateConfiguration : IEntityTypeConfiguration<Template>
         builder.Property(e => e.RequiredColumnsJson).IsRequired().HasColumnType("nvarchar(max)");
         builder.Property(e => e.OptionalColumnsJson).IsRequired().HasColumnType("nvarchar(max)");
         builder.Property(e => e.CreatedDate).IsRequired();
+
+        builder.HasOne(e => e.Model)
+            .WithMany(m => m.Templates)
+            .HasForeignKey(e => e.ModelId)
+            .OnDelete(DeleteBehavior.SetNull);
     }
 }
