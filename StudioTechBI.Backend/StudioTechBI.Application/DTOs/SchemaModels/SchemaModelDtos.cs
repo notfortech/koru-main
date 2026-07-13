@@ -12,4 +12,7 @@ public record SchemaModelDto(
     string Industry,
     string? Description,
     List<SchemaModelFieldDto> Fields,
-    List<Guid> TemplateIds);
+    List<Guid> TemplateIds,
+    bool IsAiSuggested = false,
+    string ReviewStatus = "Approved",
+    Guid? SuggestedByClientId = null);

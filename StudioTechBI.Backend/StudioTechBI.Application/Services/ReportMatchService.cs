@@ -1,4 +1,5 @@
 using System.Text;
+using Microsoft.Extensions.Logging;
 using StudioTechBI.Application.DTOs.ReportDesigner;
 using StudioTechBI.Application.Interfaces;
 using StudioTechBI.Domain.Entities;
@@ -8,11 +9,24 @@ namespace StudioTechBI.Application.Services;
 
 public class ReportMatchService : BaseService, IReportMatchService
 {
+    /// <summary>
+    /// Deterministic scores at or above this proceed without AI involvement. Below it,
+    /// MatchAsync escalates to stbi_transformers for a semantic match/propose call.
+    /// Placeholder value — see epic open question on tuning against real customer schemas.
+    /// </summary>
+    private const double AiEscalationThreshold = 0.6;
+
+    private const string SourceDeterministic = "Deterministic";
+    private const string SourceAiMatched = "AiMatched";
+    private const string SourceAiProposedNew = "AiProposedNew";
+
     private readonly IRepository<SchemaModel> _modelRepository;
     private readonly IRepository<SchemaModelField> _fieldRepository;
     private readonly IRepository<Template> _templateRepository;
     private readonly IRepository<ReportMatchDraft> _draftRepository;
     private readonly IRepository<ReportMatchColumnMapping> _mappingRepository;
+    private readonly IReportDesignerClient _reportDesignerClient;
+    private readonly ILogger<ReportMatchService> _logger;
 
     public ReportMatchService(
         IUnitOfWork unitOfWork,
@@ -20,7 +34,9 @@ public class ReportMatchService : BaseService, IReportMatchService
         IRepository<SchemaModelField> fieldRepository,
         IRepository<Template> templateRepository,
         IRepository<ReportMatchDraft> draftRepository,
-        IRepository<ReportMatchColumnMapping> mappingRepository)
+        IRepository<ReportMatchColumnMapping> mappingRepository,
+        IReportDesignerClient reportDesignerClient,
+        ILogger<ReportMatchService> logger)
         : base(unitOfWork)
     {
         _modelRepository = modelRepository;
@@ -28,6 +44,8 @@ public class ReportMatchService : BaseService, IReportMatchService
         _templateRepository = templateRepository;
         _draftRepository = draftRepository;
         _mappingRepository = mappingRepository;
+        _reportDesignerClient = reportDesignerClient;
+        _logger = logger;
     }
 
     public async Task<ReportMatchResultDto> MatchAsync(Guid clientId, ExtractedSchemaDto schema, CancellationToken cancellationToken = default)
@@ -43,12 +61,14 @@ public class ReportMatchService : BaseService, IReportMatchService
         SchemaModel? bestModel = null;
         var bestScore = 0.0;
         IReadOnlyList<SchemaModelField> bestFields = Array.Empty<SchemaModelField>();
+        var fieldsByModel = new Dictionary<Guid, List<SchemaModelField>>();
 
         foreach (var model in approvedModels)
         {
             var fields = (await _fieldRepository.FindAsync(f => f.SchemaModelId == model.Id, cancellationToken))
                 .OrderBy(f => f.SortOrder)
                 .ToList();
+            fieldsByModel[model.Id] = fields;
             if (fields.Count == 0)
                 continue;
 
@@ -58,6 +78,18 @@ public class ReportMatchService : BaseService, IReportMatchService
                 bestScore = score;
                 bestModel = model;
                 bestFields = fields;
+            }
+        }
+
+        var matchSource = SourceDeterministic;
+        var pendingSupportReview = false;
+
+        if (bestScore < AiEscalationThreshold)
+        {
+            var escalated = await TryEscalateToAiAsync(clientId, approvedModels, fieldsByModel, clientColumns, cancellationToken);
+            if (escalated is not null)
+            {
+                (bestModel, bestFields, bestScore, matchSource, pendingSupportReview) = escalated.Value;
             }
         }
 
@@ -130,8 +162,103 @@ public class ReportMatchService : BaseService, IReportMatchService
             bestModel?.Name,
             bestModel?.Industry,
             Math.Round(bestScore, 4),
+            matchSource,
+            pendingSupportReview,
             candidates,
             mappingDtos);
+    }
+
+    /// <summary>
+    /// Calls stbi_transformers to either semantically match one of the Approved candidates
+    /// or propose a brand-new SchemaModel. Never throws — any failure (network, parse, or a
+    /// hallucinated candidate id) is logged and the caller falls back to the deterministic
+    /// result, since a low-confidence deterministic match is still strictly better than a
+    /// hard failure of the whole match request.
+    /// </summary>
+    private async Task<(SchemaModel? Model, IReadOnlyList<SchemaModelField> Fields, double Score, string Source, bool PendingReview)?> TryEscalateToAiAsync(
+        Guid clientId,
+        List<SchemaModel> approvedModels,
+        Dictionary<Guid, List<SchemaModelField>> fieldsByModel,
+        List<ColumnSchemaDto> clientColumns,
+        CancellationToken cancellationToken)
+    {
+        var candidateModels = approvedModels
+            .Where(m => fieldsByModel[m.Id].Count > 0)
+            .Select(m => new SchemaModelAiMatchCandidate(
+                m.Id.ToString(),
+                m.Name,
+                m.Industry,
+                fieldsByModel[m.Id].Select(f => new SchemaModelAiMatchField(f.FieldName, f.DataType, f.IsRequired)).ToList()))
+            .ToList();
+
+        if (candidateModels.Count == 0)
+            return null;
+
+        var request = new SchemaModelAiMatchRequest(
+            clientColumns.Select(c => new SchemaModelAiMatchColumn(c.ColumnName, c.DataType)).ToList(),
+            candidateModels);
+
+        var correlationId = Guid.NewGuid().ToString();
+
+        SchemaModelAiMatchResponse response;
+        try
+        {
+            response = await _reportDesignerClient.MatchSchemaModelAsync(request, correlationId, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "ReportMatch.AiEscalationFailed ClientId={ClientId} CorrelationId={CorrelationId} — falling back to deterministic result.",
+                clientId, correlationId);
+            return null;
+        }
+
+        if (response.MatchedModelId is Guid matchedId)
+        {
+            var matched = approvedModels.FirstOrDefault(m => m.Id == matchedId);
+            if (matched is null)
+            {
+                _logger.LogWarning(
+                    "ReportMatch.AiMatchedUnknownModel ClientId={ClientId} MatchedModelId={MatchedModelId} CorrelationId={CorrelationId}",
+                    clientId, matchedId, correlationId);
+                return null;
+            }
+            return (matched, fieldsByModel[matched.Id], response.Confidence, SourceAiMatched, false);
+        }
+
+        if (response.ProposedModel is { } proposed)
+        {
+            var newModel = new SchemaModel
+            {
+                Id = Guid.NewGuid(),
+                Name = proposed.Name,
+                Industry = proposed.Industry,
+                Description = "Proposed by AI matching — pending support review.",
+                IsAiSuggested = true,
+                ReviewStatus = "PendingReview",
+                SuggestedByClientId = clientId,
+            };
+            await _modelRepository.AddAsync(newModel, cancellationToken);
+
+            var newFields = proposed.Fields.Select((f, i) => new SchemaModelField
+            {
+                Id = Guid.NewGuid(),
+                SchemaModelId = newModel.Id,
+                FieldName = f.FieldName,
+                DataType = f.DataType,
+                IsRequired = f.IsRequired,
+                SortOrder = i,
+            }).ToList();
+            await _fieldRepository.AddRangeAsync(newFields, cancellationToken);
+
+            _logger.LogInformation(
+                "ReportMatch.AiProposedNewModel ClientId={ClientId} SchemaModelId={SchemaModelId} Name={Name} CorrelationId={CorrelationId}",
+                clientId, newModel.Id, newModel.Name, correlationId);
+
+            return (newModel, newFields, 0.0, SourceAiProposedNew, true);
+        }
+
+        return null;
     }
 
     private static double ScoreModel(IReadOnlyList<SchemaModelField> fields, IReadOnlyList<ColumnSchemaDto> clientColumns)

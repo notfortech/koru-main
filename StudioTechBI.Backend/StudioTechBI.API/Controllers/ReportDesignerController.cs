@@ -313,10 +313,12 @@ public class ReportDesignerController : ControllerBase
 
     /// <summary>
     /// POST /api/report-designer/match
-    /// Scores the extracted schema against the Approved SchemaModel directory (deterministic —
-    /// no external AI call in this version) and persists the result as a ReportMatchDraft.
-    /// Requires the same prior consent grant as /generate-model, since the eventual
-    /// AI-proposed-new-model escalation path will live on this same endpoint.
+    /// Scores the extracted schema against the Approved SchemaModel directory. Deterministic
+    /// name-overlap matching runs first; if its confidence is below the escalation gate, this
+    /// calls stbi_transformers for a semantic match against the same directory, or a brand-new
+    /// SchemaModel proposal (persisted as ReviewStatus = PendingReview) when nothing fits well.
+    /// Result is persisted as a ReportMatchDraft either way. Requires the same prior consent
+    /// grant as /generate-model.
     /// </summary>
     [HttpPost("match")]
     public async Task<IActionResult> MatchAsync(
@@ -350,9 +352,13 @@ public class ReportDesignerController : ControllerBase
         {
             var result = await _reportMatchService.MatchAsync(client.Id, request.Schema, cancellationToken);
 
-            var message = result.SchemaModelId is null
-                ? "No confident match found in the model directory."
-                : $"Matched '{result.SchemaModelName}' (confidence {result.Confidence:P0}).";
+            var message = result switch
+            {
+                { SchemaModelId: null } => "No confident match found in the model directory.",
+                { PendingSupportReview: true } => $"No good fit in the directory — AI proposed a new model '{result.SchemaModelName}', pending support review before it can be used.",
+                { MatchSource: "AiMatched" } => $"AI matched '{result.SchemaModelName}' (confidence {result.Confidence:P0}).",
+                _ => $"Matched '{result.SchemaModelName}' (confidence {result.Confidence:P0}).",
+            };
 
             return Ok(ApiResponse<ReportMatchResultDto>.SuccessResponse(result, message));
         }
