@@ -10,11 +10,19 @@ public class Template : BaseEntity
     public string? BlobPath { get; set; }
 
     /// <summary>
-    /// References the reference schema (see <see cref="SchemaModel"/>) this dashboard template
-    /// visualizes. Matches dbo.Templates.ModelId, uniqueidentifier NULL in SQL — several
-    /// Templates may share the same ModelId (one Model, multiple dashboard layouts).
+    /// Pre-existing column, matches dbo.Templates.ModelId (uniqueidentifier NULL) in SQL.
+    /// References a `dbo.Models` table that exists in production but is NOT mapped anywhere in
+    /// this codebase (found via FK_Templates_Models rejecting inserts — see MIGRATIONS.md).
+    /// Do not repurpose this column or its FK for SchemaModel — use SchemaModelId instead.
     /// </summary>
     public Guid? ModelId { get; set; }
+
+    /// <summary>
+    /// References the reference schema (see <see cref="SchemaModel"/>) this dashboard template
+    /// visualizes. Deliberately a separate column from the legacy ModelId (see above) — several
+    /// Templates may share the same SchemaModelId (one Model, multiple dashboard layouts).
+    /// </summary>
+    public Guid? SchemaModelId { get; set; }
     public SchemaModel? Model { get; set; }
 
     /// <summary>

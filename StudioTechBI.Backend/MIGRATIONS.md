@@ -85,6 +85,42 @@ seeding failure should never have been able to do that.
    readiness. A schema-model seeding failure now logs a warning and lets the app
    become ready anyway — it can't take down login again, regardless of cause.
 
+## Incident 2 (same day, 2026-07-13): SchemaModel seeding failed for a different reason
+
+Once the fix above shipped, `SchemaModels`/`SchemaModelFields` were created correctly
+and `Templates.ModelId` got a second FK pointing at `SchemaModels` as designed — but
+seeding still failed, this time with:
+
+```
+The INSERT statement conflicted with the FOREIGN KEY constraint "FK_Templates_Models".
+The conflict occurred in database "studiotechbi-prod-db", table "dbo.Models", column
+'ModelId'.
+```
+
+**There is a pre-existing `dbo.Models` table and `FK_Templates_Models` constraint
+already in production, on the same `Templates.ModelId` column — and neither is mapped
+anywhere in this codebase.** Nothing in the EF model, migrations history, or any
+`.cs` file references a `dbo.Models` table, so there was no way to see this constraint
+from the code alone; it only surfaced once real inserts hit it. `Templates.ModelId`
+was already "owned" by whatever created that table (unknown — possibly a different
+service sharing this database, a manual DBA script, or an older version of this app
+not reflected in current git history). Adding a second FK on that same column meant
+every insert had to satisfy both constraints at once, which is impossible for rows
+pointing at `SchemaModels`.
+
+**Fix:** stopped reusing `Templates.ModelId` for `SchemaModel` linkage entirely.
+`Templates.SchemaModelId` is now a separate, new nullable column with its own FK
+(`FK_Templates_SchemaModels_SchemaModelId`) to `SchemaModels`. `Templates.ModelId` and
+its relationship to the mystery `dbo.Models` table are left completely untouched — not
+reinterpreted, not migrated, not queried by any of this session's code.
+`HandwrittenMigrationsBootstrapper` also now drops the mistaken
+`FK_Templates_SchemaModels_ModelId` if it's still present from the first attempt.
+
+**Open question this raises:** what is `dbo.Models`, and does `TemplateService.cs`'s
+existing `ModelId`/`ParseModelId` admin-CRUD usage (which predates this session and
+was left untouched) actually populate or depend on it? Worth a DBA/team check —
+nobody working on this had visibility into that table from the codebase alone.
+
 **Still-open follow-up:** `ApplicationDbContextModelSnapshot.cs` has no knowledge of
 `ReportDesignerConsents`, `SchemaModels`, or `SchemaModelFields`. The next time anyone
 with the `dotnet` SDK runs `dotnet ef migrations add <Name>`, EF will diff against

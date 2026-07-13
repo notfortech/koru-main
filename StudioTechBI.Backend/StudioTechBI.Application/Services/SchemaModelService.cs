@@ -31,8 +31,8 @@ public class SchemaModelService : ISchemaModelService
             .GroupBy(f => f.SchemaModelId)
             .ToDictionary(g => g.Key, g => (IReadOnlyList<SchemaModelField>)g.OrderBy(f => f.SortOrder).ToList());
         var templateIdsByModel = templates
-            .Where(t => t.ModelId.HasValue)
-            .GroupBy(t => t.ModelId!.Value)
+            .Where(t => t.SchemaModelId.HasValue)
+            .GroupBy(t => t.SchemaModelId!.Value)
             .ToDictionary(g => g.Key, g => g.Select(t => t.Id).ToList());
 
         return models
@@ -51,7 +51,7 @@ public class SchemaModelService : ISchemaModelService
             return null;
 
         var fields = await _fieldRepository.FindAsync(f => f.SchemaModelId == id, cancellationToken);
-        var templates = await _templateRepository.FindAsync(t => t.ModelId == id, cancellationToken);
+        var templates = await _templateRepository.FindAsync(t => t.SchemaModelId == id, cancellationToken);
 
         return MapToDto(
             model,

@@ -263,7 +263,7 @@ public static class SchemaModelSeeder
                 TemplateName = $"{seed.Name} — Overview",
                 Industry = seed.Industry,
                 Version = "1.0",
-                ModelId = model.Id,
+                SchemaModelId = model.Id,
                 // Placeholder — no .pbix has actually been built/published for this yet.
                 BlobPath = seed.TemplateBlobPath,
                 RequiredColumnsJson = JsonSerializer.Serialize(requiredCols, JsonOptions),

@@ -92,18 +92,36 @@ public static class HandwrittenMigrationsBootstrapper
             END
         ", cancellationToken);
 
-        await ExecAsync(context, logger, "Templates.ModelId FK", @"
+        // CLEANUP: an earlier version of this bootstrapper incorrectly added a second FK on
+        // Templates.ModelId, not knowing production already has an unrelated dbo.Models table
+        // with its own FK_Templates_Models on that same column. Every Template insert then had
+        // to satisfy both simultaneously, which is impossible for rows pointing at SchemaModels.
+        // Drop the mistaken FK if it's still there — safe no-op once cleaned up everywhere.
+        await ExecAsync(context, logger, "Templates.ModelId FK (cleanup)", @"
+            IF EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_Templates_SchemaModels_ModelId')
+                ALTER TABLE [dbo].[Templates] DROP CONSTRAINT [FK_Templates_SchemaModels_ModelId];
+
+            IF EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_Templates_ModelId' AND object_id = OBJECT_ID('dbo.Templates'))
+                DROP INDEX [IX_Templates_ModelId] ON [dbo].[Templates];
+        ", cancellationToken);
+
+        // Templates.ModelId is left alone entirely — it belongs to that pre-existing dbo.Models
+        // table. SchemaModel linkage gets its own column instead.
+        await ExecAsync(context, logger, "Templates.SchemaModelId column + FK", @"
+            IF COL_LENGTH('dbo.Templates', 'SchemaModelId') IS NULL
+                ALTER TABLE [dbo].[Templates] ADD [SchemaModelId] UNIQUEIDENTIFIER NULL;
+
+            IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_Templates_SchemaModelId')
+                CREATE INDEX [IX_Templates_SchemaModelId] ON [dbo].[Templates] ([SchemaModelId]);
+
             IF NOT EXISTS (
                 SELECT 1 FROM sys.foreign_keys
-                WHERE name = 'FK_Templates_SchemaModels_ModelId'
+                WHERE name = 'FK_Templates_SchemaModels_SchemaModelId'
             )
             BEGIN
-                IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_Templates_ModelId')
-                    CREATE INDEX [IX_Templates_ModelId] ON [dbo].[Templates] ([ModelId]);
-
                 ALTER TABLE [dbo].[Templates] WITH NOCHECK
-                    ADD CONSTRAINT [FK_Templates_SchemaModels_ModelId]
-                    FOREIGN KEY ([ModelId]) REFERENCES [dbo].[SchemaModels] ([Id])
+                    ADD CONSTRAINT [FK_Templates_SchemaModels_SchemaModelId]
+                    FOREIGN KEY ([SchemaModelId]) REFERENCES [dbo].[SchemaModels] ([Id])
                     ON DELETE SET NULL;
             END
         ", cancellationToken);
