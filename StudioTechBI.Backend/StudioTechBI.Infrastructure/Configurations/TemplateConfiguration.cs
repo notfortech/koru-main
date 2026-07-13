@@ -19,6 +19,7 @@ public class TemplateConfiguration : IEntityTypeConfiguration<Template>
         // codebase. Deliberately left unconfigured as a relationship here; see Template.cs.
         builder.Property(e => e.ModelId);
         builder.Property(e => e.SchemaModelId);
+        builder.Property(e => e.IsPublishReady).IsRequired();
         builder.Property(e => e.RequiredColumnsJson).IsRequired().HasColumnType("nvarchar(max)");
         builder.Property(e => e.OptionalColumnsJson).IsRequired().HasColumnType("nvarchar(max)");
         builder.Property(e => e.CreatedDate).IsRequired();

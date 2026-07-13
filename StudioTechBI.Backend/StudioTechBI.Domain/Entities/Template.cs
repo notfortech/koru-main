@@ -26,6 +26,13 @@ public class Template : BaseEntity
     public SchemaModel? Model { get; set; }
 
     /// <summary>
+    /// True once support has verified a real .pbix exists and is live in Power BI Service for
+    /// this template — not just that a Templates row exists. Publishing a report against a
+    /// template is blocked while this is false (see MIGRATIONS.md-adjacent epic doc, Story 3).
+    /// </summary>
+    public bool IsPublishReady { get; set; }
+
+    /// <summary>
     /// JSON array of required column names used to match client schemas.
     /// </summary>
     public string RequiredColumnsJson { get; set; } = "[]";

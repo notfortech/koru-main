@@ -16,6 +16,19 @@ public class SchemaModel : BaseEntity
     public string Industry { get; set; } = string.Empty;
     public string? Description { get; set; }
 
+    /// <summary>True when this model was proposed by the AI matching pipeline rather than admin-curated/seeded.</summary>
+    public bool IsAiSuggested { get; set; }
+
+    /// <summary>
+    /// "Approved" | "PendingReview" | "Rejected". Only Approved models are used for matching
+    /// other clients' schemas — an AI-suggested model must not influence other clients until
+    /// support has reviewed it. Seeded/admin-curated models default to Approved.
+    /// </summary>
+    public string ReviewStatus { get; set; } = "Approved";
+
+    /// <summary>Traceability only — which client's match session caused the AI to propose this model, if any.</summary>
+    public Guid? SuggestedByClientId { get; set; }
+
     public ICollection<SchemaModelField> Fields { get; set; } = new List<SchemaModelField>();
     public ICollection<Template> Templates { get; set; } = new List<Template>();
 }

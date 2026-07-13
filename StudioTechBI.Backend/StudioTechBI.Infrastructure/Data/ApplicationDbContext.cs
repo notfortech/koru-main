@@ -42,6 +42,9 @@ public class ApplicationDbContext : DbContext
     public DbSet<ReportDesignerConsent> ReportDesignerConsents => Set<ReportDesignerConsent>();
     public DbSet<SchemaModel> SchemaModels => Set<SchemaModel>();
     public DbSet<SchemaModelField> SchemaModelFields => Set<SchemaModelField>();
+    public DbSet<ReportMatchDraft> ReportMatchDrafts => Set<ReportMatchDraft>();
+    public DbSet<ReportMatchColumnMapping> ReportMatchColumnMappings => Set<ReportMatchColumnMapping>();
+    public DbSet<ReportDataUsageConsent> ReportDataUsageConsents => Set<ReportDataUsageConsent>();
     public DbSet<DataConnection> DataConnections => Set<DataConnection>();
     public DbSet<OAuthConnectionState> OAuthConnectionStates => Set<OAuthConnectionState>();
 
