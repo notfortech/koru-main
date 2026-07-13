@@ -27,6 +27,7 @@ public class ReportDesignerController : ControllerBase
     private readonly SharePointSchemaService _sharePointSchemaService;
     private readonly IReportDesignerConsentService _consentService;
     private readonly IReportMatchService _reportMatchService;
+    private readonly IReportDataUsageConsentService _dataUsageConsentService;
     private readonly IClientResolver _clientResolver;
     private readonly ILogger<ReportDesignerController> _logger;
 
@@ -36,6 +37,7 @@ public class ReportDesignerController : ControllerBase
         SharePointSchemaService sharePointSchemaService,
         IReportDesignerConsentService consentService,
         IReportMatchService reportMatchService,
+        IReportDataUsageConsentService dataUsageConsentService,
         IClientResolver clientResolver,
         ILogger<ReportDesignerController> logger)
     {
@@ -44,6 +46,7 @@ public class ReportDesignerController : ControllerBase
         _sharePointSchemaService = sharePointSchemaService;
         _consentService = consentService;
         _reportMatchService = reportMatchService;
+        _dataUsageConsentService = dataUsageConsentService;
         _clientResolver = clientResolver;
         _logger = logger;
     }
@@ -366,6 +369,39 @@ public class ReportDesignerController : ControllerBase
         {
             return StatusCode(500, ApiResponse<object>.ErrorResponse(
                 "An error occurred while matching the schema against the model directory."));
+        }
+    }
+
+    /// <summary>
+    /// POST /api/report-designer/match/{draftId}/data-usage-consent
+    /// Consent #2: confirms the report will use this specific (matched) data, distinct from
+    /// Consent #1's "send my schema to AI" grant. Append-only — recorded every time this is
+    /// called, no upsert. The flow stops here for now; Save/Publish land in a later story.
+    /// </summary>
+    [HttpPost("match/{draftId:guid}/data-usage-consent")]
+    public async Task<IActionResult> RecordDataUsageConsentAsync(
+        Guid draftId,
+        [FromBody] DataUsageConsentRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(request.ClientId))
+            return BadRequest(ApiResponse<object>.ErrorResponse("ClientId is required."));
+
+        var client = await _clientResolver.ResolveAsync(request.ClientId, cancellationToken);
+        if (client is null)
+            return NotFound(ApiResponse<object>.ErrorResponse("Client not found."));
+
+        var approvedBy = User.FindFirstValue(ClaimTypes.Email) ?? "unknown";
+
+        try
+        {
+            var approvedAt = await _dataUsageConsentService.RecordConsentAsync(draftId, client.Id, approvedBy, cancellationToken);
+            return Ok(ApiResponse<DataUsageConsentResponse>.SuccessResponse(
+                new DataUsageConsentResponse(draftId, approvedAt), "Data usage consent recorded."));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return NotFound(ApiResponse<object>.ErrorResponse(ex.Message));
         }
     }
 }
