@@ -1,12 +1,18 @@
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
+using StudioTechBI.Infrastructure.Data;
 
 #nullable disable
 
 namespace StudioTechBI.Infrastructure.Migrations
 {
     // Hand-authored — see 20260712120000_AddReportDesignerConsent.cs for why there's no
-    // Designer.cs partial. Regenerate a snapshot-synced migration with `dotnet ef migrations add`
-    // next time the SDK is available.
+    // Designer.cs partial, and MIGRATIONS.md for the production issue this caused: this
+    // migration was not actually applied despite Database.MigrateAsync() logging success.
+    // HandwrittenMigrationsBootstrapper.EnsureTablesExistAsync is the real source of truth for
+    // table creation now — this file is kept so a future `dotnet ef migrations add` has a
+    // consistent history to diff against, not because it's confirmed to run.
+    [DbContext(typeof(ApplicationDbContext))]
     [Migration("20260712130000_AddSchemaModelLibrary")]
     public partial class AddSchemaModelLibrary : Migration
     {
