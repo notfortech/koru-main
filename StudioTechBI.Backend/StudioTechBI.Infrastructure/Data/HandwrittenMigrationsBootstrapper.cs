@@ -4,17 +4,15 @@ using Microsoft.Extensions.Logging;
 namespace StudioTechBI.Infrastructure.Data;
 
 /// <summary>
-/// Belt-and-braces table creation for the two hand-authored migrations added without EF CLI
-/// tooling (20260712120000_AddReportDesignerConsent, 20260712130000_AddSchemaModelLibrary — see
-/// MIGRATIONS.md). In production, `Database.MigrateAsync()` reported success without actually
-/// creating these tables ("Migrations applied" logged, then `Invalid object name 'SchemaModels'`
-/// on the very next query) — root cause not confirmed, but the leading theory is that runtime
-/// migration discovery needs more than just a `[Migration(id)]` attribute on the class without
-/// its usual Designer.cs sibling.
+/// Guarded, idempotent DDL applied directly via ExecuteSqlRawAsync on every startup —
+/// independent of whether EF's migration discovery recognizes any hand-authored migration as
+/// pending. This is the real source of truth for schema changes in this environment (see
+/// MIGRATIONS.md for why: `Database.MigrateAsync()` reported success in production without
+/// actually creating tables from a hand-authored migration, root cause never confirmed since no
+/// EF CLI was available to debug it properly).
 ///
-/// Rather than depend on solving that with no EF CLI available to verify against, this runs the
-/// exact same guarded, idempotent DDL directly via ExecuteSqlRawAsync — independent of whether
-/// EF ever recognizes the migrations as pending. Safe to call on every startup.
+/// Originally covered just ReportDesignerConsents/SchemaModels/SchemaModelFields (Stories 1-2);
+/// now also covers the Story 3 AI-Assisted match/consent/publish flow additions.
 /// </summary>
 public static class HandwrittenMigrationsBootstrapper
 {
@@ -123,6 +121,131 @@ public static class HandwrittenMigrationsBootstrapper
                     ADD CONSTRAINT [FK_Templates_SchemaModels_SchemaModelId]
                     FOREIGN KEY ([SchemaModelId]) REFERENCES [dbo].[SchemaModels] ([Id])
                     ON DELETE SET NULL;
+            END
+        ", cancellationToken);
+
+        // ── Story 3: AI-Assisted match/consent/publish flow ────────────────────────────────
+
+        await ExecAsync(context, logger, "SchemaModels review columns", @"
+            IF COL_LENGTH('dbo.SchemaModels', 'IsAiSuggested') IS NULL
+                ALTER TABLE [dbo].[SchemaModels] ADD [IsAiSuggested] BIT NOT NULL
+                    CONSTRAINT [DF_SchemaModels_IsAiSuggested] DEFAULT (0);
+
+            IF COL_LENGTH('dbo.SchemaModels', 'ReviewStatus') IS NULL
+                ALTER TABLE [dbo].[SchemaModels] ADD [ReviewStatus] NVARCHAR(20) NOT NULL
+                    CONSTRAINT [DF_SchemaModels_ReviewStatus] DEFAULT ('Approved');
+
+            IF COL_LENGTH('dbo.SchemaModels', 'SuggestedByClientId') IS NULL
+                ALTER TABLE [dbo].[SchemaModels] ADD [SuggestedByClientId] UNIQUEIDENTIFIER NULL;
+
+            IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_SchemaModels_ReviewStatus')
+                CREATE INDEX [IX_SchemaModels_ReviewStatus] ON [dbo].[SchemaModels] ([ReviewStatus]);
+        ", cancellationToken);
+
+        await ExecAsync(context, logger, "SchemaModels.SuggestedByClientId FK", @"
+            IF NOT EXISTS (
+                SELECT 1 FROM sys.foreign_keys
+                WHERE name = 'FK_SchemaModels_Clients_SuggestedByClientId'
+            )
+            BEGIN
+                ALTER TABLE [dbo].[SchemaModels] WITH NOCHECK
+                    ADD CONSTRAINT [FK_SchemaModels_Clients_SuggestedByClientId]
+                    FOREIGN KEY ([SuggestedByClientId]) REFERENCES [dbo].[Clients] ([Id])
+                    ON DELETE SET NULL;
+            END
+        ", cancellationToken);
+
+        await ExecAsync(context, logger, "Templates.IsPublishReady column", @"
+            IF COL_LENGTH('dbo.Templates', 'IsPublishReady') IS NULL
+                ALTER TABLE [dbo].[Templates] ADD [IsPublishReady] BIT NOT NULL
+                    CONSTRAINT [DF_Templates_IsPublishReady] DEFAULT (0);
+        ", cancellationToken);
+
+        await ExecAsync(context, logger, "ReportMatchDrafts", @"
+            IF OBJECT_ID('dbo.ReportMatchDrafts', 'U') IS NULL
+            BEGIN
+                CREATE TABLE [dbo].[ReportMatchDrafts] (
+                    [Id]                     UNIQUEIDENTIFIER NOT NULL,
+                    [ClientId]               UNIQUEIDENTIFIER NOT NULL,
+                    [SchemaModelId]          UNIQUEIDENTIFIER NULL,
+                    [TemplateId]             UNIQUEIDENTIFIER NULL,
+                    [SchemaHash]             NVARCHAR(128)     NOT NULL,
+                    [Status]                 NVARCHAR(20)      NOT NULL,
+                    [PublishedAt]            DATETIME2         NULL,
+                    [DataRetentionExpiresAt] DATETIME2         NULL,
+                    [CreatedAt]              DATETIME2         NOT NULL,
+                    [UpdatedAt]              DATETIME2         NULL,
+                    [CreatedBy]              NVARCHAR(MAX)     NULL,
+                    [UpdatedBy]              NVARCHAR(MAX)     NULL,
+                    [IsDeleted]              BIT               NOT NULL,
+                    CONSTRAINT [PK_ReportMatchDrafts] PRIMARY KEY ([Id]),
+                    CONSTRAINT [FK_ReportMatchDrafts_Clients_ClientId]
+                        FOREIGN KEY ([ClientId]) REFERENCES [dbo].[Clients] ([Id])
+                        ON DELETE NO ACTION,
+                    CONSTRAINT [FK_ReportMatchDrafts_SchemaModels_SchemaModelId]
+                        FOREIGN KEY ([SchemaModelId]) REFERENCES [dbo].[SchemaModels] ([Id])
+                        ON DELETE SET NULL,
+                    CONSTRAINT [FK_ReportMatchDrafts_Templates_TemplateId]
+                        FOREIGN KEY ([TemplateId]) REFERENCES [dbo].[Templates] ([Id])
+                        ON DELETE SET NULL
+                );
+
+                CREATE INDEX [IX_ReportMatchDrafts_ClientId] ON [dbo].[ReportMatchDrafts] ([ClientId]);
+                CREATE INDEX [IX_ReportMatchDrafts_Status] ON [dbo].[ReportMatchDrafts] ([Status]);
+            END
+        ", cancellationToken);
+
+        await ExecAsync(context, logger, "ReportMatchColumnMappings", @"
+            IF OBJECT_ID('dbo.ReportMatchColumnMappings', 'U') IS NULL
+            BEGIN
+                CREATE TABLE [dbo].[ReportMatchColumnMappings] (
+                    [Id]                 UNIQUEIDENTIFIER NOT NULL,
+                    [ReportMatchDraftId] UNIQUEIDENTIFIER NOT NULL,
+                    [FieldName]          NVARCHAR(200)     NOT NULL,
+                    [DataType]           NVARCHAR(50)      NOT NULL,
+                    [ClientColumnName]   NVARCHAR(200)     NULL,
+                    [Included]           BIT               NOT NULL,
+                    [CreatedAt]          DATETIME2         NOT NULL,
+                    [UpdatedAt]          DATETIME2         NULL,
+                    [CreatedBy]          NVARCHAR(MAX)     NULL,
+                    [UpdatedBy]          NVARCHAR(MAX)     NULL,
+                    [IsDeleted]          BIT               NOT NULL,
+                    CONSTRAINT [PK_ReportMatchColumnMappings] PRIMARY KEY ([Id]),
+                    CONSTRAINT [FK_ReportMatchColumnMappings_ReportMatchDrafts_ReportMatchDraftId]
+                        FOREIGN KEY ([ReportMatchDraftId]) REFERENCES [dbo].[ReportMatchDrafts] ([Id])
+                        ON DELETE CASCADE
+                );
+
+                CREATE INDEX [IX_ReportMatchColumnMappings_ReportMatchDraftId]
+                    ON [dbo].[ReportMatchColumnMappings] ([ReportMatchDraftId]);
+            END
+        ", cancellationToken);
+
+        await ExecAsync(context, logger, "ReportDataUsageConsents", @"
+            IF OBJECT_ID('dbo.ReportDataUsageConsents', 'U') IS NULL
+            BEGIN
+                CREATE TABLE [dbo].[ReportDataUsageConsents] (
+                    [Id]                 UNIQUEIDENTIFIER NOT NULL,
+                    [ReportMatchDraftId] UNIQUEIDENTIFIER NOT NULL,
+                    [ClientId]           UNIQUEIDENTIFIER NOT NULL,
+                    [ApprovedAt]         DATETIME2         NOT NULL,
+                    [ApprovedBy]         NVARCHAR(256)     NOT NULL,
+                    [CreatedAt]          DATETIME2         NOT NULL,
+                    [UpdatedAt]          DATETIME2         NULL,
+                    [CreatedBy]          NVARCHAR(MAX)     NULL,
+                    [UpdatedBy]          NVARCHAR(MAX)     NULL,
+                    [IsDeleted]          BIT               NOT NULL,
+                    CONSTRAINT [PK_ReportDataUsageConsents] PRIMARY KEY ([Id]),
+                    CONSTRAINT [FK_ReportDataUsageConsents_ReportMatchDrafts_ReportMatchDraftId]
+                        FOREIGN KEY ([ReportMatchDraftId]) REFERENCES [dbo].[ReportMatchDrafts] ([Id])
+                        ON DELETE CASCADE
+                );
+
+                -- Deliberately no unique index — append-only, one row per Publish action.
+                CREATE INDEX [IX_ReportDataUsageConsents_ReportMatchDraftId]
+                    ON [dbo].[ReportDataUsageConsents] ([ReportMatchDraftId]);
+                CREATE INDEX [IX_ReportDataUsageConsents_ClientId]
+                    ON [dbo].[ReportDataUsageConsents] ([ClientId]);
             END
         ", cancellationToken);
     }
