@@ -28,6 +28,7 @@ public static class DependencyInjection
         services.AddScoped<IReportDesignerConsentService, ReportDesignerConsentService>();
         services.AddScoped<ISchemaModelService, SchemaModelService>();
         services.AddScoped<IReportMatchService, ReportMatchService>();
+        services.AddScoped<IReportDataUsageConsentService, ReportDataUsageConsentService>();
 
         return services;
     }

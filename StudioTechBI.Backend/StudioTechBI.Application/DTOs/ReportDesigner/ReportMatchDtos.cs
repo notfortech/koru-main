@@ -2,6 +2,10 @@ namespace StudioTechBI.Application.DTOs.ReportDesigner;
 
 public record ReportMatchRequest(string ClientId, ExtractedSchemaDto Schema);
 
+public record DataUsageConsentRequest(string ClientId);
+
+public record DataUsageConsentResponse(Guid DraftId, DateTimeOffset ApprovedAt);
+
 public record ReportMatchColumnMappingDto(
     string FieldName,
     string DataType,
