@@ -78,6 +78,9 @@ MapEnvOverride("TRANSFORMERS_AGENTS_BASEURL", "ReportDesigner:BaseUrl");  // can
 MapEnvOverride("REPORT_DESIGNER_API_KEY", "ReportDesigner:ApiKey");
 MapEnvOverride("TRANSFORMERS_AGENTS_API_KEY", "ReportDesigner:ApiKey");  // canonical env var for stbi_transformers
 MapEnvOverride("REPORT_DESIGNER_TIMEOUT_SECONDS", "ReportDesigner:TimeoutSeconds");
+MapEnvOverride("REPORT_GENERATOR_BASE_URL", "ReportGenerator:BaseUrl");
+MapEnvOverride("REPORT_GENERATOR_API_KEY", "ReportGenerator:ApiKey");
+MapEnvOverride("REPORT_GENERATOR_TIMEOUT_SECONDS", "ReportGenerator:TimeoutSeconds");
 MapEnvOverride("AGENT_HOST_ENABLE_CIRCUIT_BREAKER", "AgentHost:EnableCircuitBreaker");
 MapEnvOverride("AGENT_HOST_CIRCUIT_FAILURE_THRESHOLD", "AgentHost:CircuitFailureThreshold");
 MapEnvOverride("AGENT_HOST_CIRCUIT_BREAK_DURATION", "AgentHost:CircuitBreakDurationSeconds");
@@ -296,6 +299,7 @@ builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddAgentHostIntegration();
 builder.Services.AddReportDesignerIntegration();
+builder.Services.AddReportGeneratorIntegration();
 builder.Services.Configure<PasswordResetOptions>(
     builder.Configuration.GetSection(PasswordResetOptions.SectionName));
 builder.Services.Configure<InsightEngineOptions>(

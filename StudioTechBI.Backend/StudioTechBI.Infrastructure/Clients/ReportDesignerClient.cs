@@ -66,7 +66,12 @@ public class ReportDesignerClient : IReportDesignerClient
         var sw = System.Diagnostics.Stopwatch.StartNew();
 
         // ── Step 1: Connect — send schema, receive sessionId ─────────────────
-        var connectPayload = JsonSerializer.Serialize(request, JsonOptions);
+        // stbi_transformers' /connect endpoint natively expects a raw file upload or a
+        // live DB connection string. koru-main already extracted structural metadata
+        // upstream (excel/sql/sharepoint) and must never forward raw file bytes or
+        // connection strings here, so we use its provider="schema" mode, which accepts
+        // pre-extracted metadata directly and performs no data access of its own.
+        var connectPayload = JsonSerializer.Serialize(BuildConnectPayload(request.Schema), JsonOptions);
         var connectRequest = new HttpRequestMessage(HttpMethod.Post, "api/pipeline/connect");
         connectRequest.Headers.Add("X-Correlation-Id", correlationId);
         connectRequest.Content = new StringContent(connectPayload, System.Text.Encoding.UTF8, "application/json");
@@ -137,7 +142,42 @@ public class ReportDesignerClient : IReportDesignerClient
             "ReportDesigner.ConnectSuccess SessionId={SessionId} CorrelationId={CorrelationId}",
             sessionId, correlationId);
 
-        // ── Step 2: Generate — send preferredTheme, receive blueprint ────────
+        // ── Step 2: Designs — fetch the ranked template catalog for this session ──
+        // Populates Templates on the response. Not fatal if it fails or returns
+        // nothing — the frontend can still show the generated blueprint without
+        // template recommendations.
+        List<ReportTemplateRecommendation> templates = [];
+        try
+        {
+            var designsRequest = new HttpRequestMessage(
+                HttpMethod.Get, $"api/pipeline/{Uri.EscapeDataString(sessionId)}/designs");
+            designsRequest.Headers.Add("X-Correlation-Id", correlationId);
+
+            using var designsResponse = await _httpClient.SendAsync(designsRequest, cancellationToken);
+            var designsBody = await designsResponse.Content.ReadAsStringAsync(cancellationToken);
+
+            if (designsResponse.IsSuccessStatusCode)
+            {
+                var designOptions = JsonSerializer.Deserialize<List<DesignOptionDto>>(designsBody, JsonOptions) ?? [];
+                templates = designOptions
+                    .Select(d => new ReportTemplateRecommendation(d.TemplateId, d.Name, d.MatchScore))
+                    .ToList();
+            }
+            else
+            {
+                _logger.LogWarning(
+                    "ReportDesigner.DesignsFailed StatusCode={StatusCode} SessionId={SessionId} CorrelationId={CorrelationId}",
+                    (int)designsResponse.StatusCode, sessionId, correlationId);
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(ex,
+                "ReportDesigner.DesignsFailed SessionId={SessionId} CorrelationId={CorrelationId} — continuing without templates",
+                sessionId, correlationId);
+        }
+
+        // ── Step 3: Generate — send preferredTheme, receive blueprint ────────
         var generatePayload = JsonSerializer.Serialize(
             new { preferredTheme = request.PreferredTheme }, JsonOptions);
         var generateRequest = new HttpRequestMessage(
@@ -211,11 +251,15 @@ public class ReportDesignerClient : IReportDesignerClient
                 sessionId,
                 sw.ElapsedMilliseconds);
 
+            var starSchema = ExtractStarSchema(blueprint);
+
             return new GenerateReportModelResponse(
                 CorrelationId: correlationId,
                 DurationMs: sw.ElapsedMilliseconds,
                 Blueprint: blueprint,
-                SessionId: sessionId);
+                SessionId: sessionId,
+                StarSchema: starSchema,
+                Templates: templates.Count > 0 ? templates : null);
         }
     }
 
@@ -303,6 +347,93 @@ public class ReportDesignerClient : IReportDesignerClient
         double Confidence,
         ProposedSchemaModelDto? ProposedModel,
         string? Reasoning);
+
+    /// <summary>
+    /// Derives the star-schema summary from the blueprint's own data_model section
+    /// (stbi_transformers doesn't return a separate star-schema payload — the same
+    /// fact/dimension/relationship data the frontend wants already lives inside the
+    /// generated blueprint). Returns null if data_model is absent or has no fact table.
+    /// </summary>
+    private static StarSchemaDto? ExtractStarSchema(JsonElement blueprint)
+    {
+        if (!blueprint.TryGetProperty("data_model", out var dataModel))
+            return null;
+
+        if (!dataModel.TryGetProperty("fact_tables", out var factTables)
+            || factTables.ValueKind != JsonValueKind.Array
+            || factTables.GetArrayLength() == 0)
+            return null;
+
+        var factTableName = factTables[0].TryGetProperty("name", out var nameEl)
+            ? nameEl.GetString() ?? string.Empty
+            : string.Empty;
+
+        var dimensionTables = new List<string>();
+        if (dataModel.TryGetProperty("dimension_tables", out var dims) && dims.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var dim in dims.EnumerateArray())
+            {
+                if (dim.TryGetProperty("name", out var dimName) && dimName.GetString() is { } n)
+                    dimensionTables.Add(n);
+            }
+        }
+
+        var relationships = new List<RelationshipDto>();
+        if (dataModel.TryGetProperty("relationships", out var rels) && rels.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var rel in rels.EnumerateArray())
+            {
+                var from = rel.TryGetProperty("from", out var f) ? f.GetString() : null;
+                var to = rel.TryGetProperty("to", out var t) ? t.GetString() : null;
+                if (from is null || to is null) continue;
+
+                var (fromTable, fromColumn) = SplitTableColumn(from);
+                var (toTable, toColumn) = SplitTableColumn(to);
+                relationships.Add(new RelationshipDto(fromTable, fromColumn, toTable, toColumn));
+            }
+        }
+
+        return new StarSchemaDto(factTableName, dimensionTables, relationships);
+    }
+
+    /// <summary>
+    /// Maps koru-main's already-extracted schema into stbi_transformers' provider="schema"
+    /// connect contract. No file content or connection details are ever included here —
+    /// only table/column structural metadata.
+    /// </summary>
+    private static object BuildConnectPayload(ExtractedSchemaDto schema) => new
+    {
+        provider = "schema",
+        fileName = schema.FileName,
+        schema = new
+        {
+            databaseName = schema.FileName,
+            tables = schema.Tables.Select(t => new
+            {
+                tableName = t.TableName,
+                approximateRowCount = t.RowCount > 0 ? (long?)t.RowCount : null,
+                columns = t.Columns.Select(c => new
+                {
+                    columnName = c.ColumnName,
+                    dataType = c.DataType,
+                    isNullable = c.IsNullable
+                })
+            })
+        }
+    };
+
+    /// <summary>Parses "TableName[ColumnName]" into ("TableName", "ColumnName").</summary>
+    private static (string Table, string Column) SplitTableColumn(string reference)
+    {
+        var openBracket = reference.IndexOf('[');
+        var closeBracket = reference.IndexOf(']');
+        if (openBracket < 0 || closeBracket <= openBracket)
+            return (reference, string.Empty);
+
+        return (reference[..openBracket], reference[(openBracket + 1)..closeBracket]);
+    }
+
+    private sealed record DesignOptionDto(string TemplateId, string Name, double MatchScore);
 
     private static string MapStatusCode(HttpStatusCode statusCode, string body) =>
         (int)statusCode switch

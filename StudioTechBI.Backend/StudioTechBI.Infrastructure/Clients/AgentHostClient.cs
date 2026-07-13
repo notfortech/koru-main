@@ -40,12 +40,20 @@ public class AgentHostClient : IAgentHostClient
     string correlationId,
     CancellationToken cancellationToken = default)
 {
+    if (request.TenantId is null || request.TenantId == Guid.Empty)
+    {
+        throw new InvalidOperationException(
+            "GenerateBlueprintAsync requires a resolved TenantId. " +
+            "This should already be set by BlueprintsController before the request is queued.");
+    }
+
     var payload = JsonSerializer.Serialize(
-        AgentHostBlueprintRequest.From(request, Guid.NewGuid()),
+        AgentHostBlueprintRequest.From(request),
         JsonOptions);
 
     var httpRequest = new HttpRequestMessage(HttpMethod.Post, "api/blueprints/generate");
     httpRequest.Headers.Add("X-Correlation-Id", correlationId);
+    httpRequest.Headers.Add("X-Tenant-Id", request.TenantId.Value.ToString());
     httpRequest.Content = new StringContent(payload, System.Text.Encoding.UTF8, "application/json");
 
     _logger.LogInformation(
@@ -98,6 +106,30 @@ public class AgentHostClient : IAgentHostClient
             _logger.LogWarning(ex,
                 "AgentHost.HealthCheck failed — could not reach {Uri}.", uri);
             return false;
+        }
+    }
+
+    public async Task<byte[]?> DownloadPdfAsync(string pdfUrl, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(pdfUrl))
+            return null;
+
+        try
+        {
+            using var response = await _httpClient.GetAsync(pdfUrl, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning(
+                    "AgentHost.DownloadPdf failed — {StatusCode} from {Url}.", (int)response.StatusCode, pdfUrl);
+                return null;
+            }
+
+            return await response.Content.ReadAsByteArrayAsync(cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(ex, "AgentHost.DownloadPdf failed — could not reach {Url}.", pdfUrl);
+            return null;
         }
     }
 

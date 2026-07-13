@@ -1,0 +1,163 @@
+using System.Net;
+using System.Net.Http.Headers;
+using System.Text.Json;
+using Microsoft.Extensions.Logging;
+using StudioTechBI.Application.DTOs.ReportGenerator;
+using StudioTechBI.Application.Interfaces;
+
+namespace StudioTechBI.Infrastructure.Clients;
+
+/// <summary>
+/// Typed HTTP client for DashboardAgents.ReportAgent.Api.
+///
+/// This is the one integration in the platform that deliberately sends real
+/// data (the connected Excel/CSV file) to a downstream service — but that
+/// service is a sandboxed, deterministic Python/.NET engine with no AI/LLM
+/// call anywhere in it, not a model. No AI ever sees this file's contents.
+/// </summary>
+public class ReportGeneratorClient : IReportGeneratorClient
+{
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true,
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+    };
+
+    private readonly HttpClient _httpClient;
+    private readonly ILogger<ReportGeneratorClient> _logger;
+
+    public ReportGeneratorClient(HttpClient httpClient, ILogger<ReportGeneratorClient> logger)
+    {
+        _httpClient = httpClient;
+        _logger = logger;
+    }
+
+    public async Task<List<ReportTemplateDto>> ListTemplatesAsync(
+        string correlationId, CancellationToken cancellationToken = default)
+    {
+        RequireBaseAddress();
+
+        var request = new HttpRequestMessage(HttpMethod.Get, "api/templates");
+        request.Headers.Add("X-Correlation-Id", correlationId);
+
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger.LogWarning(
+                "ReportGenerator.ListTemplatesFailed StatusCode={StatusCode} CorrelationId={CorrelationId}",
+                (int)response.StatusCode, correlationId);
+            throw new HttpRequestException(
+                MapStatusCode(response.StatusCode, body), inner: null, statusCode: response.StatusCode);
+        }
+
+        return JsonSerializer.Deserialize<List<ReportTemplateDto>>(body, JsonOptions) ?? [];
+    }
+
+    public async Task<GeneratedReportDto> GenerateReportAsync(
+        Stream fileStream,
+        string fileName,
+        string? templateId,
+        string? filtersJson,
+        string correlationId,
+        CancellationToken cancellationToken = default)
+    {
+        RequireBaseAddress();
+
+        // ── AI boundary log ────────────────────────────────────────────────
+        // This call intentionally sends the real file — logged explicitly so
+        // it's auditable as the one deliberate exception to "no raw data
+        // leaves koru-main toward an AI boundary": the receiving service has
+        // no AI/LLM in it at all (see ReportGeneratorClient's class remarks).
+        _logger.LogInformation(
+            "ReportGenerator.FileSentToEngine CorrelationId={CorrelationId} FileName={FileName} TemplateId={TemplateId}",
+            correlationId, fileName, templateId ?? "(auto-match)");
+
+        using var content = new MultipartFormDataContent();
+        using var streamContent = new StreamContent(fileStream);
+        streamContent.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
+        content.Add(streamContent, "file", fileName);
+        if (!string.IsNullOrWhiteSpace(templateId))
+            content.Add(new StringContent(templateId), "templateId");
+        if (!string.IsNullOrWhiteSpace(filtersJson))
+            content.Add(new StringContent(filtersJson), "filters");
+
+        var request = new HttpRequestMessage(HttpMethod.Post, "api/reports/generate") { Content = content };
+        request.Headers.Add("X-Correlation-Id", correlationId);
+
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        HttpResponseMessage response;
+        try
+        {
+            response = await _httpClient.SendAsync(request, cancellationToken);
+        }
+        catch (TaskCanceledException ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            sw.Stop();
+            _logger.LogError(
+                "ReportGenerator.GenerateTimeout DurationMs={DurationMs} CorrelationId={CorrelationId}",
+                sw.ElapsedMilliseconds, correlationId);
+            throw new HttpRequestException(
+                "Report generation request timed out.", ex, HttpStatusCode.RequestTimeout);
+        }
+
+        using (response)
+        {
+            sw.Stop();
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning(
+                    "ReportGenerator.GenerateFailed StatusCode={StatusCode} DurationMs={DurationMs} CorrelationId={CorrelationId}",
+                    (int)response.StatusCode, sw.ElapsedMilliseconds, correlationId);
+                throw new HttpRequestException(
+                    MapStatusCode(response.StatusCode, body), inner: null, statusCode: response.StatusCode);
+            }
+
+            GeneratedReportDto result;
+            try
+            {
+                result = JsonSerializer.Deserialize<GeneratedReportDto>(body, JsonOptions)
+                    ?? throw new InvalidOperationException("Report generation returned an empty response body.");
+            }
+            catch (JsonException ex)
+            {
+                _logger.LogError(ex,
+                    "ReportGenerator.GenerateParseError CorrelationId={CorrelationId} Body={Body}",
+                    correlationId, Truncate(body, 1000));
+                throw new InvalidOperationException("Report generation response could not be parsed.", ex);
+            }
+
+            _logger.LogInformation(
+                "ReportGenerator.GenerateSuccess TemplateId={TemplateId} DurationMs={DurationMs} CorrelationId={CorrelationId}",
+                result.TemplateId, sw.ElapsedMilliseconds, correlationId);
+
+            return result;
+        }
+    }
+
+    private void RequireBaseAddress()
+    {
+        if (_httpClient.BaseAddress is null)
+            throw new InvalidOperationException(
+                "ReportGeneratorClient: HttpClient.BaseAddress is null. Verify ReportGenerator:BaseUrl is configured.");
+    }
+
+    private static string MapStatusCode(HttpStatusCode statusCode, string body) =>
+        (int)statusCode switch
+        {
+            400 => $"Report generator rejected the request: {Truncate(body, 300)}",
+            401 => "Report generator authentication failed. Verify ReportGenerator:ApiKey.",
+            403 => "Report generator API key rejected or insufficient permissions.",
+            404 => "Report generator endpoint not found. Check ReportGenerator:BaseUrl.",
+            429 => "Report generator rate limit exceeded.",
+            502 => "Report generator could not process the supplied file.",
+            504 => "Report generation timed out or was aborted.",
+            _ => $"Report generator returned {(int)statusCode}: {Truncate(body, 300)}"
+        };
+
+    private static string Truncate(string s, int max) =>
+        s.Length <= max ? s : string.Concat(s.AsSpan(0, max), "…");
+}

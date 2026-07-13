@@ -125,8 +125,8 @@ public sealed class BlueprintGenerationBackgroundService : BackgroundService
                 Id = Guid.NewGuid(),
                 BlueprintId = blueprint.Id,
                 VersionNumber = newVersionNumber,
-                PromptVersion = response.Diagnostics?.PromptPackVersion,
-                Confidence = response.Confidence,
+                PromptVersion = null,
+                Confidence = response.ConfidenceFraction,
                 GeneratedDate = DateTime.UtcNow,
                 ExecutionTimeMs = response.ExecutionTimeMs,
                 IsActive = true,
@@ -140,6 +140,33 @@ public sealed class BlueprintGenerationBackgroundService : BackgroundService
                     blueprint.Id, newVersionNumber, response.BlueprintJson, ct);
             }
 
+            if (!string.IsNullOrWhiteSpace(response.PdfDownloadUrl))
+            {
+                try
+                {
+                    var pdfBytes = await agentHost.DownloadPdfAsync(response.PdfDownloadUrl, ct);
+                    if (pdfBytes is { Length: > 0 })
+                    {
+                        version.PdfBlobPath = await storage.StorePdfAsync(
+                            blueprint.Id, newVersionNumber, pdfBytes, ct);
+                    }
+                    else
+                    {
+                        _logger.LogWarning(
+                            "BlueprintGeneration.PdfFetchEmpty GenerationId={GenerationId} PdfUrl={PdfUrl}",
+                            generationId, response.PdfDownloadUrl);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // PDF is a nice-to-have — the JSON contract is the primary artefact.
+                    // Don't fail the whole generation if AgentHost's PDF can't be fetched.
+                    _logger.LogWarning(ex,
+                        "BlueprintGeneration.PdfFetchFailed GenerationId={GenerationId} PdfUrl={PdfUrl}",
+                        generationId, response.PdfDownloadUrl);
+                }
+            }
+
             await repo.AddVersionAsync(version, ct);
 
             blueprint.VersionCount = newVersionNumber;
@@ -148,7 +175,7 @@ public sealed class BlueprintGenerationBackgroundService : BackgroundService
             generation.Status = BlueprintStatuses.Completed;
             generation.BlueprintVersionId = version.Id;
             generation.CompletedAt = DateTime.UtcNow;
-            generation.ConfidenceScore = response.Confidence;
+            generation.ConfidenceScore = response.ConfidenceFraction;
             generation.Warnings = response.Warnings is { Count: > 0 }
                 ? string.Join(";", response.Warnings)
                 : null;
@@ -158,11 +185,10 @@ public sealed class BlueprintGenerationBackgroundService : BackgroundService
 
             _logger.LogInformation(
                 "BlueprintGeneration.Completed GenerationId={GenerationId} VersionNumber={VersionNumber} " +
-                "DurationMs={DurationMs} Provider={Provider} Model={Model} LatencyMs={LatencyMs}",
+                "DurationMs={DurationMs} Provider={Provider} Model={Model}",
                 generationId, newVersionNumber,
                 (long)(generation.CompletedAt!.Value - generation.ProcessingStartedAt!.Value).TotalMilliseconds,
-                response.Provider, response.Model,
-                response.Diagnostics?.ProviderLatencyMs);
+                response.Provider, response.Model);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -254,9 +280,6 @@ public sealed class BlueprintGenerationBackgroundService : BackgroundService
 
     private static void ValidateResponse(BlueprintGenerationResponse response)
     {
-        if (response.BlueprintId == Guid.Empty)
-            throw new InvalidOperationException("AgentHost response is missing BlueprintId.");
-
         if (response.Blueprint is null)
             throw new InvalidOperationException("AgentHost response contains no Blueprint document.");
     }
