@@ -83,13 +83,14 @@ public class ReportMatchService : BaseService, IReportMatchService
 
         var matchSource = SourceDeterministic;
         var pendingSupportReview = false;
+        Template? newlyProposedTemplate = null;
 
         if (bestScore < AiEscalationThreshold)
         {
             var escalated = await TryEscalateToAiAsync(clientId, approvedModels, fieldsByModel, clientColumns, cancellationToken);
             if (escalated is not null)
             {
-                (bestModel, bestFields, bestScore, matchSource, pendingSupportReview) = escalated.Value;
+                (bestModel, bestFields, bestScore, matchSource, pendingSupportReview, newlyProposedTemplate) = escalated.Value;
             }
         }
 
@@ -113,7 +114,15 @@ public class ReportMatchService : BaseService, IReportMatchService
         }
 
         var candidates = new List<ReportMatchCandidateTemplateDto>();
-        if (bestModel is not null)
+        if (newlyProposedTemplate is not null)
+        {
+            // Just created, not yet saved — querying the DB for it here would find nothing.
+            candidates = new List<ReportMatchCandidateTemplateDto>
+            {
+                new(newlyProposedTemplate.Id, newlyProposedTemplate.TemplateName, newlyProposedTemplate.IsPublishReady),
+            };
+        }
+        else if (bestModel is not null)
         {
             var templates = await _templateRepository.FindAsync(t => t.SchemaModelId == bestModel.Id, cancellationToken);
             candidates = templates.Select(t => new ReportMatchCandidateTemplateDto(t.Id, t.TemplateName, t.IsPublishReady)).ToList();
@@ -175,7 +184,7 @@ public class ReportMatchService : BaseService, IReportMatchService
     /// result, since a low-confidence deterministic match is still strictly better than a
     /// hard failure of the whole match request.
     /// </summary>
-    private async Task<(SchemaModel? Model, IReadOnlyList<SchemaModelField> Fields, double Score, string Source, bool PendingReview)?> TryEscalateToAiAsync(
+    private async Task<(SchemaModel? Model, IReadOnlyList<SchemaModelField> Fields, double Score, string Source, bool PendingReview, Template? NewTemplate)?> TryEscalateToAiAsync(
         Guid clientId,
         List<SchemaModel> approvedModels,
         Dictionary<Guid, List<SchemaModelField>> fieldsByModel,
@@ -223,7 +232,7 @@ public class ReportMatchService : BaseService, IReportMatchService
                     clientId, matchedId, correlationId);
                 return null;
             }
-            return (matched, fieldsByModel[matched.Id], response.Confidence, SourceAiMatched, false);
+            return (matched, fieldsByModel[matched.Id], response.Confidence, SourceAiMatched, false, null);
         }
 
         if (response.ProposedModel is { } proposed)
@@ -233,9 +242,9 @@ public class ReportMatchService : BaseService, IReportMatchService
                 Id = Guid.NewGuid(),
                 Name = proposed.Name,
                 Industry = proposed.Industry,
-                Description = "Proposed by AI matching — pending support review.",
+                Description = "Proposed by AI matching. No manual review step — usable immediately, same as a seeded model, but no real .pbix exists yet (see IsPublishReady on its Template).",
                 IsAiSuggested = true,
-                ReviewStatus = "PendingReview",
+                ReviewStatus = "Approved",
                 SuggestedByClientId = clientId,
             };
             await _modelRepository.AddAsync(newModel, cancellationToken);
@@ -251,11 +260,33 @@ public class ReportMatchService : BaseService, IReportMatchService
             }).ToList();
             await _fieldRepository.AddRangeAsync(newFields, cancellationToken);
 
-            _logger.LogInformation(
-                "ReportMatch.AiProposedNewModel ClientId={ClientId} SchemaModelId={SchemaModelId} Name={Name} CorrelationId={CorrelationId}",
-                clientId, newModel.Id, newModel.Name, correlationId);
+            // AI proposes a name only, not a layout/design — same placeholder-BlobPath
+            // situation as every seeded Template until a real .pbix is built and published.
+            var templateName = string.IsNullOrWhiteSpace(proposed.TemplateName)
+                ? $"{proposed.Name} — Overview"
+                : proposed.TemplateName;
+            var newTemplate = new Template
+            {
+                Id = Guid.NewGuid(),
+                TemplateName = templateName,
+                Industry = proposed.Industry,
+                Version = "1.0",
+                SchemaModelId = newModel.Id,
+                BlobPath = $"templates/ai-proposed/{newModel.Id}/overview.pbix",
+                IsPublishReady = false,
+                RequiredColumnsJson = System.Text.Json.JsonSerializer.Serialize(
+                    proposed.Fields.Where(f => f.IsRequired).Select(f => f.FieldName)),
+                OptionalColumnsJson = System.Text.Json.JsonSerializer.Serialize(
+                    proposed.Fields.Where(f => !f.IsRequired).Select(f => f.FieldName)),
+            };
+            await _templateRepository.AddAsync(newTemplate, cancellationToken);
 
-            return (newModel, newFields, 0.0, SourceAiProposedNew, true);
+            _logger.LogInformation(
+                "ReportMatch.AiProposedNewModel ClientId={ClientId} SchemaModelId={SchemaModelId} Name={Name} " +
+                "TemplateId={TemplateId} CorrelationId={CorrelationId}",
+                clientId, newModel.Id, newModel.Name, newTemplate.Id, correlationId);
+
+            return (newModel, newFields, response.Confidence, SourceAiProposedNew, false, newTemplate);
         }
 
         return null;

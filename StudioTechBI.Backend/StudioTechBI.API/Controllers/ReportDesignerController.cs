@@ -359,6 +359,7 @@ public class ReportDesignerController : ControllerBase
             {
                 { SchemaModelId: null } => "No confident match found in the model directory.",
                 { PendingSupportReview: true } => $"No good fit in the directory — AI proposed a new model '{result.SchemaModelName}', pending support review before it can be used.",
+                { MatchSource: "AiProposedNew" } => $"No good fit in the directory — AI proposed a new model '{result.SchemaModelName}' and a matching dashboard template.",
                 { MatchSource: "AiMatched" } => $"AI matched '{result.SchemaModelName}' (confidence {result.Confidence:P0}).",
                 _ => $"Matched '{result.SchemaModelName}' (confidence {result.Confidence:P0}).",
             };

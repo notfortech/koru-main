@@ -33,4 +33,5 @@ public record SchemaModelAiMatchResponse(
 public record ProposedSchemaModelDto(
     string Name,
     string Industry,
-    List<SchemaModelAiMatchField> Fields);
+    List<SchemaModelAiMatchField> Fields,
+    string? TemplateName = null);
