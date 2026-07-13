@@ -263,6 +263,91 @@ public class ReportDesignerClient : IReportDesignerClient
         }
     }
 
+    public async Task<SchemaModelAiMatchResponse> MatchSchemaModelAsync(
+        SchemaModelAiMatchRequest request,
+        string correlationId,
+        CancellationToken cancellationToken = default)
+    {
+        if (_httpClient.BaseAddress is null)
+            throw new InvalidOperationException(
+                "ReportDesignerClient: HttpClient.BaseAddress is null. Verify ReportDesigner:BaseUrl is configured.");
+
+        _logger.LogInformation(
+            "ReportDesigner.SchemaModelMatchRequested CorrelationId={CorrelationId} ColumnCount={ColumnCount} CandidateCount={CandidateCount}",
+            correlationId, request.Columns.Count, request.CandidateModels.Count);
+
+        var payload = JsonSerializer.Serialize(request, JsonOptions);
+        var httpRequest = new HttpRequestMessage(HttpMethod.Post, "api/schema-model-match");
+        httpRequest.Headers.Add("X-Correlation-Id", correlationId);
+        httpRequest.Content = new StringContent(payload, System.Text.Encoding.UTF8, "application/json");
+
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        HttpResponseMessage response;
+        try
+        {
+            response = await _httpClient.SendAsync(httpRequest, cancellationToken);
+        }
+        catch (TaskCanceledException ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            sw.Stop();
+            _logger.LogError(
+                "ReportDesigner.SchemaModelMatchTimeout DurationMs={DurationMs} CorrelationId={CorrelationId}",
+                sw.ElapsedMilliseconds, correlationId);
+            throw new HttpRequestException(
+                "Schema model match request timed out.", ex, HttpStatusCode.RequestTimeout);
+        }
+
+        using (response)
+        {
+            sw.Stop();
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning(
+                    "ReportDesigner.SchemaModelMatchFailed StatusCode={StatusCode} DurationMs={DurationMs} CorrelationId={CorrelationId}",
+                    (int)response.StatusCode, sw.ElapsedMilliseconds, correlationId);
+                throw new HttpRequestException(
+                    MapStatusCode(response.StatusCode, body), inner: null, statusCode: response.StatusCode);
+            }
+
+            RawSchemaModelMatchResult raw;
+            try
+            {
+                raw = JsonSerializer.Deserialize<RawSchemaModelMatchResult>(body, JsonOptions)
+                    ?? throw new InvalidOperationException("Schema model match returned an empty response body.");
+            }
+            catch (JsonException ex)
+            {
+                _logger.LogError(ex,
+                    "ReportDesigner.SchemaModelMatchParseError CorrelationId={CorrelationId} Body={Body}",
+                    correlationId, Truncate(body, 1000));
+                throw new InvalidOperationException("Schema model match response could not be parsed.", ex);
+            }
+
+            Guid? matchedModelId = null;
+            if (!string.IsNullOrWhiteSpace(raw.MatchedModelId))
+            {
+                if (!Guid.TryParse(raw.MatchedModelId, out var parsed))
+                    throw new InvalidOperationException($"Schema model match returned a non-guid matchedModelId '{raw.MatchedModelId}'.");
+                matchedModelId = parsed;
+            }
+
+            _logger.LogInformation(
+                "ReportDesigner.SchemaModelMatchSuccess CorrelationId={CorrelationId} MatchedModelId={MatchedModelId} " +
+                "ProposedNew={ProposedNew} DurationMs={DurationMs}",
+                correlationId, matchedModelId?.ToString() ?? "(none)", raw.ProposedModel is not null, sw.ElapsedMilliseconds);
+
+            return new SchemaModelAiMatchResponse(matchedModelId, raw.Confidence, raw.ProposedModel, raw.Reasoning);
+        }
+    }
+
+    private record RawSchemaModelMatchResult(
+        string? MatchedModelId,
+        double Confidence,
+        ProposedSchemaModelDto? ProposedModel,
+        string? Reasoning);
+
     /// <summary>
     /// Derives the star-schema summary from the blueprint's own data_model section
     /// (stbi_transformers doesn't return a separate star-schema payload — the same
