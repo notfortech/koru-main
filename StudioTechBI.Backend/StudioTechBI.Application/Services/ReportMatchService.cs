@@ -281,6 +281,14 @@ public class ReportMatchService : BaseService, IReportMatchService
             };
             await _templateRepository.AddAsync(newTemplate, cancellationToken);
 
+            // Flush now, in its own SaveChanges — ReportMatchDraft.TemplateId has no EF-mapped
+            // relationship to Template (deliberate, see ReportMatchDraft's own comment), so EF
+            // can't order a later INSERT/UPDATE against this new Template correctly within a
+            // single SaveChanges batch. The real FK constraint at the DB level doesn't care that
+            // EF doesn't know about it — a same-batch write from MatchAsync's draft-reuse path
+            // (an UPDATE on ReportMatchDrafts.TemplateId) hit exactly this and 500'd in production.
+            await UnitOfWork.SaveChangesAsync(cancellationToken);
+
             _logger.LogInformation(
                 "ReportMatch.AiProposedNewModel ClientId={ClientId} SchemaModelId={SchemaModelId} Name={Name} " +
                 "TemplateId={TemplateId} CorrelationId={CorrelationId}",
