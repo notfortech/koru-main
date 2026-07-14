@@ -1,0 +1,51 @@
+table _Measures
+
+	measure 'Total Sales Revenue' = SUMX(Fact_Sales, Fact_Sales[QuantitySold] * Fact_Sales[SalePrice])
+		formatString: \$#,##0
+		displayFolder: Financial\Sales
+
+	measure 'YTD Sales Revenue' = TOTALYTD([Total Sales Revenue], Dim_Date[Date])
+		formatString: \$#,##0
+		displayFolder: Financial\Sales
+
+	measure 'Total Discount Given' = SUM(Fact_Sales[DiscountAmount])
+		formatString: \$#,##0
+		displayFolder: Financial\Sales
+
+	measure 'Gross Margin $' = SUMX(Fact_Sales, Fact_Sales[QuantitySold] * (Fact_Sales[SalePrice] - Fact_Sales[CostPrice]))
+		formatString: \$#,##0
+		displayFolder: Financial\Margin
+
+	measure 'Gross Margin %' = DIVIDE([Gross Margin $], [Total Sales Revenue])
+		formatString: 0.0%;-0.0%
+		displayFolder: Financial\Margin
+
+	measure 'Transaction Count' = DISTINCTCOUNT(Fact_Sales[TransactionId])
+		formatString: #,##0
+		displayFolder: Sales\Volume
+
+	measure 'Total Units Sold' = SUM(Fact_Sales[QuantitySold])
+		formatString: #,##0
+		displayFolder: Sales\Volume
+
+	measure 'Avg Transaction Value' = DIVIDE([Total Sales Revenue], [Transaction Count])
+		formatString: \$#,##0.00
+		displayFolder: Sales\Volume
+
+	measure 'Active Stores' = DISTINCTCOUNT(Fact_Sales[StoreId])
+		formatString: #,##0
+		displayFolder: Sales\Volume
+
+	measure 'Stock On Hand' = SUM(Fact_InventorySnapshot[StockOnHand])
+		formatString: #,##0
+		displayFolder: Inventory\Stock
+
+	column BlankColumn
+		isHidden
+		formatString: 0
+		summarizeBy: none
+		sourceColumn: Value
+
+	partition _Measures = calculated
+		mode: import
+		source = {BLANK()}

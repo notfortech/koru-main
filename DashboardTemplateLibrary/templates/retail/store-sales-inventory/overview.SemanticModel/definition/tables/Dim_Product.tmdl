@@ -1,0 +1,38 @@
+table Dim_Product
+
+	column SKU
+		dataType: string
+		sourceColumn: SKU
+		summarizeBy: none
+		isKey
+
+	column ProductName
+		dataType: string
+		sourceColumn: ProductName
+		summarizeBy: none
+
+	column ProductCategory
+		dataType: string
+		sourceColumn: ProductCategory
+		summarizeBy: none
+
+	column Brand
+		dataType: string
+		sourceColumn: Brand
+		summarizeBy: none
+
+	partition Dim_Product = m
+		mode: import
+		source =
+				let
+					Source = Excel.Workbook(File.Contents(SourceFilePath), null, true),
+					Data = Source{[Item="Products",Kind="Sheet"]}[Data],
+					Promoted = Table.PromoteHeaders(Data, [PromoteAllScalars=true]),
+					Typed = Table.TransformColumnTypes(Promoted,{
+						{"SKU", type text}, {"ProductName", type text},
+						{"ProductCategory", type text}, {"Brand", type text}
+					})
+				in
+					Typed
+
+	annotation PBI_ResultType = Table

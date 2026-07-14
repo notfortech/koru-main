@@ -1,0 +1,23 @@
+relationship Fact_Sales_StoreId_Dim_Store
+	fromColumn: Fact_Sales.StoreId
+	toColumn: Dim_Store.StoreId
+
+relationship Fact_Sales_SKU_Dim_Product
+	fromColumn: Fact_Sales.SKU
+	toColumn: Dim_Product.SKU
+
+relationship Fact_Sales_SaleDate_Dim_Date
+	fromColumn: Fact_Sales.SaleDate
+	toColumn: Dim_Date.Date
+
+relationship Fact_InventorySnapshot_StoreId_Dim_Store
+	fromColumn: Fact_InventorySnapshot.StoreId
+	toColumn: Dim_Store.StoreId
+
+relationship Fact_InventorySnapshot_SKU_Dim_Product
+	fromColumn: Fact_InventorySnapshot.SKU
+	toColumn: Dim_Product.SKU
+
+relationship Fact_InventorySnapshot_SnapshotDate_Dim_Date
+	fromColumn: Fact_InventorySnapshot.SnapshotDate
+	toColumn: Dim_Date.Date
