@@ -1,0 +1,57 @@
+table Fact_TimeEntry
+
+	column EntryId
+		dataType: string
+		sourceColumn: EntryId
+		summarizeBy: none
+
+	column ConsultantId
+		dataType: string
+		sourceColumn: ConsultantId
+		summarizeBy: none
+
+	column EngagementId
+		dataType: string
+		sourceColumn: EngagementId
+		summarizeBy: none
+
+	column EntryDate
+		dataType: dateTime
+		formatString: Short Date
+		sourceColumn: EntryDate
+		summarizeBy: none
+
+	column BillableHours
+		dataType: double
+		formatString: #,##0.0
+		sourceColumn: BillableHours
+		summarizeBy: none
+
+	column NonBillableHours
+		dataType: double
+		formatString: #,##0.0
+		sourceColumn: NonBillableHours
+		summarizeBy: none
+
+	column ChargeOutRate
+		dataType: double
+		formatString: \$#,##0.00
+		sourceColumn: ChargeOutRate
+		summarizeBy: none
+
+	partition Fact_TimeEntry = m
+		mode: import
+		source =
+				let
+					Source = Excel.Workbook(File.Contents(SourceFilePath), null, true),
+					Data = Source{[Item="TimeEntries",Kind="Sheet"]}[Data],
+					Promoted = Table.PromoteHeaders(Data, [PromoteAllScalars=true]),
+					Typed = Table.TransformColumnTypes(Promoted,{
+						{"EntryId", type text}, {"ConsultantId", type text}, {"EngagementId", type text},
+						{"EntryDate", type date}, {"BillableHours", type number}, {"NonBillableHours", type number},
+						{"ChargeOutRate", type number}
+					})
+				in
+					Typed
+
+	annotation PBI_ResultType = Table
