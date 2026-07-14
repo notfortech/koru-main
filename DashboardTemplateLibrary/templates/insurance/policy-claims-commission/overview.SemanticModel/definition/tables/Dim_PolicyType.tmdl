@@ -1,0 +1,32 @@
+table Dim_PolicyType
+
+	column PolicyType
+		dataType: string
+		sourceColumn: PolicyType
+		summarizeBy: none
+		isKey
+
+	column PolicyCategory
+		dataType: string
+		sourceColumn: PolicyCategory
+		summarizeBy: none
+
+	column PolicyLine
+		dataType: string
+		sourceColumn: PolicyLine
+		summarizeBy: none
+
+	partition Dim_PolicyType = m
+		mode: import
+		source =
+				let
+					Source = Excel.Workbook(File.Contents(SourceFilePath), null, true),
+					Data = Source{[Item="PolicyTypes",Kind="Sheet"]}[Data],
+					Promoted = Table.PromoteHeaders(Data, [PromoteAllScalars=true]),
+					Typed = Table.TransformColumnTypes(Promoted,{
+						{"PolicyType", type text}, {"PolicyCategory", type text}, {"PolicyLine", type text}
+					})
+				in
+					Typed
+
+	annotation PBI_ResultType = Table
