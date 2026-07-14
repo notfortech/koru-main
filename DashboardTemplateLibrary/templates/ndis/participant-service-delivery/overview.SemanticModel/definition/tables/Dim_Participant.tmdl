@@ -1,0 +1,38 @@
+table Dim_Participant
+
+	column ParticipantId
+		dataType: string
+		sourceColumn: ParticipantId
+		summarizeBy: none
+		isKey
+
+	column ParticipantName
+		dataType: string
+		sourceColumn: ParticipantName
+		summarizeBy: none
+
+	column State
+		dataType: string
+		sourceColumn: State
+		summarizeBy: none
+
+	column PlanManagementType
+		dataType: string
+		sourceColumn: PlanManagementType
+		summarizeBy: none
+
+	partition Dim_Participant = m
+		mode: import
+		source =
+				let
+					Source = Excel.Workbook(File.Contents(SourceFilePath), null, true),
+					Data = Source{[Item="Participants",Kind="Sheet"]}[Data],
+					Promoted = Table.PromoteHeaders(Data, [PromoteAllScalars=true]),
+					Typed = Table.TransformColumnTypes(Promoted,{
+						{"ParticipantId", type text}, {"ParticipantName", type text},
+						{"State", type text}, {"PlanManagementType", type text}
+					})
+				in
+					Typed
+
+	annotation PBI_ResultType = Table
