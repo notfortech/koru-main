@@ -1,0 +1,32 @@
+table Dim_Line
+
+	column LineCode
+		dataType: string
+		sourceColumn: LineCode
+		summarizeBy: none
+		isKey
+
+	column LineName
+		dataType: string
+		sourceColumn: LineName
+		summarizeBy: none
+
+	column Region
+		dataType: string
+		sourceColumn: Region
+		summarizeBy: none
+
+	partition Dim_Line = m
+		mode: import
+		source =
+				let
+					Source = Excel.Workbook(File.Contents(SourceFilePath), null, true),
+					Data = Source{[Item="Lines",Kind="Sheet"]}[Data],
+					Promoted = Table.PromoteHeaders(Data, [PromoteAllScalars=true]),
+					Typed = Table.TransformColumnTypes(Promoted,{
+						{"LineCode", type text}, {"LineName", type text}, {"Region", type text}
+					})
+				in
+					Typed
+
+	annotation PBI_ResultType = Table

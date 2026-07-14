@@ -1,0 +1,32 @@
+table Dim_Train
+
+	column TrainId
+		dataType: string
+		sourceColumn: TrainId
+		summarizeBy: none
+		isKey
+
+	column TrainType
+		dataType: string
+		sourceColumn: TrainType
+		summarizeBy: none
+
+	column Depot
+		dataType: string
+		sourceColumn: Depot
+		summarizeBy: none
+
+	partition Dim_Train = m
+		mode: import
+		source =
+				let
+					Source = Excel.Workbook(File.Contents(SourceFilePath), null, true),
+					Data = Source{[Item="Trains",Kind="Sheet"]}[Data],
+					Promoted = Table.PromoteHeaders(Data, [PromoteAllScalars=true]),
+					Typed = Table.TransformColumnTypes(Promoted,{
+						{"TrainId", type text}, {"TrainType", type text}, {"Depot", type text}
+					})
+				in
+					Typed
+
+	annotation PBI_ResultType = Table

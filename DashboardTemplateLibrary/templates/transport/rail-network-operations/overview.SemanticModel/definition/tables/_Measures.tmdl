@@ -1,0 +1,51 @@
+table _Measures
+
+	measure 'Services Operated' = COUNTROWS(Fact_RailService)
+		formatString: #,##0
+		displayFolder: Operations\Volume
+
+	measure 'Active Lines' = DISTINCTCOUNT(Fact_RailService[LineCode])
+		formatString: #,##0
+		displayFolder: Operations\Volume
+
+	measure 'On-Time Services' = CALCULATE([Services Operated], Fact_RailService[ServiceStatus] = "OnTime")
+		formatString: #,##0
+		displayFolder: Operations\Punctuality
+
+	measure 'On-Time Running %' = DIVIDE([On-Time Services], [Services Operated])
+		formatString: 0.0%;-0.0%
+		displayFolder: Operations\Punctuality
+
+	measure 'Cancelled Services' = CALCULATE([Services Operated], Fact_RailService[ServiceStatus] = "Cancelled")
+		formatString: #,##0
+		displayFolder: Operations\Punctuality
+
+	measure 'Cancellation Rate %' = DIVIDE([Cancelled Services], [Services Operated])
+		formatString: 0.0%;-0.0%
+		displayFolder: Operations\Punctuality
+
+	measure 'Avg Delay (Minutes)' = AVERAGE(Fact_RailService[DelayMinutes])
+		formatString: #,##0.0
+		displayFolder: Operations\Punctuality
+
+	measure 'Total Passenger Journeys' = SUM(Fact_RailService[PassengerCount])
+		formatString: #,##0
+		displayFolder: Operations\Patronage
+
+	measure 'YTD Passenger Journeys' = TOTALYTD([Total Passenger Journeys], Dim_Date[Date])
+		formatString: #,##0
+		displayFolder: Operations\Patronage
+
+	measure 'Avg Passengers per Service' = DIVIDE([Total Passenger Journeys], [Services Operated])
+		formatString: #,##0.0
+		displayFolder: Operations\Patronage
+
+	column BlankColumn
+		isHidden
+		formatString: 0
+		summarizeBy: none
+		sourceColumn: Value
+
+	partition _Measures = calculated
+		mode: import
+		source = {BLANK()}

@@ -1,0 +1,22 @@
+relationship Fact_RailService_TrainId_Dim_Train
+	fromColumn: Fact_RailService.TrainId
+	toColumn: Dim_Train.TrainId
+
+relationship Fact_RailService_LineCode_Dim_Line
+	fromColumn: Fact_RailService.LineCode
+	toColumn: Dim_Line.LineCode
+
+relationship Fact_RailService_OriginStationId_Dim_Station
+	fromColumn: Fact_RailService.OriginStationId
+	toColumn: Dim_Station.StationId
+
+/// Inactive: same Dim_Station used twice (origin + destination). Kept inactive to avoid an
+/// ambiguous filter path; activate per-measure with USERELATIONSHIP() for destination-side analysis.
+relationship Fact_RailService_DestinationStationId_Dim_Station
+	fromColumn: Fact_RailService.DestinationStationId
+	toColumn: Dim_Station.StationId
+	isActive: false
+
+relationship Fact_RailService_ServiceDate_Dim_Date
+	fromColumn: Fact_RailService.ServiceDate
+	toColumn: Dim_Date.Date
