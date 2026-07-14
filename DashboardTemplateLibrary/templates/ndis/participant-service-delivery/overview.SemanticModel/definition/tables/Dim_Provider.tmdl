@@ -1,0 +1,38 @@
+table Dim_Provider
+
+	column ProviderId
+		dataType: string
+		sourceColumn: ProviderId
+		summarizeBy: none
+		isKey
+
+	column ProviderName
+		dataType: string
+		sourceColumn: ProviderName
+		summarizeBy: none
+
+	column RegistrationStatus
+		dataType: string
+		sourceColumn: RegistrationStatus
+		summarizeBy: none
+
+	column ServiceRegion
+		dataType: string
+		sourceColumn: ServiceRegion
+		summarizeBy: none
+
+	partition Dim_Provider = m
+		mode: import
+		source =
+				let
+					Source = Excel.Workbook(File.Contents(SourceFilePath), null, true),
+					Data = Source{[Item="Providers",Kind="Sheet"]}[Data],
+					Promoted = Table.PromoteHeaders(Data, [PromoteAllScalars=true]),
+					Typed = Table.TransformColumnTypes(Promoted,{
+						{"ProviderId", type text}, {"ProviderName", type text},
+						{"RegistrationStatus", type text}, {"ServiceRegion", type text}
+					})
+				in
+					Typed
+
+	annotation PBI_ResultType = Table

@@ -1,0 +1,51 @@
+table _Measures
+
+	measure 'Total Premium' = SUM(Fact_Policy[PremiumAmount])
+		formatString: \$#,##0
+		displayFolder: Financial\Premium
+
+	measure 'YTD Premium' = TOTALYTD([Total Premium], Dim_Date[Date])
+		formatString: \$#,##0
+		displayFolder: Financial\Premium
+
+	measure 'Total Commission' = SUM(Fact_Policy[CommissionAmount])
+		formatString: \$#,##0
+		displayFolder: Financial\Commission
+
+	measure 'Commission Rate %' = DIVIDE([Total Commission], [Total Premium])
+		formatString: 0.0%;-0.0%
+		displayFolder: Financial\Commission
+
+	measure 'Active Policies' = DISTINCTCOUNT(Fact_Policy[PolicyId])
+		formatString: #,##0
+		displayFolder: Policy\Volume
+
+	measure 'Active Clients' = DISTINCTCOUNT(Fact_Policy[ClientId])
+		formatString: #,##0
+		displayFolder: Policy\Volume
+
+	measure 'Claim Count' = COUNTROWS(Fact_Claim)
+		formatString: #,##0
+		displayFolder: Policy\Claims
+
+	measure 'Total Claims Paid' = SUM(Fact_Claim[ClaimAmount])
+		formatString: \$#,##0
+		displayFolder: Financial\Claims
+
+	measure 'Avg Claim Size' = DIVIDE([Total Claims Paid], [Claim Count])
+		formatString: \$#,##0
+		displayFolder: Financial\Claims
+
+	measure 'Loss Ratio %' = DIVIDE([Total Claims Paid], [Total Premium])
+		formatString: 0.0%;-0.0%
+		displayFolder: Financial\Claims
+
+	column BlankColumn
+		isHidden
+		formatString: 0
+		summarizeBy: none
+		sourceColumn: Value
+
+	partition _Measures = calculated
+		mode: import
+		source = {BLANK()}

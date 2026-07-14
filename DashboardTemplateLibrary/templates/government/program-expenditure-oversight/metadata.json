@@ -1,0 +1,14 @@
+{
+  "industry": "Government",
+  "template_slug": "program-expenditure-oversight",
+  "template_name": "Government — Program Expenditure Oversight",
+  "tier": 1,
+  "schema_model_ref": "Government — Program Expenditure Oversight (new — not yet in SchemaModelSeeder.cs)",
+  "version": "1.0",
+  "blob_path": "templates/government/program-expenditure-oversight/overview.pbix",
+  "status": "semantic_model_ready_pending_pbix_build",
+  "owner": "unassigned",
+  "sensitivity_label": "Official Sensitive",
+  "pii_columns": [],
+  "notes": "No SchemaModel/Template row exists yet in the app database for this industry — add one to SchemaModelSeeder.cs (RequiredColumnsJson should match the Fact_ProgramExpenditure column names below) before this template can be matched against client uploads."
+}

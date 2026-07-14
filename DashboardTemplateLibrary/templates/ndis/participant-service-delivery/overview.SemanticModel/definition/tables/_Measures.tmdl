@@ -1,0 +1,51 @@
+table _Measures
+
+	measure 'Total Claimed' = SUM(Fact_ServiceDelivery[ClaimAmount])
+		formatString: \$#,##0
+		displayFolder: Financial\Claims
+
+	measure 'YTD Claimed' = TOTALYTD([Total Claimed], Dim_Date[Date])
+		formatString: \$#,##0
+		displayFolder: Financial\Claims
+
+	measure 'Total Service Hours' = SUM(Fact_ServiceDelivery[ServiceHours])
+		formatString: #,##0.0
+		displayFolder: Service Delivery\Volume
+
+	measure 'Service Events' = COUNTROWS(Fact_ServiceDelivery)
+		formatString: #,##0
+		displayFolder: Service Delivery\Volume
+
+	measure 'Avg Service Hours per Event' = DIVIDE([Total Service Hours], [Service Events])
+		formatString: #,##0.0
+		displayFolder: Service Delivery\Volume
+
+	measure 'Active Participants' = DISTINCTCOUNT(Fact_ServiceDelivery[ParticipantId])
+		formatString: #,##0
+		displayFolder: Service Delivery\Volume
+
+	measure 'Active Providers' = DISTINCTCOUNT(Fact_ServiceDelivery[ProviderId])
+		formatString: #,##0
+		displayFolder: Service Delivery\Providers
+
+	measure 'Avg Claim per Hour' = DIVIDE([Total Claimed], [Total Service Hours])
+		formatString: \$#,##0.00
+		displayFolder: Financial\Claims
+
+	measure 'Claims per Participant' = DIVIDE([Total Claimed], [Active Participants])
+		formatString: \$#,##0
+		displayFolder: Financial\Claims
+
+	measure 'Total Plan Budget Remaining' = SUM(Fact_ServiceDelivery[PlanBudgetRemaining])
+		formatString: \$#,##0
+		displayFolder: Financial\Budget
+
+	column BlankColumn
+		isHidden
+		formatString: 0
+		summarizeBy: none
+		sourceColumn: Value
+
+	partition _Measures = calculated
+		mode: import
+		source = {BLANK()}

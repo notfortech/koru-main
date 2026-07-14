@@ -1,0 +1,32 @@
+table Dim_Station
+
+	column StationId
+		dataType: string
+		sourceColumn: StationId
+		summarizeBy: none
+		isKey
+
+	column StationName
+		dataType: string
+		sourceColumn: StationName
+		summarizeBy: none
+
+	column Zone
+		dataType: string
+		sourceColumn: Zone
+		summarizeBy: none
+
+	partition Dim_Station = m
+		mode: import
+		source =
+				let
+					Source = Excel.Workbook(File.Contents(SourceFilePath), null, true),
+					Data = Source{[Item="Stations",Kind="Sheet"]}[Data],
+					Promoted = Table.PromoteHeaders(Data, [PromoteAllScalars=true]),
+					Typed = Table.TransformColumnTypes(Promoted,{
+						{"StationId", type text}, {"StationName", type text}, {"Zone", type text}
+					})
+				in
+					Typed
+
+	annotation PBI_ResultType = Table

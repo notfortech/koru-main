@@ -1,0 +1,50 @@
+table Dim_Engagement
+
+	column EngagementId
+		dataType: string
+		sourceColumn: EngagementId
+		summarizeBy: none
+		isKey
+
+	column EngagementName
+		dataType: string
+		sourceColumn: EngagementName
+		summarizeBy: none
+
+	column ClientId
+		dataType: string
+		sourceColumn: ClientId
+		summarizeBy: none
+
+	column PracticeArea
+		dataType: string
+		sourceColumn: PracticeArea
+		summarizeBy: none
+
+	column StartDate
+		dataType: dateTime
+		formatString: Short Date
+		sourceColumn: StartDate
+		summarizeBy: none
+
+	column EndDate
+		dataType: dateTime
+		formatString: Short Date
+		sourceColumn: EndDate
+		summarizeBy: none
+
+	partition Dim_Engagement = m
+		mode: import
+		source =
+				let
+					Source = Excel.Workbook(File.Contents(SourceFilePath), null, true),
+					Data = Source{[Item="Engagements",Kind="Sheet"]}[Data],
+					Promoted = Table.PromoteHeaders(Data, [PromoteAllScalars=true]),
+					Typed = Table.TransformColumnTypes(Promoted,{
+						{"EngagementId", type text}, {"EngagementName", type text}, {"ClientId", type text},
+						{"PracticeArea", type text}, {"StartDate", type date}, {"EndDate", type date}
+					})
+				in
+					Typed
+
+	annotation PBI_ResultType = Table

@@ -1,0 +1,46 @@
+table Fact_Billing
+
+	column EngagementId
+		dataType: string
+		sourceColumn: EngagementId
+		summarizeBy: none
+
+	column InvoiceDate
+		dataType: dateTime
+		formatString: Short Date
+		sourceColumn: InvoiceDate
+		summarizeBy: none
+
+	column FeesBilled
+		dataType: double
+		formatString: \$#,##0.00
+		sourceColumn: FeesBilled
+		summarizeBy: none
+
+	column FeesCollected
+		dataType: double
+		formatString: \$#,##0.00
+		sourceColumn: FeesCollected
+		summarizeBy: none
+
+	column WIPBalance
+		dataType: double
+		formatString: \$#,##0.00
+		sourceColumn: WIPBalance
+		summarizeBy: none
+
+	partition Fact_Billing = m
+		mode: import
+		source =
+				let
+					Source = Excel.Workbook(File.Contents(SourceFilePath), null, true),
+					Data = Source{[Item="Billing",Kind="Sheet"]}[Data],
+					Promoted = Table.PromoteHeaders(Data, [PromoteAllScalars=true]),
+					Typed = Table.TransformColumnTypes(Promoted,{
+						{"EngagementId", type text}, {"InvoiceDate", type date}, {"FeesBilled", type number},
+						{"FeesCollected", type number}, {"WIPBalance", type number}
+					})
+				in
+					Typed
+
+	annotation PBI_ResultType = Table

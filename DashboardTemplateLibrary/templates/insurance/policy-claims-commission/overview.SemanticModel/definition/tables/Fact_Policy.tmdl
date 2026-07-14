@@ -1,0 +1,67 @@
+table Fact_Policy
+
+	column PolicyId
+		dataType: string
+		sourceColumn: PolicyId
+		summarizeBy: none
+
+	column ClientId
+		dataType: string
+		sourceColumn: ClientId
+		summarizeBy: none
+
+	column PolicyType
+		dataType: string
+		sourceColumn: PolicyType
+		summarizeBy: none
+
+	column BrokerId
+		dataType: string
+		sourceColumn: BrokerId
+		summarizeBy: none
+
+	column EffectiveDate
+		dataType: dateTime
+		formatString: Short Date
+		sourceColumn: EffectiveDate
+		summarizeBy: none
+
+	column ExpiryDate
+		dataType: dateTime
+		formatString: Short Date
+		sourceColumn: ExpiryDate
+		summarizeBy: none
+
+	column PremiumAmount
+		dataType: double
+		formatString: \$#,##0.00
+		sourceColumn: PremiumAmount
+		summarizeBy: none
+
+	column CommissionAmount
+		dataType: double
+		formatString: \$#,##0.00
+		sourceColumn: CommissionAmount
+		summarizeBy: none
+
+	column RenewalStatus
+		dataType: string
+		sourceColumn: RenewalStatus
+		summarizeBy: none
+
+	partition Fact_Policy = m
+		mode: import
+		source =
+				let
+					Source = Excel.Workbook(File.Contents(SourceFilePath), null, true),
+					Data = Source{[Item="Policies",Kind="Sheet"]}[Data],
+					Promoted = Table.PromoteHeaders(Data, [PromoteAllScalars=true]),
+					Typed = Table.TransformColumnTypes(Promoted,{
+						{"PolicyId", type text}, {"ClientId", type text}, {"PolicyType", type text},
+						{"BrokerId", type text}, {"EffectiveDate", type date}, {"ExpiryDate", type date},
+						{"PremiumAmount", type number}, {"CommissionAmount", type number}, {"RenewalStatus", type text}
+					})
+				in
+					Typed
+
+	annotation PBI_ResultType = Table

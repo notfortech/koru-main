@@ -1,0 +1,38 @@
+table Dim_Broker
+
+	column BrokerId
+		dataType: string
+		sourceColumn: BrokerId
+		summarizeBy: none
+		isKey
+
+	column BrokerName
+		dataType: string
+		sourceColumn: BrokerName
+		summarizeBy: none
+
+	column AFSLNumber
+		dataType: string
+		sourceColumn: AFSLNumber
+		summarizeBy: none
+
+	column BrokerRegion
+		dataType: string
+		sourceColumn: BrokerRegion
+		summarizeBy: none
+
+	partition Dim_Broker = m
+		mode: import
+		source =
+				let
+					Source = Excel.Workbook(File.Contents(SourceFilePath), null, true),
+					Data = Source{[Item="Brokers",Kind="Sheet"]}[Data],
+					Promoted = Table.PromoteHeaders(Data, [PromoteAllScalars=true]),
+					Typed = Table.TransformColumnTypes(Promoted,{
+						{"BrokerId", type text}, {"BrokerName", type text},
+						{"AFSLNumber", type text}, {"BrokerRegion", type text}
+					})
+				in
+					Typed
+
+	annotation PBI_ResultType = Table

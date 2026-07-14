@@ -1,0 +1,3 @@
+expression SourceFilePath = "C:\StudioTechBI\SourceData\retail-store-sales-inventory.xlsx" meta [IsParameterQuery=true, Type="Text", IsParameterQueryRequired=true]
+	queryGroup: Parameters
+	annotation PBI_ResultType = Text

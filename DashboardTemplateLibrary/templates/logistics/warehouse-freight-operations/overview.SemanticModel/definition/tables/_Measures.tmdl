@@ -1,0 +1,51 @@
+table _Measures
+
+	measure 'Shipments Dispatched' = DISTINCTCOUNT(Fact_ShipmentOrder[ShipmentId])
+		formatString: #,##0
+		displayFolder: Operations\Volume
+
+	measure 'Total Weight Shipped (Kg)' = SUM(Fact_ShipmentOrder[WeightKg])
+		formatString: #,##0.0
+		displayFolder: Operations\Volume
+
+	measure 'Total Units Shipped' = SUM(Fact_ShipmentOrder[QuantityShipped])
+		formatString: #,##0
+		displayFolder: Operations\Volume
+
+	measure 'On-Time Deliveries' = CALCULATE([Shipments Dispatched], Fact_ShipmentOrder[DeliveryStatus] = "OnTime")
+		formatString: #,##0
+		displayFolder: Operations\Service
+
+	measure 'On-Time Delivery %' = DIVIDE([On-Time Deliveries], [Shipments Dispatched])
+		formatString: 0.0%;-0.0%
+		displayFolder: Operations\Service
+
+	measure 'Avg Delivery Days' = AVERAGEX(Fact_ShipmentOrder, DATEDIFF(Fact_ShipmentOrder[DispatchDate], Fact_ShipmentOrder[DeliveryDate], DAY))
+		formatString: #,##0.0
+		displayFolder: Operations\Service
+
+	measure 'Active Carriers' = DISTINCTCOUNT(Fact_ShipmentOrder[CarrierId])
+		formatString: #,##0
+		displayFolder: Operations\Carriers
+
+	measure 'Total Freight Cost' = SUM(Fact_ShipmentOrder[FreightCost])
+		formatString: \$#,##0
+		displayFolder: Financial\Freight
+
+	measure 'YTD Freight Cost' = TOTALYTD([Total Freight Cost], Dim_Date[Date])
+		formatString: \$#,##0
+		displayFolder: Financial\Freight
+
+	measure 'Avg Freight Cost per Shipment' = DIVIDE([Total Freight Cost], [Shipments Dispatched])
+		formatString: \$#,##0.00
+		displayFolder: Financial\Freight
+
+	column BlankColumn
+		isHidden
+		formatString: 0
+		summarizeBy: none
+		sourceColumn: Value
+
+	partition _Measures = calculated
+		mode: import
+		source = {BLANK()}

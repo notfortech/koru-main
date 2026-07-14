@@ -1,0 +1,3 @@
+expression SourceFilePath = "C:\StudioTechBI\SourceData\insurance-policy-claims-commission.xlsx" meta [IsParameterQuery=true, Type="Text", IsParameterQueryRequired=true]
+	queryGroup: Parameters
+	annotation PBI_ResultType = Text

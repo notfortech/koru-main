@@ -1,0 +1,51 @@
+table _Measures
+
+	measure 'Total Actual Spend' = SUM(Fact_ProgramExpenditure[ActualAmount])
+		formatString: \$#,##0
+		displayFolder: Financial\Spend
+
+	measure 'YTD Actual Spend' = TOTALYTD([Total Actual Spend], Dim_Date[Date])
+		formatString: \$#,##0
+		displayFolder: Financial\Spend
+
+	measure 'Total Budget' = SUM(Fact_ProgramExpenditure[BudgetedAmount])
+		formatString: \$#,##0
+		displayFolder: Financial\Budget
+
+	measure 'Budget Variance $' = [Total Actual Spend] - [Total Budget]
+		formatString: \$#,##0
+		displayFolder: Financial\Budget
+
+	measure 'Budget Variance %' = DIVIDE([Budget Variance $], [Total Budget])
+		formatString: 0.0%;-0.0%
+		displayFolder: Financial\Budget
+
+	measure 'Avg FTE Headcount' = AVERAGE(Fact_ProgramExpenditure[FTEHeadcount])
+		formatString: #,##0.0
+		displayFolder: Workforce\FTE
+
+	measure 'Spend per FTE' = DIVIDE([Total Actual Spend], [Avg FTE Headcount])
+		formatString: \$#,##0
+		displayFolder: Workforce\FTE
+
+	measure 'Program Count' = DISTINCTCOUNT(Fact_ProgramExpenditure[ProgramId])
+		formatString: #,##0
+		displayFolder: Program\Volume
+
+	measure 'Portfolio Count' = DISTINCTCOUNT(Fact_ProgramExpenditure[PortfolioId])
+		formatString: #,##0
+		displayFolder: Program\Volume
+
+	measure 'Transaction Count' = COUNTROWS(Fact_ProgramExpenditure)
+		formatString: #,##0
+		displayFolder: Program\Volume
+
+	column BlankColumn
+		isHidden
+		formatString: 0
+		summarizeBy: none
+		sourceColumn: Value
+
+	partition _Measures = calculated
+		mode: import
+		source = {BLANK()}

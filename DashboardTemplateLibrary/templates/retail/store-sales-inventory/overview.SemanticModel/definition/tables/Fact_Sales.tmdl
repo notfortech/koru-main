@@ -1,0 +1,63 @@
+table Fact_Sales
+
+	column TransactionId
+		dataType: string
+		sourceColumn: TransactionId
+		summarizeBy: none
+
+	column StoreId
+		dataType: string
+		sourceColumn: StoreId
+		summarizeBy: none
+
+	column SKU
+		dataType: string
+		sourceColumn: SKU
+		summarizeBy: none
+
+	column SaleDate
+		dataType: dateTime
+		formatString: Short Date
+		sourceColumn: SaleDate
+		summarizeBy: none
+
+	column QuantitySold
+		dataType: int64
+		formatString: #,##0
+		sourceColumn: QuantitySold
+		summarizeBy: none
+
+	column SalePrice
+		dataType: double
+		formatString: \$#,##0.00
+		sourceColumn: SalePrice
+		summarizeBy: none
+
+	column CostPrice
+		dataType: double
+		formatString: \$#,##0.00
+		sourceColumn: CostPrice
+		summarizeBy: none
+
+	column DiscountAmount
+		dataType: double
+		formatString: \$#,##0.00
+		sourceColumn: DiscountAmount
+		summarizeBy: none
+
+	partition Fact_Sales = m
+		mode: import
+		source =
+				let
+					Source = Excel.Workbook(File.Contents(SourceFilePath), null, true),
+					Data = Source{[Item="Sales",Kind="Sheet"]}[Data],
+					Promoted = Table.PromoteHeaders(Data, [PromoteAllScalars=true]),
+					Typed = Table.TransformColumnTypes(Promoted,{
+						{"TransactionId", type text}, {"StoreId", type text}, {"SKU", type text},
+						{"SaleDate", type date}, {"QuantitySold", Int64.Type}, {"SalePrice", type number},
+						{"CostPrice", type number}, {"DiscountAmount", type number}
+					})
+				in
+					Typed
+
+	annotation PBI_ResultType = Table

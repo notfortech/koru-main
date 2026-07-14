@@ -1,0 +1,38 @@
+table Dim_Portfolio
+
+	column PortfolioId
+		dataType: string
+		sourceColumn: PortfolioId
+		summarizeBy: none
+		isKey
+
+	column PortfolioName
+		dataType: string
+		sourceColumn: PortfolioName
+		summarizeBy: none
+
+	column Minister
+		dataType: string
+		sourceColumn: Minister
+		summarizeBy: none
+
+	column AgencyType
+		dataType: string
+		sourceColumn: AgencyType
+		summarizeBy: none
+
+	partition Dim_Portfolio = m
+		mode: import
+		source =
+				let
+					Source = Excel.Workbook(File.Contents(SourceFilePath), null, true),
+					Data = Source{[Item="Portfolios",Kind="Sheet"]}[Data],
+					Promoted = Table.PromoteHeaders(Data, [PromoteAllScalars=true]),
+					Typed = Table.TransformColumnTypes(Promoted,{
+						{"PortfolioId", type text}, {"PortfolioName", type text},
+						{"Minister", type text}, {"AgencyType", type text}
+					})
+				in
+					Typed
+
+	annotation PBI_ResultType = Table

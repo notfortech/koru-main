@@ -1,0 +1,32 @@
+table Dim_Carrier
+
+	column CarrierId
+		dataType: string
+		sourceColumn: CarrierId
+		summarizeBy: none
+		isKey
+
+	column CarrierName
+		dataType: string
+		sourceColumn: CarrierName
+		summarizeBy: none
+
+	column ServiceType
+		dataType: string
+		sourceColumn: ServiceType
+		summarizeBy: none
+
+	partition Dim_Carrier = m
+		mode: import
+		source =
+				let
+					Source = Excel.Workbook(File.Contents(SourceFilePath), null, true),
+					Data = Source{[Item="Carriers",Kind="Sheet"]}[Data],
+					Promoted = Table.PromoteHeaders(Data, [PromoteAllScalars=true]),
+					Typed = Table.TransformColumnTypes(Promoted,{
+						{"CarrierId", type text}, {"CarrierName", type text}, {"ServiceType", type text}
+					})
+				in
+					Typed
+
+	annotation PBI_ResultType = Table

@@ -1,0 +1,15 @@
+relationship Fact_ShipmentOrder_WarehouseId_Dim_Warehouse
+	fromColumn: Fact_ShipmentOrder.WarehouseId
+	toColumn: Dim_Warehouse.WarehouseId
+
+relationship Fact_ShipmentOrder_CarrierId_Dim_Carrier
+	fromColumn: Fact_ShipmentOrder.CarrierId
+	toColumn: Dim_Carrier.CarrierId
+
+relationship Fact_ShipmentOrder_SKU_Dim_Product
+	fromColumn: Fact_ShipmentOrder.SKU
+	toColumn: Dim_Product.SKU
+
+relationship Fact_ShipmentOrder_DispatchDate_Dim_Date
+	fromColumn: Fact_ShipmentOrder.DispatchDate
+	toColumn: Dim_Date.Date

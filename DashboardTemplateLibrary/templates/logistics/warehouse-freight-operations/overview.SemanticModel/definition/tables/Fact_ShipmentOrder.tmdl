@@ -1,0 +1,79 @@
+table Fact_ShipmentOrder
+
+	column OrderId
+		dataType: string
+		sourceColumn: OrderId
+		summarizeBy: none
+
+	column ShipmentId
+		dataType: string
+		sourceColumn: ShipmentId
+		summarizeBy: none
+
+	column WarehouseId
+		dataType: string
+		sourceColumn: WarehouseId
+		summarizeBy: none
+
+	column SKU
+		dataType: string
+		sourceColumn: SKU
+		summarizeBy: none
+
+	column CarrierId
+		dataType: string
+		sourceColumn: CarrierId
+		summarizeBy: none
+
+	column DispatchDate
+		dataType: dateTime
+		formatString: Short Date
+		sourceColumn: DispatchDate
+		summarizeBy: none
+
+	column DeliveryDate
+		dataType: dateTime
+		formatString: Short Date
+		sourceColumn: DeliveryDate
+		summarizeBy: none
+
+	column DeliveryStatus
+		dataType: string
+		sourceColumn: DeliveryStatus
+		summarizeBy: none
+
+	column WeightKg
+		dataType: double
+		formatString: #,##0.0
+		sourceColumn: WeightKg
+		summarizeBy: none
+
+	column QuantityShipped
+		dataType: int64
+		formatString: #,##0
+		sourceColumn: QuantityShipped
+		summarizeBy: none
+
+	column FreightCost
+		dataType: double
+		formatString: \$#,##0.00
+		sourceColumn: FreightCost
+		summarizeBy: none
+
+	partition Fact_ShipmentOrder = m
+		mode: import
+		source =
+				let
+					Source = Excel.Workbook(File.Contents(SourceFilePath), null, true),
+					Data = Source{[Item="ShipmentOrders",Kind="Sheet"]}[Data],
+					Promoted = Table.PromoteHeaders(Data, [PromoteAllScalars=true]),
+					Typed = Table.TransformColumnTypes(Promoted,{
+						{"OrderId", type text}, {"ShipmentId", type text}, {"WarehouseId", type text},
+						{"SKU", type text}, {"CarrierId", type text}, {"DispatchDate", type date},
+						{"DeliveryDate", type date}, {"DeliveryStatus", type text}, {"WeightKg", type number},
+						{"QuantityShipped", Int64.Type}, {"FreightCost", type number}
+					})
+				in
+					Typed
+
+	annotation PBI_ResultType = Table

@@ -1,0 +1,15 @@
+relationship Fact_ServiceDelivery_ParticipantId_Dim_Participant
+	fromColumn: Fact_ServiceDelivery.ParticipantId
+	toColumn: Dim_Participant.ParticipantId
+
+relationship Fact_ServiceDelivery_ProviderId_Dim_Provider
+	fromColumn: Fact_ServiceDelivery.ProviderId
+	toColumn: Dim_Provider.ProviderId
+
+relationship Fact_ServiceDelivery_SupportCategory_Dim_SupportCategory
+	fromColumn: Fact_ServiceDelivery.SupportCategory
+	toColumn: Dim_SupportCategory.SupportCategoryCode
+
+relationship Fact_ServiceDelivery_ServiceDate_Dim_Date
+	fromColumn: Fact_ServiceDelivery.ServiceDate
+	toColumn: Dim_Date.Date

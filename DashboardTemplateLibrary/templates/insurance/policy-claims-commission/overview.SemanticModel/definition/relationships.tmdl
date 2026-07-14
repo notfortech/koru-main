@@ -1,0 +1,26 @@
+relationship Fact_Policy_ClientId_Dim_Client
+	fromColumn: Fact_Policy.ClientId
+	toColumn: Dim_Client.ClientId
+
+relationship Fact_Policy_BrokerId_Dim_Broker
+	fromColumn: Fact_Policy.BrokerId
+	toColumn: Dim_Broker.BrokerId
+
+relationship Fact_Policy_PolicyType_Dim_PolicyType
+	fromColumn: Fact_Policy.PolicyType
+	toColumn: Dim_PolicyType.PolicyType
+
+relationship Fact_Policy_EffectiveDate_Dim_Date
+	fromColumn: Fact_Policy.EffectiveDate
+	toColumn: Dim_Date.Date
+
+/// Claims relate to their policy via the policy fact table (each policy can have many claims) —
+/// this is a deliberate fact-to-fact link rather than a shared dimension, since PolicyId is
+/// unique per row in Fact_Policy (policy grain doubles as a lookup key here).
+relationship Fact_Claim_PolicyId_Fact_Policy
+	fromColumn: Fact_Claim.PolicyId
+	toColumn: Fact_Policy.PolicyId
+
+relationship Fact_Claim_ClaimDate_Dim_Date
+	fromColumn: Fact_Claim.ClaimDate
+	toColumn: Dim_Date.Date
