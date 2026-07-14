@@ -1,0 +1,15 @@
+relationship Fact_ProgramExpenditure_ProgramId_Dim_Program
+	fromColumn: Fact_ProgramExpenditure.ProgramId
+	toColumn: Dim_Program.ProgramId
+
+relationship Fact_ProgramExpenditure_PortfolioId_Dim_Portfolio
+	fromColumn: Fact_ProgramExpenditure.PortfolioId
+	toColumn: Dim_Portfolio.PortfolioId
+
+relationship Fact_ProgramExpenditure_AppropriationCode_Dim_Appropriation
+	fromColumn: Fact_ProgramExpenditure.AppropriationCode
+	toColumn: Dim_Appropriation.AppropriationCode
+
+relationship Fact_ProgramExpenditure_TransactionDate_Dim_Date
+	fromColumn: Fact_ProgramExpenditure.TransactionDate
+	toColumn: Dim_Date.Date

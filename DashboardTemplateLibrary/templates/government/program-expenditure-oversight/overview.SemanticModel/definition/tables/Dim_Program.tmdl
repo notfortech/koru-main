@@ -1,0 +1,32 @@
+table Dim_Program
+
+	column ProgramId
+		dataType: string
+		sourceColumn: ProgramId
+		summarizeBy: none
+		isKey
+
+	column ProgramName
+		dataType: string
+		sourceColumn: ProgramName
+		summarizeBy: none
+
+	column OutcomeArea
+		dataType: string
+		sourceColumn: OutcomeArea
+		summarizeBy: none
+
+	partition Dim_Program = m
+		mode: import
+		source =
+				let
+					Source = Excel.Workbook(File.Contents(SourceFilePath), null, true),
+					Data = Source{[Item="Programs",Kind="Sheet"]}[Data],
+					Promoted = Table.PromoteHeaders(Data, [PromoteAllScalars=true]),
+					Typed = Table.TransformColumnTypes(Promoted,{
+						{"ProgramId", type text}, {"ProgramName", type text}, {"OutcomeArea", type text}
+					})
+				in
+					Typed
+
+	annotation PBI_ResultType = Table
