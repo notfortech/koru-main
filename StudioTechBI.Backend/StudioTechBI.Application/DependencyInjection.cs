@@ -27,6 +27,7 @@ public static class DependencyInjection
         services.AddScoped<ITemplateMatchingService, TemplateMatchingService>();
         services.AddScoped<IReportDesignerConsentService, ReportDesignerConsentService>();
         services.AddScoped<ISchemaModelService, SchemaModelService>();
+        services.AddScoped<ISchemaModelFieldAliasService, SchemaModelFieldAliasService>();
         services.AddScoped<IReportMatchService, ReportMatchService>();
         services.AddScoped<IReportDataUsageConsentService, ReportDataUsageConsentService>();
 
