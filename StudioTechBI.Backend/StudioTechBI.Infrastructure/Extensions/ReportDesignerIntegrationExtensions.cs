@@ -27,14 +27,14 @@ public static class ReportDesignerIntegrationExtensions
                 if (!string.IsNullOrWhiteSpace(opts.BaseUrl))
                     client.BaseAddress = new Uri(opts.BaseUrl.TrimEnd('/') + "/");
 
-                client.Timeout = TimeSpan.FromSeconds(opts.TimeoutSeconds > 0 ? opts.TimeoutSeconds : 120);
+                client.Timeout = TimeSpan.FromSeconds(opts.TimeoutSeconds > 0 ? opts.TimeoutSeconds : 210);
 
                 // API key as Bearer token
                 if (!string.IsNullOrWhiteSpace(opts.ApiKey))
                     client.DefaultRequestHeaders.Authorization =
                         new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", opts.ApiKey);
             })
-            .AddPolicyHandler(BuildRetryPolicy(2));
+            .AddPolicyHandler(BuildRetryPolicy(0));
 
         services.AddScoped<SqlSchemaReaderService>();
         services.AddScoped<SharePointSchemaService>();
@@ -42,6 +42,14 @@ public static class ReportDesignerIntegrationExtensions
         return services;
     }
 
+    // Schema matching and model generation call out to an LLM (via stbi_transformers) and can
+    // legitimately take up to ~180s. HttpClient.Timeout budgets the whole SendAsync call
+    // including every retry attempt inside it, so retrying here means a slow-but-legitimate
+    // LLM call gets killed and a second, equally-slow LLM call fires on top of it — doubling
+    // AI cost and latency instead of smoothing over a transient failure. retryCount is 0 by
+    // default for that reason; a failed call fails cleanly instead. Kept parameterised (rather
+    // than deleted) in case a future caller wants bounded retries for genuine 429/503 responses
+    // once per-attempt timeout is separated from total call budget.
     private static IAsyncPolicy<HttpResponseMessage> BuildRetryPolicy(int retryCount) =>
         HttpPolicyExtensions
             .HandleTransientHttpError()
