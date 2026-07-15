@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using StudioTechBI.Application.DTOs.Common;
@@ -20,19 +21,26 @@ public class ReportDesignerController : ControllerBase
 {
     private const long MaxFileSizeBytes = 50 * 1024 * 1024; // 50 MB
     private static readonly string[] AllowedExtensions = { ".xlsx", ".xls", ".csv" };
+    private const string ReportModelFeature = "report-model-generation";
 
     private readonly IReportDesignerClient _reportDesignerClient;
     private readonly SqlSchemaReaderService _sqlSchemaReader;
     private readonly SharePointSchemaService _sharePointSchemaService;
+    private readonly IAgentHostClient _agentHostClient;
+    private readonly IClientService _clientService;
 
     public ReportDesignerController(
         IReportDesignerClient reportDesignerClient,
         SqlSchemaReaderService sqlSchemaReader,
-        SharePointSchemaService sharePointSchemaService)
+        SharePointSchemaService sharePointSchemaService,
+        IAgentHostClient agentHostClient,
+        IClientService clientService)
     {
         _reportDesignerClient = reportDesignerClient;
         _sqlSchemaReader = sqlSchemaReader;
         _sharePointSchemaService = sharePointSchemaService;
+        _agentHostClient = agentHostClient;
+        _clientService = clientService;
     }
 
     /// <summary>
@@ -196,7 +204,10 @@ public class ReportDesignerController : ControllerBase
     /// <summary>
     /// POST /api/report-designer/generate-model
     /// Sends extracted schema metadata (no data values) to the Report Designer AI endpoint.
-    /// Returns a star schema recommendation and template scores.
+    /// Returns a star schema recommendation and template scores. Gated by the tenant's shared
+    /// AI credit balance (same ledger as Blueprint generation) when the caller's client_code
+    /// claim resolves to a known client — callers without a resolvable tenant proceed ungated,
+    /// same as before this check existed.
     /// </summary>
     [HttpPost("generate-model")]
     public async Task<IActionResult> GenerateReportModelAsync(
@@ -209,10 +220,39 @@ public class ReportDesignerController : ControllerBase
 
         var correlationId = Guid.NewGuid().ToString();
 
+        Guid? tenantId = null;
+        string? tenantName = null;
+        var clientCode = User.FindFirstValue("client_code")?.Trim();
+        if (!string.IsNullOrWhiteSpace(clientCode))
+        {
+            var client = await _clientService.GetByClientCodeAsync(clientCode, cancellationToken);
+            if (client is not null)
+            {
+                tenantId = client.ClientId;
+                tenantName = client.ClientName;
+            }
+        }
+
+        if (tenantId is Guid resolvedTenantId)
+        {
+            var creditCheck = await _agentHostClient.CheckCreditsAsync(resolvedTenantId, tenantName, cancellationToken);
+            if (!creditCheck.Allowed)
+            {
+                return StatusCode(StatusCodes.Status402PaymentRequired, ApiResponse<object>.ErrorResponse(
+                    creditCheck.DenialReason ?? "Insufficient AI credits to generate a report model."));
+            }
+        }
+
         try
         {
             var result = await _reportDesignerClient.GenerateReportModelAsync(
                 request, correlationId, cancellationToken);
+
+            if (tenantId is Guid consumedTenantId)
+            {
+                await _agentHostClient.ConsumeCreditAsync(
+                    consumedTenantId, ReportModelFeature, correlationId, result.DurationMs, cancellationToken);
+            }
 
             return Ok(ApiResponse<GenerateReportModelResponse>.SuccessResponse(
                 result, "Report model generated successfully."));
