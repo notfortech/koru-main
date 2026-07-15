@@ -22,6 +22,7 @@ public class ReportMatchService : BaseService, IReportMatchService
 
     private readonly IRepository<SchemaModel> _modelRepository;
     private readonly IRepository<SchemaModelField> _fieldRepository;
+    private readonly IRepository<SchemaModelFieldAlias> _aliasRepository;
     private readonly IRepository<Template> _templateRepository;
     private readonly IRepository<ReportMatchDraft> _draftRepository;
     private readonly IRepository<ReportMatchColumnMapping> _mappingRepository;
@@ -32,6 +33,7 @@ public class ReportMatchService : BaseService, IReportMatchService
         IUnitOfWork unitOfWork,
         IRepository<SchemaModel> modelRepository,
         IRepository<SchemaModelField> fieldRepository,
+        IRepository<SchemaModelFieldAlias> aliasRepository,
         IRepository<Template> templateRepository,
         IRepository<ReportMatchDraft> draftRepository,
         IRepository<ReportMatchColumnMapping> mappingRepository,
@@ -41,6 +43,7 @@ public class ReportMatchService : BaseService, IReportMatchService
     {
         _modelRepository = modelRepository;
         _fieldRepository = fieldRepository;
+        _aliasRepository = aliasRepository;
         _templateRepository = templateRepository;
         _draftRepository = draftRepository;
         _mappingRepository = mappingRepository;
@@ -55,6 +58,17 @@ public class ReportMatchService : BaseService, IReportMatchService
             .GroupBy(c => NormalizeKey(c.ColumnName))
             .Select(g => g.First())
             .ToList();
+
+        // Approved aliases for any of this client's column names, across every field of every
+        // model — one indexed query, bounded by the client's own column count (not by how many
+        // SchemaModels/fields exist), so this stays cheap in the deterministic hot path.
+        var clientNormalizedNames = clientColumns.Select(c => NormalizeKey(c.ColumnName)).ToHashSet();
+        var approvedAliases = (await _aliasRepository.FindAsync(
+            a => a.ApprovalStatus == "Approved" && clientNormalizedNames.Contains(a.NormalizedAliasName),
+            cancellationToken)).ToList();
+        var aliasesByField = approvedAliases
+            .GroupBy(a => a.SchemaModelFieldId)
+            .ToDictionary(g => g.Key, g => g.Select(a => a.NormalizedAliasName).ToHashSet());
 
         var approvedModels = (await _modelRepository.FindAsync(m => m.ReviewStatus == "Approved", cancellationToken)).ToList();
 
@@ -72,7 +86,7 @@ public class ReportMatchService : BaseService, IReportMatchService
             if (fields.Count == 0)
                 continue;
 
-            var score = ScoreModel(fields, clientColumns);
+            var score = ScoreModel(fields, clientColumns, aliasesByField);
             if (score > bestScore)
             {
                 bestScore = score;
@@ -84,22 +98,41 @@ public class ReportMatchService : BaseService, IReportMatchService
         var matchSource = SourceDeterministic;
         var pendingSupportReview = false;
         Template? newlyProposedTemplate = null;
+        List<SchemaModelFieldMatchDto>? aiFieldMappings = null;
 
         if (bestScore < AiEscalationThreshold)
         {
             var escalated = await TryEscalateToAiAsync(clientId, approvedModels, fieldsByModel, clientColumns, cancellationToken);
             if (escalated is not null)
             {
-                (bestModel, bestFields, bestScore, matchSource, pendingSupportReview, newlyProposedTemplate) = escalated.Value;
+                (bestModel, bestFields, bestScore, matchSource, pendingSupportReview, newlyProposedTemplate, aiFieldMappings) = escalated.Value;
             }
         }
 
         var mappingDtos = new List<ReportMatchColumnMappingDto>();
         var mappingEntities = new List<ReportMatchColumnMapping>();
+        var usedAliasIds = new HashSet<Guid>();
 
         foreach (var field in bestFields)
         {
-            var match = clientColumns.FirstOrDefault(c => NormalizeKey(c.ColumnName) == NormalizeKey(field.FieldName));
+            var fieldKey = NormalizeKey(field.FieldName);
+            var match = clientColumns.FirstOrDefault(c => NormalizeKey(c.ColumnName) == fieldKey);
+
+            // No exact name match — fall back to any approved alias for this field. A previously
+            // AI-resolved synonym (e.g. "Customer No" for "CustomerID") now matches without a
+            // fresh AI call, once an admin has approved it (see SchemaModelFieldAlias).
+            if (match is null && aliasesByField.TryGetValue(field.Id, out var aliasNames))
+            {
+                match = clientColumns.FirstOrDefault(c => aliasNames.Contains(NormalizeKey(c.ColumnName)));
+                if (match is not null)
+                {
+                    var usedAlias = approvedAliases.FirstOrDefault(
+                        a => a.SchemaModelFieldId == field.Id && a.NormalizedAliasName == NormalizeKey(match.ColumnName));
+                    if (usedAlias is not null)
+                        usedAliasIds.Add(usedAlias.Id);
+                }
+            }
+
             var included = match is not null;
 
             mappingDtos.Add(new ReportMatchColumnMappingDto(field.FieldName, field.DataType, field.IsRequired, match?.ColumnName, included));
@@ -163,6 +196,30 @@ public class ReportMatchService : BaseService, IReportMatchService
             mapping.ReportMatchDraftId = draft.Id;
         await _mappingRepository.AddRangeAsync(mappingEntities, cancellationToken);
 
+        // Bump usage stats on any approved alias this match actually relied on — a simple
+        // frequency/trust signal for admins reviewing the pending queue, nothing else reads it.
+        if (usedAliasIds.Count > 0)
+        {
+            var now = DateTime.UtcNow;
+            foreach (var aliasId in usedAliasIds)
+            {
+                var alias = approvedAliases.First(a => a.Id == aliasId);
+                alias.ObservedCount += 1;
+                alias.LastSeenAt = now;
+                await _aliasRepository.UpdateAsync(alias, cancellationToken);
+            }
+        }
+
+        // A fresh AI match (not a brand-new proposed model — that one has no separate alias to
+        // record, its fields are themselves derived from the client's columns) may have paired
+        // client columns with fields that don't match by exact name. Record those as new
+        // PendingReview aliases so a future client with the same differently-named column can
+        // match deterministically instead of re-paying this same AI round trip.
+        if (matchSource == SourceAiMatched && bestModel is not null && aiFieldMappings is { Count: > 0 })
+        {
+            await WriteAliasesAsync(bestFields, aiFieldMappings, clientColumns, bestScore, clientId, draft.Id, cancellationToken);
+        }
+
         await UnitOfWork.SaveChangesAsync(cancellationToken);
 
         return new ReportMatchResultDto(
@@ -178,13 +235,88 @@ public class ReportMatchService : BaseService, IReportMatchService
     }
 
     /// <summary>
+    /// Writes/updates PendingReview SchemaModelFieldAlias rows from an AI match's per-field
+    /// FieldMappings. Skips a pairing if the field or client column named no longer resolves
+    /// (defensive — stbi_transformers already filters hallucinated names, this is a second,
+    /// cheap check rather than trusting a cross-service contract blindly), or if the pairing is
+    /// just the exact normalized name (not actually an alias). Upserts by (field, normalized
+    /// alias): a repeat observation bumps ObservedCount/LastSeenAt instead of duplicating —
+    /// ObservedCount is exactly the frequency signal a future auto-approval policy could use,
+    /// but that policy doesn't exist yet (see SchemaModelFieldAlias's own doc comment).
+    /// </summary>
+    private async Task WriteAliasesAsync(
+        IReadOnlyList<SchemaModelField> matchedFields,
+        List<SchemaModelFieldMatchDto> fieldMappings,
+        List<ColumnSchemaDto> clientColumns,
+        double confidence,
+        Guid clientId,
+        Guid draftId,
+        CancellationToken cancellationToken)
+    {
+        var fieldsByName = matchedFields.ToDictionary(f => f.FieldName, f => f, StringComparer.OrdinalIgnoreCase);
+        var now = DateTime.UtcNow;
+
+        foreach (var mapping in fieldMappings)
+        {
+            if (mapping.ClientColumnName is null)
+                continue;
+            if (!fieldsByName.TryGetValue(mapping.FieldName, out var field))
+                continue;
+
+            var clientColumn = clientColumns.FirstOrDefault(
+                c => string.Equals(c.ColumnName, mapping.ClientColumnName, StringComparison.OrdinalIgnoreCase));
+            if (clientColumn is null)
+                continue;
+
+            var normalizedField = NormalizeKey(field.FieldName);
+            var normalizedAlias = NormalizeKey(clientColumn.ColumnName);
+            if (normalizedAlias.Length == 0 || normalizedAlias == normalizedField)
+                continue; // empty, or already an exact match — not a real alias
+
+            var existing = await _aliasRepository.FirstOrDefaultAsync(
+                a => a.SchemaModelFieldId == field.Id && a.NormalizedAliasName == normalizedAlias,
+                cancellationToken);
+
+            if (existing is not null)
+            {
+                existing.ObservedCount += 1;
+                existing.LastSeenAt = now;
+                await _aliasRepository.UpdateAsync(existing, cancellationToken);
+                continue;
+            }
+
+            await _aliasRepository.AddAsync(new SchemaModelFieldAlias
+            {
+                Id = Guid.NewGuid(),
+                SchemaModelFieldId = field.Id,
+                AliasName = clientColumn.ColumnName,
+                NormalizedAliasName = normalizedAlias,
+                ObservedDataType = clientColumn.DataType,
+                Confidence = confidence,
+                Source = SourceAiMatched,
+                ApprovalStatus = "PendingReview",
+                ObservedCount = 1,
+                FirstSeenAt = now,
+                LastSeenAt = now,
+                FirstSeenClientId = clientId,
+                FirstSeenReportMatchDraftId = draftId,
+            }, cancellationToken);
+
+            _logger.LogInformation(
+                "ReportMatch.AliasProposed SchemaModelFieldId={SchemaModelFieldId} FieldName={FieldName} " +
+                "AliasName={AliasName} Confidence={Confidence} ClientId={ClientId}",
+                field.Id, field.FieldName, clientColumn.ColumnName, confidence, clientId);
+        }
+    }
+
+    /// <summary>
     /// Calls stbi_transformers to either semantically match one of the Approved candidates
     /// or propose a brand-new SchemaModel. Never throws — any failure (network, parse, or a
     /// hallucinated candidate id) is logged and the caller falls back to the deterministic
     /// result, since a low-confidence deterministic match is still strictly better than a
     /// hard failure of the whole match request.
     /// </summary>
-    private async Task<(SchemaModel? Model, IReadOnlyList<SchemaModelField> Fields, double Score, string Source, bool PendingReview, Template? NewTemplate)?> TryEscalateToAiAsync(
+    private async Task<(SchemaModel? Model, IReadOnlyList<SchemaModelField> Fields, double Score, string Source, bool PendingReview, Template? NewTemplate, List<SchemaModelFieldMatchDto>? FieldMappings)?> TryEscalateToAiAsync(
         Guid clientId,
         List<SchemaModel> approvedModels,
         Dictionary<Guid, List<SchemaModelField>> fieldsByModel,
@@ -232,7 +364,7 @@ public class ReportMatchService : BaseService, IReportMatchService
                     clientId, matchedId, correlationId);
                 return null;
             }
-            return (matched, fieldsByModel[matched.Id], response.Confidence, SourceAiMatched, false, null);
+            return (matched, fieldsByModel[matched.Id], response.Confidence, SourceAiMatched, false, null, response.FieldMappings);
         }
 
         if (response.ProposedModel is { } proposed)
@@ -294,20 +426,27 @@ public class ReportMatchService : BaseService, IReportMatchService
                 "TemplateId={TemplateId} CorrelationId={CorrelationId}",
                 clientId, newModel.Id, newModel.Name, newTemplate.Id, correlationId);
 
-            return (newModel, newFields, response.Confidence, SourceAiProposedNew, false, newTemplate);
+            return (newModel, newFields, response.Confidence, SourceAiProposedNew, false, newTemplate, null);
         }
 
         return null;
     }
 
-    private static double ScoreModel(IReadOnlyList<SchemaModelField> fields, IReadOnlyList<ColumnSchemaDto> clientColumns)
+    private static double ScoreModel(
+        IReadOnlyList<SchemaModelField> fields,
+        IReadOnlyList<ColumnSchemaDto> clientColumns,
+        Dictionary<Guid, HashSet<string>> aliasesByField)
     {
         var clientSet = new HashSet<string>(clientColumns.Select(c => NormalizeKey(c.ColumnName)));
         var required = fields.Where(f => f.IsRequired).ToList();
         var optional = fields.Where(f => !f.IsRequired).ToList();
 
-        var requiredHits = required.Count(f => clientSet.Contains(NormalizeKey(f.FieldName)));
-        var optionalHits = optional.Count(f => clientSet.Contains(NormalizeKey(f.FieldName)));
+        bool FieldMatches(SchemaModelField f) =>
+            clientSet.Contains(NormalizeKey(f.FieldName)) ||
+            (aliasesByField.TryGetValue(f.Id, out var aliases) && aliases.Overlaps(clientSet));
+
+        var requiredHits = required.Count(FieldMatches);
+        var optionalHits = optional.Count(FieldMatches);
 
         var requiredRatio = required.Count == 0 ? 0 : (double)requiredHits / required.Count;
         var optionalRatio = optional.Count == 0 ? 0 : (double)optionalHits / optional.Count;
