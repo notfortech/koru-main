@@ -1,0 +1,3 @@
+expression SourceFilePath = "C:\StudioTechBI\SourceData\ndis-participant-service-delivery.xlsx" meta [IsParameterQuery=true, Type="Text", IsParameterQueryRequired=true]
+	queryGroup: Parameters
+	annotation PBI_ResultType = Text

@@ -1,0 +1,67 @@
+table Fact_ProgramExpenditure
+
+	column ProgramId
+		dataType: string
+		sourceColumn: ProgramId
+		summarizeBy: none
+
+	column TransactionDate
+		dataType: dateTime
+		formatString: Short Date
+		sourceColumn: TransactionDate
+		summarizeBy: none
+
+	column AppropriationCode
+		dataType: string
+		sourceColumn: AppropriationCode
+		summarizeBy: none
+
+	column PortfolioId
+		dataType: string
+		sourceColumn: PortfolioId
+		summarizeBy: none
+
+	column BudgetedAmount
+		dataType: double
+		formatString: \$#,##0
+		sourceColumn: BudgetedAmount
+		summarizeBy: none
+
+	column ActualAmount
+		dataType: double
+		formatString: \$#,##0
+		sourceColumn: ActualAmount
+		summarizeBy: none
+
+	column FTEHeadcount
+		dataType: double
+		formatString: #,##0.0
+		sourceColumn: FTEHeadcount
+		summarizeBy: none
+
+	column CostCentre
+		dataType: string
+		sourceColumn: CostCentre
+		summarizeBy: none
+
+	column FundingSource
+		dataType: string
+		sourceColumn: FundingSource
+		summarizeBy: none
+
+	partition Fact_ProgramExpenditure = m
+		mode: import
+		source =
+				let
+					Source = Excel.Workbook(File.Contents(SourceFilePath), null, true),
+					Data = Source{[Item="ProgramExpenditure",Kind="Sheet"]}[Data],
+					Promoted = Table.PromoteHeaders(Data, [PromoteAllScalars=true]),
+					Typed = Table.TransformColumnTypes(Promoted,{
+						{"ProgramId", type text}, {"TransactionDate", type date}, {"AppropriationCode", type text},
+						{"PortfolioId", type text}, {"BudgetedAmount", type number}, {"ActualAmount", type number},
+						{"FTEHeadcount", type number}, {"CostCentre", type text}, {"FundingSource", type text}
+					})
+				in
+					Typed
+
+	annotation PBI_ResultType = Table

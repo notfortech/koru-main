@@ -1,0 +1,39 @@
+table Fact_InventorySnapshot
+
+	column SKU
+		dataType: string
+		sourceColumn: SKU
+		summarizeBy: none
+
+	column StoreId
+		dataType: string
+		sourceColumn: StoreId
+		summarizeBy: none
+
+	column SnapshotDate
+		dataType: dateTime
+		formatString: Short Date
+		sourceColumn: SnapshotDate
+		summarizeBy: none
+
+	column StockOnHand
+		dataType: int64
+		formatString: #,##0
+		sourceColumn: StockOnHand
+		summarizeBy: none
+
+	partition Fact_InventorySnapshot = m
+		mode: import
+		source =
+				let
+					Source = Excel.Workbook(File.Contents(SourceFilePath), null, true),
+					Data = Source{[Item="InventorySnapshot",Kind="Sheet"]}[Data],
+					Promoted = Table.PromoteHeaders(Data, [PromoteAllScalars=true]),
+					Typed = Table.TransformColumnTypes(Promoted,{
+						{"SKU", type text}, {"StoreId", type text}, {"SnapshotDate", type date},
+						{"StockOnHand", Int64.Type}
+					})
+				in
+					Typed
+
+	annotation PBI_ResultType = Table

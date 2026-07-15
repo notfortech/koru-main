@@ -1,0 +1,14 @@
+model Model
+	culture: en-US
+	defaultPowerBIDataSourceVersion: powerBI_V3
+	sourceQueryCulture: en-AU
+	discourageImplicitMeasures
+
+ref table Fact_RailService
+ref table Dim_Train
+ref table Dim_Line
+ref table Dim_Station
+ref table Dim_Date
+ref table _Measures
+
+ref culture en-US

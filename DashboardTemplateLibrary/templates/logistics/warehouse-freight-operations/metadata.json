@@ -1,0 +1,14 @@
+{
+  "industry": "Logistics",
+  "template_slug": "warehouse-freight-operations",
+  "template_name": "Logistics — Warehouse & Freight Operations",
+  "tier": 1,
+  "schema_model_ref": "Logistics — Warehouse & Freight Operations (new industry — not yet in SchemaModelSeeder.cs)",
+  "version": "1.0",
+  "blob_path": "templates/logistics/warehouse-freight-operations/overview.pbix",
+  "status": "semantic_model_ready_pending_pbix_build",
+  "owner": "unassigned",
+  "sensitivity_label": "Internal",
+  "pii_columns": [],
+  "notes": "Distinct from the existing 'Transport — Freight & Delivery' template: this one adds warehouse/SKU-level inventory movement rather than just carrier trip records. Review for overlap before both go live."
+}

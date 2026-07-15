@@ -1,0 +1,44 @@
+table Dim_Date
+
+	column Date
+		dataType: dateTime
+		formatString: Short Date
+		sourceColumn: Date
+		summarizeBy: none
+		isKey
+
+	column FinancialYear
+		dataType: string
+		summarizeBy: none
+		isCalculated
+		expression: "FY" & FORMAT(EDATE([Date], 6), "YY")
+
+	column Quarter
+		dataType: int64
+		summarizeBy: none
+		isCalculated
+		expression: ROUNDUP(MONTH(EDATE([Date], 6)) / 3, 0)
+
+	column MonthNumber
+		dataType: int64
+		summarizeBy: none
+		isCalculated
+		expression: MONTH([Date])
+
+	column MonthName
+		dataType: string
+		summarizeBy: none
+		isCalculated
+		expression: FORMAT([Date], "MMMM")
+
+	column Year
+		dataType: int64
+		summarizeBy: none
+		isCalculated
+		expression: YEAR([Date])
+
+	partition Dim_Date = calculated
+		mode: import
+		source = CALENDAR(DATE(2018,7,1), DATE(2030,6,30))
+
+	annotation PBI_Id = DateTableTemplate

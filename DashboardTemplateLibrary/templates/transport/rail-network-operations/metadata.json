@@ -1,0 +1,14 @@
+{
+  "industry": "Transport",
+  "template_slug": "rail-network-operations",
+  "template_name": "Transport — Rail Network Operations",
+  "tier": 1,
+  "schema_model_ref": "Transport — Rail Network Operations (new template under the existing 'Transport' industry — not yet in SchemaModelSeeder.cs)",
+  "version": "1.0",
+  "blob_path": "templates/transport/rail-network-operations/overview.pbix",
+  "status": "semantic_model_ready_pending_pbix_build",
+  "owner": "unassigned",
+  "sensitivity_label": "Internal",
+  "pii_columns": [],
+  "notes": "Sibling of the already-seeded 'Transport — Fleet & Trip Operations' and 'Transport — Freight & Delivery' templates (same Industry='Transport' grouping). Add a third SchemaModel row rather than a new industry."
+}

@@ -1,0 +1,33 @@
+table Dim_Appropriation
+
+	column AppropriationCode
+		dataType: string
+		sourceColumn: AppropriationCode
+		summarizeBy: none
+		isKey
+
+	column AppropriationName
+		dataType: string
+		sourceColumn: AppropriationName
+		summarizeBy: none
+
+	column AppropriationType
+		dataType: string
+		sourceColumn: AppropriationType
+		summarizeBy: none
+
+	partition Dim_Appropriation = m
+		mode: import
+		source =
+				let
+					Source = Excel.Workbook(File.Contents(SourceFilePath), null, true),
+					Data = Source{[Item="Appropriations",Kind="Sheet"]}[Data],
+					Promoted = Table.PromoteHeaders(Data, [PromoteAllScalars=true]),
+					Typed = Table.TransformColumnTypes(Promoted,{
+						{"AppropriationCode", type text}, {"AppropriationName", type text},
+						{"AppropriationType", type text}
+					})
+				in
+					Typed
+
+	annotation PBI_ResultType = Table

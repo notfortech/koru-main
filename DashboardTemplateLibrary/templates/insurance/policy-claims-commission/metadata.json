@@ -1,0 +1,14 @@
+{
+  "industry": "Insurance",
+  "template_slug": "policy-claims-commission",
+  "template_name": "Insurance — Policy, Claims & Commission",
+  "tier": 1,
+  "schema_model_ref": "Insurance — Policy, Claims & Commission (new industry — not yet in SchemaModelSeeder.cs)",
+  "version": "1.0",
+  "blob_path": "templates/insurance/policy-claims-commission/overview.pbix",
+  "status": "semantic_model_ready_pending_pbix_build",
+  "owner": "unassigned",
+  "sensitivity_label": "Confidential",
+  "pii_columns": ["Dim_Client[ClientName]"],
+  "notes": "Covers general insurance broking (policy + commission + claims). A separate 'Finance — Advisory & Broking' template (mortgage/wealth broking: FUM, trail commission, clawback) is a natural companion for the 'Finance services' half of this industry bucket and can reuse Dim_Broker/Dim_Client."
+}

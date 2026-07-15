@@ -1,0 +1,14 @@
+{
+  "industry": "Professional Services",
+  "template_slug": "consulting-engagement-utilisation",
+  "template_name": "Professional Services — Consulting Engagement & Utilisation",
+  "tier": 1,
+  "schema_model_ref": "Professional Services — Consulting Engagement & Utilisation (new industry — not yet in SchemaModelSeeder.cs)",
+  "version": "1.0",
+  "blob_path": "templates/professional-services/consulting-engagement-utilisation/overview.pbix",
+  "status": "semantic_model_ready_pending_pbix_build",
+  "owner": "unassigned",
+  "sensitivity_label": "Confidential",
+  "pii_columns": ["Dim_Consultant[ConsultantName]", "Dim_Client[ClientName]"],
+  "notes": "Sized for boutique consultancies (small partner-led headcount, engagement-based billing) rather than large multi-service firms — utilisation, recovery rate and WIP are the primary lenses, matching the 'Professional Services' Tier 1 signal pack already defined in stbi-agenthost/prompts/IndustryDetectionRules.md."
+}

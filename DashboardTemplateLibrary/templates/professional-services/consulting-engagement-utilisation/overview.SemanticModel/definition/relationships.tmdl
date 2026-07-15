@@ -1,0 +1,23 @@
+relationship Fact_TimeEntry_ConsultantId_Dim_Consultant
+	fromColumn: Fact_TimeEntry.ConsultantId
+	toColumn: Dim_Consultant.ConsultantId
+
+relationship Fact_TimeEntry_EngagementId_Dim_Engagement
+	fromColumn: Fact_TimeEntry.EngagementId
+	toColumn: Dim_Engagement.EngagementId
+
+relationship Fact_TimeEntry_EntryDate_Dim_Date
+	fromColumn: Fact_TimeEntry.EntryDate
+	toColumn: Dim_Date.Date
+
+relationship Fact_Billing_EngagementId_Dim_Engagement
+	fromColumn: Fact_Billing.EngagementId
+	toColumn: Dim_Engagement.EngagementId
+
+relationship Fact_Billing_InvoiceDate_Dim_Date
+	fromColumn: Fact_Billing.InvoiceDate
+	toColumn: Dim_Date.Date
+
+relationship Dim_Engagement_ClientId_Dim_Client
+	fromColumn: Dim_Engagement.ClientId
+	toColumn: Dim_Client.ClientId

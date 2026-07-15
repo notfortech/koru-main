@@ -1,0 +1,55 @@
+table _Measures
+
+	measure 'Total Billable Hours' = SUM(Fact_TimeEntry[BillableHours])
+		formatString: #,##0.0
+		displayFolder: Utilisation\Hours
+
+	measure 'Total Hours Logged' = SUM(Fact_TimeEntry[BillableHours]) + SUM(Fact_TimeEntry[NonBillableHours])
+		formatString: #,##0.0
+		displayFolder: Utilisation\Hours
+
+	measure 'Utilisation %' = DIVIDE([Total Billable Hours], [Total Hours Logged])
+		formatString: 0.0%;-0.0%
+		displayFolder: Utilisation\Hours
+
+	measure 'Active Consultants' = DISTINCTCOUNT(Fact_TimeEntry[ConsultantId])
+		formatString: #,##0
+		displayFolder: Utilisation\Headcount
+
+	measure 'Active Engagements' = DISTINCTCOUNT(Fact_TimeEntry[EngagementId])
+		formatString: #,##0
+		displayFolder: Engagement\Volume
+
+	measure 'Avg Charge-Out Rate' = AVERAGE(Fact_TimeEntry[ChargeOutRate])
+		formatString: \$#,##0.00
+		displayFolder: Financial\Billing
+
+	measure 'Fees Billed' = SUM(Fact_Billing[FeesBilled])
+		formatString: \$#,##0
+		displayFolder: Financial\Billing
+
+	measure 'YTD Fees Billed' = TOTALYTD([Fees Billed], Dim_Date[Date])
+		formatString: \$#,##0
+		displayFolder: Financial\Billing
+
+	measure 'Fees Collected' = SUM(Fact_Billing[FeesCollected])
+		formatString: \$#,##0
+		displayFolder: Financial\Billing
+
+	measure 'Recovery Rate %' = DIVIDE([Fees Collected], [Fees Billed])
+		formatString: 0.0%;-0.0%
+		displayFolder: Financial\Billing
+
+	measure 'WIP Balance' = SUM(Fact_Billing[WIPBalance])
+		formatString: \$#,##0
+		displayFolder: Financial\WIP
+
+	column BlankColumn
+		isHidden
+		formatString: 0
+		summarizeBy: none
+		sourceColumn: Value
+
+	partition _Measures = calculated
+		mode: import
+		source = {BLANK()}

@@ -1,0 +1,38 @@
+table Dim_Consultant
+
+	column ConsultantId
+		dataType: string
+		sourceColumn: ConsultantId
+		summarizeBy: none
+		isKey
+
+	column ConsultantName
+		dataType: string
+		sourceColumn: ConsultantName
+		summarizeBy: none
+
+	column PracticeArea
+		dataType: string
+		sourceColumn: PracticeArea
+		summarizeBy: none
+
+	column Level
+		dataType: string
+		sourceColumn: Level
+		summarizeBy: none
+
+	partition Dim_Consultant = m
+		mode: import
+		source =
+				let
+					Source = Excel.Workbook(File.Contents(SourceFilePath), null, true),
+					Data = Source{[Item="Consultants",Kind="Sheet"]}[Data],
+					Promoted = Table.PromoteHeaders(Data, [PromoteAllScalars=true]),
+					Typed = Table.TransformColumnTypes(Promoted,{
+						{"ConsultantId", type text}, {"ConsultantName", type text},
+						{"PracticeArea", type text}, {"Level", type text}
+					})
+				in
+					Typed
+
+	annotation PBI_ResultType = Table

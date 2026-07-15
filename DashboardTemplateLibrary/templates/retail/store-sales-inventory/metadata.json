@@ -1,0 +1,14 @@
+{
+  "industry": "Retail",
+  "template_slug": "store-sales-inventory",
+  "template_name": "Retail — Store Sales & Inventory",
+  "tier": 1,
+  "schema_model_ref": "Retail — Store Sales & Inventory (new industry — not yet in SchemaModelSeeder.cs)",
+  "version": "1.0",
+  "blob_path": "templates/retail/store-sales-inventory/overview.pbix",
+  "status": "semantic_model_ready_pending_pbix_build",
+  "owner": "unassigned",
+  "sensitivity_label": "Internal",
+  "pii_columns": [],
+  "notes": "Two fact tables at different grains (transaction-level sales, snapshot-level stock) sharing Dim_Store/Dim_Product/Dim_Date — standard retail conformed-dimension pattern."
+}

@@ -1,0 +1,14 @@
+{
+  "industry": "NDIS",
+  "template_slug": "participant-service-delivery",
+  "template_name": "NDIS — Participant Service Delivery",
+  "tier": 1,
+  "schema_model_ref": "NDIS — Participant Service Delivery",
+  "version": "1.0",
+  "blob_path": "templates/ndis/participant-service-delivery/overview.pbix",
+  "status": "semantic_model_ready_pending_pbix_build",
+  "owner": "unassigned",
+  "sensitivity_label": "Confidential",
+  "pii_columns": ["Fact_ServiceDelivery[ParticipantId]", "Dim_Participant[ParticipantName]"],
+  "notes": "Field names match SchemaModel seed in StudioTechBI.Backend/StudioTechBI.Infrastructure/Data/SchemaModelSeeder.cs — do not rename fact columns without updating the SchemaModelField rows and RequiredColumnsJson/OptionalColumnsJson used for client-data matching."
+}

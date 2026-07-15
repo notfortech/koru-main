@@ -1,0 +1,49 @@
+table Fact_Claim
+
+	column ClaimId
+		dataType: string
+		sourceColumn: ClaimId
+		summarizeBy: none
+
+	column PolicyId
+		dataType: string
+		sourceColumn: PolicyId
+		summarizeBy: none
+
+	column ClaimDate
+		dataType: dateTime
+		formatString: Short Date
+		sourceColumn: ClaimDate
+		summarizeBy: none
+
+	column ClaimType
+		dataType: string
+		sourceColumn: ClaimType
+		summarizeBy: none
+
+	column ClaimAmount
+		dataType: double
+		formatString: \$#,##0.00
+		sourceColumn: ClaimAmount
+		summarizeBy: none
+
+	column ClaimStatus
+		dataType: string
+		sourceColumn: ClaimStatus
+		summarizeBy: none
+
+	partition Fact_Claim = m
+		mode: import
+		source =
+				let
+					Source = Excel.Workbook(File.Contents(SourceFilePath), null, true),
+					Data = Source{[Item="Claims",Kind="Sheet"]}[Data],
+					Promoted = Table.PromoteHeaders(Data, [PromoteAllScalars=true]),
+					Typed = Table.TransformColumnTypes(Promoted,{
+						{"ClaimId", type text}, {"PolicyId", type text}, {"ClaimDate", type date},
+						{"ClaimType", type text}, {"ClaimAmount", type number}, {"ClaimStatus", type text}
+					})
+				in
+					Typed
+
+	annotation PBI_ResultType = Table

@@ -1,0 +1,73 @@
+table Fact_ServiceDelivery
+
+	column ParticipantId
+		dataType: string
+		sourceColumn: ParticipantId
+		summarizeBy: none
+
+	column SupportItemCode
+		dataType: string
+		sourceColumn: SupportItemCode
+		summarizeBy: none
+
+	column ServiceDate
+		dataType: dateTime
+		formatString: Short Date
+		sourceColumn: ServiceDate
+		summarizeBy: none
+
+	column SupportCategory
+		dataType: string
+		sourceColumn: SupportCategory
+		summarizeBy: none
+
+	column ServiceHours
+		dataType: double
+		formatString: 0.0
+		sourceColumn: ServiceHours
+		summarizeBy: none
+
+	column ClaimAmount
+		dataType: double
+		formatString: \$#,##0.00
+		sourceColumn: ClaimAmount
+		summarizeBy: none
+
+	column ProviderId
+		dataType: string
+		sourceColumn: ProviderId
+		summarizeBy: none
+
+	column PlanId
+		dataType: string
+		sourceColumn: PlanId
+		summarizeBy: none
+
+	column PlanBudgetRemaining
+		dataType: double
+		formatString: \$#,##0.00
+		sourceColumn: PlanBudgetRemaining
+		summarizeBy: none
+
+	column Location
+		dataType: string
+		sourceColumn: Location
+		summarizeBy: none
+
+	partition Fact_ServiceDelivery = m
+		mode: import
+		source =
+				let
+					Source = Excel.Workbook(File.Contents(SourceFilePath), null, true),
+					Data = Source{[Item="ServiceDelivery",Kind="Sheet"]}[Data],
+					Promoted = Table.PromoteHeaders(Data, [PromoteAllScalars=true]),
+					Typed = Table.TransformColumnTypes(Promoted,{
+						{"ParticipantId", type text}, {"SupportItemCode", type text}, {"ServiceDate", type date},
+						{"SupportCategory", type text}, {"ServiceHours", type number}, {"ClaimAmount", type number},
+						{"ProviderId", type text}, {"PlanId", type text}, {"PlanBudgetRemaining", type number},
+						{"Location", type text}
+					})
+				in
+					Typed
+
+	annotation PBI_ResultType = Table

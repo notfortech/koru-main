@@ -1,0 +1,79 @@
+table Fact_RailService
+
+	column ServiceId
+		dataType: string
+		sourceColumn: ServiceId
+		summarizeBy: none
+
+	column TrainId
+		dataType: string
+		sourceColumn: TrainId
+		summarizeBy: none
+
+	column LineCode
+		dataType: string
+		sourceColumn: LineCode
+		summarizeBy: none
+
+	column ServiceDate
+		dataType: dateTime
+		formatString: Short Date
+		sourceColumn: ServiceDate
+		summarizeBy: none
+
+	column ScheduledDeparture
+		dataType: dateTime
+		formatString: General Date
+		sourceColumn: ScheduledDeparture
+		summarizeBy: none
+
+	column ActualDeparture
+		dataType: dateTime
+		formatString: General Date
+		sourceColumn: ActualDeparture
+		summarizeBy: none
+
+	column OriginStationId
+		dataType: string
+		sourceColumn: OriginStationId
+		summarizeBy: none
+
+	column DestinationStationId
+		dataType: string
+		sourceColumn: DestinationStationId
+		summarizeBy: none
+
+	column ServiceStatus
+		dataType: string
+		sourceColumn: ServiceStatus
+		summarizeBy: none
+
+	column DelayMinutes
+		dataType: double
+		formatString: #,##0.0
+		sourceColumn: DelayMinutes
+		summarizeBy: none
+
+	column PassengerCount
+		dataType: int64
+		formatString: #,##0
+		sourceColumn: PassengerCount
+		summarizeBy: none
+
+	partition Fact_RailService = m
+		mode: import
+		source =
+				let
+					Source = Excel.Workbook(File.Contents(SourceFilePath), null, true),
+					Data = Source{[Item="RailService",Kind="Sheet"]}[Data],
+					Promoted = Table.PromoteHeaders(Data, [PromoteAllScalars=true]),
+					Typed = Table.TransformColumnTypes(Promoted,{
+						{"ServiceId", type text}, {"TrainId", type text}, {"LineCode", type text},
+						{"ServiceDate", type date}, {"ScheduledDeparture", type datetime}, {"ActualDeparture", type datetime},
+						{"OriginStationId", type text}, {"DestinationStationId", type text}, {"ServiceStatus", type text},
+						{"DelayMinutes", type number}, {"PassengerCount", Int64.Type}
+					})
+				in
+					Typed
+
+	annotation PBI_ResultType = Table

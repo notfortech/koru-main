@@ -1,0 +1,32 @@
+table Dim_Client
+
+	column ClientId
+		dataType: string
+		sourceColumn: ClientId
+		summarizeBy: none
+		isKey
+
+	column ClientName
+		dataType: string
+		sourceColumn: ClientName
+		summarizeBy: none
+
+	column Industry
+		dataType: string
+		sourceColumn: Industry
+		summarizeBy: none
+
+	partition Dim_Client = m
+		mode: import
+		source =
+				let
+					Source = Excel.Workbook(File.Contents(SourceFilePath), null, true),
+					Data = Source{[Item="Clients",Kind="Sheet"]}[Data],
+					Promoted = Table.PromoteHeaders(Data, [PromoteAllScalars=true]),
+					Typed = Table.TransformColumnTypes(Promoted,{
+						{"ClientId", type text}, {"ClientName", type text}, {"Industry", type text}
+					})
+				in
+					Typed
+
+	annotation PBI_ResultType = Table

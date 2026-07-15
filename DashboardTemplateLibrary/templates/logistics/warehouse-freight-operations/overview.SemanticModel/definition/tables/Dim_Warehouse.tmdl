@@ -1,0 +1,32 @@
+table Dim_Warehouse
+
+	column WarehouseId
+		dataType: string
+		sourceColumn: WarehouseId
+		summarizeBy: none
+		isKey
+
+	column WarehouseName
+		dataType: string
+		sourceColumn: WarehouseName
+		summarizeBy: none
+
+	column Region
+		dataType: string
+		sourceColumn: Region
+		summarizeBy: none
+
+	partition Dim_Warehouse = m
+		mode: import
+		source =
+				let
+					Source = Excel.Workbook(File.Contents(SourceFilePath), null, true),
+					Data = Source{[Item="Warehouses",Kind="Sheet"]}[Data],
+					Promoted = Table.PromoteHeaders(Data, [PromoteAllScalars=true]),
+					Typed = Table.TransformColumnTypes(Promoted,{
+						{"WarehouseId", type text}, {"WarehouseName", type text}, {"Region", type text}
+					})
+				in
+					Typed
+
+	annotation PBI_ResultType = Table

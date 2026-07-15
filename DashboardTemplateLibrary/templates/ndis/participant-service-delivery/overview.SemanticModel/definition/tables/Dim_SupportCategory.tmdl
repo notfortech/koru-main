@@ -1,0 +1,33 @@
+table Dim_SupportCategory
+
+	column SupportCategoryCode
+		dataType: string
+		sourceColumn: SupportCategoryCode
+		summarizeBy: none
+		isKey
+
+	column SupportCategoryName
+		dataType: string
+		sourceColumn: SupportCategoryName
+		summarizeBy: none
+
+	column BudgetGroup
+		dataType: string
+		sourceColumn: BudgetGroup
+		summarizeBy: none
+
+	partition Dim_SupportCategory = m
+		mode: import
+		source =
+				let
+					Source = Excel.Workbook(File.Contents(SourceFilePath), null, true),
+					Data = Source{[Item="SupportCategories",Kind="Sheet"]}[Data],
+					Promoted = Table.PromoteHeaders(Data, [PromoteAllScalars=true]),
+					Typed = Table.TransformColumnTypes(Promoted,{
+						{"SupportCategoryCode", type text}, {"SupportCategoryName", type text},
+						{"BudgetGroup", type text}
+					})
+				in
+					Typed
+
+	annotation PBI_ResultType = Table
