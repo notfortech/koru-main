@@ -18,15 +18,18 @@ public class BlueprintsLegacyController : BaseApiController
 {
     private readonly IAiGateway _gateway;
     private readonly IClientService _clientService;
+    private readonly IAgentHostClient _agentHostClient;
     private readonly ILogger<BlueprintsLegacyController> _logger;
 
     public BlueprintsLegacyController(
         IAiGateway gateway,
         IClientService clientService,
+        IAgentHostClient agentHostClient,
         ILogger<BlueprintsLegacyController> logger)
     {
         _gateway = gateway;
         _clientService = clientService;
+        _agentHostClient = agentHostClient;
         _logger = logger;
     }
 
@@ -120,21 +123,55 @@ public class BlueprintsLegacyController : BaseApiController
     }
 
     /// <summary>
-    /// Credits stub — the new system does not track credits.
-    /// Returns a safe response so Koru doesn't crash.
+    /// Returns the tenant's real AI credit balance from the shared ledger in stbi-agenthost
+    /// (same balance Blueprint generation and AI-assisted report generation both draw from).
+    /// Falls back to a null/unknown balance if the tenant can't be resolved or AgentHost is
+    /// unreachable, so this endpoint never breaks the caller.
     /// </summary>
     [HttpGet("credits")]
-    public IActionResult GetCredits(
+    public async Task<IActionResult> GetCredits(
         [FromQuery] string? clientCode,
-        [FromQuery] bool useSelectedClient = false)
+        [FromQuery] bool useSelectedClient = false,
+        CancellationToken ct = default)
     {
+        var code = useSelectedClient
+            ? clientCode?.Trim()
+            : User.FindFirstValue("client_code")?.Trim();
+
+        if (string.IsNullOrWhiteSpace(code))
+        {
+            return Ok(new
+            {
+                creditsRemaining = (int?)null,
+                isUnlimited = false,
+                subscriptionPlan = (string?)null,
+                resetDate = (DateTimeOffset?)null,
+                message = "No client selected."
+            });
+        }
+
+        var client = await _clientService.GetByClientCodeAsync(code, ct);
+        if (client is null)
+        {
+            return Ok(new
+            {
+                creditsRemaining = (int?)null,
+                isUnlimited = false,
+                subscriptionPlan = (string?)null,
+                resetDate = (DateTimeOffset?)null,
+                message = $"Client '{code}' not found."
+            });
+        }
+
+        var balance = await _agentHostClient.CheckCreditsAsync(client.ClientId, client.ClientName, ct);
+
         return Ok(new
         {
-            creditsRemaining = (int?)null,
-            creditsConsumed = (int?)null,
-            subscriptionPlan = (string?)null,
-            resetDate = (DateTimeOffset?)null,
-            message = "Credits are not tracked in the current plan."
+            creditsRemaining = balance.CreditsRemaining,
+            isUnlimited = balance.IsUnlimited,
+            subscriptionPlan = balance.Plan,
+            resetDate = balance.NextResetDate,
+            message = balance.Allowed ? (string?)null : balance.DenialReason
         });
     }
 }

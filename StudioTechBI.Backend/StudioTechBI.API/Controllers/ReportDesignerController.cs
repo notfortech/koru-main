@@ -21,10 +21,12 @@ public class ReportDesignerController : ControllerBase
 {
     private const long MaxFileSizeBytes = 50 * 1024 * 1024; // 50 MB
     private static readonly string[] AllowedExtensions = { ".xlsx", ".xls", ".csv" };
+    private const string ReportModelFeature = "report-model-generation";
 
     private readonly IReportDesignerClient _reportDesignerClient;
     private readonly SqlSchemaReaderService _sqlSchemaReader;
     private readonly SharePointSchemaService _sharePointSchemaService;
+    private readonly IAgentHostClient _agentHostClient;
     private readonly IReportDesignerConsentService _consentService;
     private readonly IReportMatchService _reportMatchService;
     private readonly IReportDataUsageConsentService _dataUsageConsentService;
@@ -35,6 +37,7 @@ public class ReportDesignerController : ControllerBase
         IReportDesignerClient reportDesignerClient,
         SqlSchemaReaderService sqlSchemaReader,
         SharePointSchemaService sharePointSchemaService,
+        IAgentHostClient agentHostClient,
         IReportDesignerConsentService consentService,
         IReportMatchService reportMatchService,
         IReportDataUsageConsentService dataUsageConsentService,
@@ -44,6 +47,7 @@ public class ReportDesignerController : ControllerBase
         _reportDesignerClient = reportDesignerClient;
         _sqlSchemaReader = sqlSchemaReader;
         _sharePointSchemaService = sharePointSchemaService;
+        _agentHostClient = agentHostClient;
         _consentService = consentService;
         _reportMatchService = reportMatchService;
         _dataUsageConsentService = dataUsageConsentService;
@@ -257,7 +261,9 @@ public class ReportDesignerController : ControllerBase
     /// Sends extracted schema metadata (no data values) to the Report Designer AI endpoint.
     /// Returns a star schema recommendation and template scores.
     /// Requires that POST /consent was already called with ConsentGranted = true for the
-    /// same (ClientId, Schema.SchemaHash) pair — the AI is never called without it.
+    /// same (ClientId, Schema.SchemaHash) pair — the AI is never called without it. Also
+    /// gated by the client's shared AI credit balance (same ledger as Blueprint generation);
+    /// insufficient credits returns 402 before the AI call is made.
     /// </summary>
     [HttpPost("generate-model")]
     public async Task<IActionResult> GenerateReportModelAsync(
@@ -287,12 +293,22 @@ public class ReportDesignerController : ControllerBase
                 "Call POST /api/report-designer/consent with ConsentGranted = true for this schema first."));
         }
 
+        var creditCheck = await _agentHostClient.CheckCreditsAsync(client.Id, client.ClientName, cancellationToken);
+        if (!creditCheck.Allowed)
+        {
+            return StatusCode(StatusCodes.Status402PaymentRequired, ApiResponse<object>.ErrorResponse(
+                creditCheck.DenialReason ?? "Insufficient AI credits to generate a report model."));
+        }
+
         var correlationId = Guid.NewGuid().ToString();
 
         try
         {
             var result = await _reportDesignerClient.GenerateReportModelAsync(
                 request, correlationId, cancellationToken);
+
+            await _agentHostClient.ConsumeCreditAsync(
+                client.Id, ReportModelFeature, correlationId, result.DurationMs, cancellationToken);
 
             return Ok(ApiResponse<GenerateReportModelResponse>.SuccessResponse(
                 result, "Report model generated successfully."));

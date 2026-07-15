@@ -3,6 +3,7 @@ using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using StudioTechBI.Application.DTOs.Blueprints;
+using StudioTechBI.Application.DTOs.Credits;
 using StudioTechBI.Application.Interfaces;
 using StudioTechBI.Application.Models;
 
@@ -132,6 +133,103 @@ public class AgentHostClient : IAgentHostClient
             return null;
         }
     }
+
+    public async Task<CreditCheckResult> CheckCreditsAsync(
+        Guid tenantId, string? tenantName, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var httpRequest = new HttpRequestMessage(HttpMethod.Post, "api/credits/check");
+            httpRequest.Headers.Add("X-Tenant-Id", tenantId.ToString());
+            if (!string.IsNullOrWhiteSpace(tenantName))
+                httpRequest.Headers.Add("X-Tenant-Name", tenantName);
+
+            using var response = await _httpClient.SendAsync(httpRequest, cancellationToken);
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+
+            if (response.StatusCode == HttpStatusCode.PaymentRequired)
+            {
+                var denied = JsonSerializer.Deserialize<CreditCheckResponseDto>(body, JsonOptions);
+                _logger.LogInformation(
+                    "AgentHost.CreditsCheck denied — tenant {TenantId} has no credits remaining.", tenantId);
+                return new CreditCheckResult(
+                    Allowed: false,
+                    Plan: null,
+                    CreditsRemaining: 0,
+                    IsUnlimited: false,
+                    NextResetDate: denied?.NextResetDate,
+                    DenialReason: denied?.Detail ?? "Insufficient credits.");
+            }
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning(
+                    "AgentHost.CreditsCheck failed — {StatusCode} for tenant {TenantId}. Failing open.",
+                    (int)response.StatusCode, tenantId);
+                return new CreditCheckResult(true, null, null, false, null, null);
+            }
+
+            var dto = JsonSerializer.Deserialize<CreditCheckResponseDto>(body, JsonOptions);
+            return new CreditCheckResult(
+                Allowed: true,
+                Plan: dto?.Plan,
+                CreditsRemaining: dto?.CreditsRemaining,
+                IsUnlimited: dto?.IsUnlimited ?? false,
+                NextResetDate: dto?.NextResetDate,
+                DenialReason: null);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(ex,
+                "AgentHost.CreditsCheck could not reach AgentHost for tenant {TenantId}. Failing open.", tenantId);
+            return new CreditCheckResult(true, null, null, false, null, null);
+        }
+    }
+
+    public async Task<CreditConsumeResult?> ConsumeCreditAsync(
+        Guid tenantId, string feature, string? requestId, long executionTimeMs,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var payload = JsonSerializer.Serialize(
+                new { feature, requestId, executionTimeMs }, JsonOptions);
+
+            var httpRequest = new HttpRequestMessage(HttpMethod.Post, "api/credits/consume");
+            httpRequest.Headers.Add("X-Tenant-Id", tenantId.ToString());
+            httpRequest.Content = new StringContent(payload, System.Text.Encoding.UTF8, "application/json");
+
+            using var response = await _httpClient.SendAsync(httpRequest, cancellationToken);
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning(
+                    "AgentHost.CreditsConsume failed — {StatusCode} for tenant {TenantId}, feature {Feature}.",
+                    (int)response.StatusCode, tenantId, feature);
+                return null;
+            }
+
+            var dto = JsonSerializer.Deserialize<CreditConsumeResponseDto>(body, JsonOptions);
+            if (dto is null) return null;
+
+            return new CreditConsumeResult(
+                dto.CreditsConsumed, dto.CreditsRemaining, dto.IsUnlimited, dto.Plan, dto.ResetDate);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(ex,
+                "AgentHost.CreditsConsume could not reach AgentHost for tenant {TenantId}, feature {Feature}.",
+                tenantId, feature);
+            return null;
+        }
+    }
+
+    private sealed record CreditCheckResponseDto(
+        string? Plan, int? CreditsRemaining, bool IsUnlimited, DateTimeOffset? NextResetDate, string? Detail);
+
+    private sealed record CreditConsumeResponseDto(
+        int CreditsConsumed, int? CreditsRemaining, bool IsUnlimited, string? Plan, DateTimeOffset? ResetDate);
 
     private static string MapStatusCode(HttpStatusCode statusCode, string body) =>
         (int)statusCode switch
