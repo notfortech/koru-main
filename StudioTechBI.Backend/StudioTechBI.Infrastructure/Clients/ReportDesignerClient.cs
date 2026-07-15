@@ -335,10 +335,11 @@ public class ReportDesignerClient : IReportDesignerClient
 
             _logger.LogInformation(
                 "ReportDesigner.SchemaModelMatchSuccess CorrelationId={CorrelationId} MatchedModelId={MatchedModelId} " +
-                "ProposedNew={ProposedNew} DurationMs={DurationMs}",
-                correlationId, matchedModelId?.ToString() ?? "(none)", raw.ProposedModel is not null, sw.ElapsedMilliseconds);
+                "ProposedNew={ProposedNew} DurationMs={DurationMs} FieldMappingCount={FieldMappingCount}",
+                correlationId, matchedModelId?.ToString() ?? "(none)", raw.ProposedModel is not null, sw.ElapsedMilliseconds,
+                raw.FieldMappings?.Count ?? 0);
 
-            return new SchemaModelAiMatchResponse(matchedModelId, raw.Confidence, raw.ProposedModel, raw.Reasoning);
+            return new SchemaModelAiMatchResponse(matchedModelId, raw.Confidence, raw.ProposedModel, raw.Reasoning, raw.FieldMappings);
         }
     }
 
@@ -346,7 +347,8 @@ public class ReportDesignerClient : IReportDesignerClient
         string? MatchedModelId,
         double Confidence,
         ProposedSchemaModelDto? ProposedModel,
-        string? Reasoning);
+        string? Reasoning,
+        List<SchemaModelFieldMatchDto>? FieldMappings);
 
     /// <summary>
     /// Derives the star-schema summary from the blueprint's own data_model section
