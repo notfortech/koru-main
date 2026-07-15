@@ -46,6 +46,14 @@ both the migration and the seeder ran successfully.
 
 - `20260712120000_AddReportDesignerConsent.cs`
 - `20260712130000_AddSchemaModelLibrary.cs`
+- `20260715020000_AddSchemaModelFieldAliases.cs` — adds the column-alias learning
+  table. Same posture as the two above: written without `dotnet ef migrations add`
+  (still no EF CLI available), documentation/parity only —
+  `HandwrittenMigrationsBootstrapper.EnsureTablesExistAsync` is what actually creates
+  `SchemaModelFieldAliases` in production. Not yet run against a real deploy at the
+  time this was written; verify via the same `StartupDbTasksHostedService` log check
+  above after the next deploy, and spot-check with `GET /api/admin/schema-model-field-aliases/pending`
+  (should return `200` with an empty list, not a SQL error, once the table exists).
 
 Both were written without `dotnet ef migrations add` — there was no `dotnet`/EF CLI
 available in the environment they were authored in, so they couldn't be generated or
@@ -122,13 +130,14 @@ was left untouched) actually populate or depend on it? Worth a DBA/team check �
 nobody working on this had visibility into that table from the codebase alone.
 
 **Still-open follow-up:** `ApplicationDbContextModelSnapshot.cs` has no knowledge of
-`ReportDesignerConsents`, `SchemaModels`, or `SchemaModelFields`. The next time anyone
-with the `dotnet` SDK runs `dotnet ef migrations add <Name>`, EF will diff against
-that stale snapshot, conclude those tables don't exist yet, and generate a migration
-with real `migrationBuilder.CreateTable(...)` calls for them — which will fail when
-applied, since the tables already exist by then (created by the bootstrapper).
-Whoever hits this needs to either strip those `CreateTable` calls out of the generated
-migration before applying it, or reconcile the snapshot by hand first so the next
+`ReportDesignerConsents`, `SchemaModels`, `SchemaModelFields`, or (as of this addition)
+`SchemaModelFieldAliases`. The next time anyone with the `dotnet` SDK runs
+`dotnet ef migrations add <Name>`, EF will diff against that stale snapshot, conclude
+those tables don't exist yet, and generate a migration with real
+`migrationBuilder.CreateTable(...)` calls for them — which will fail when applied,
+since the tables already exist by then (created by the bootstrapper). Whoever hits
+this needs to either strip those `CreateTable` calls out of the generated migration
+before applying it, or reconcile the snapshot by hand first so the next
 `migrations add` diffs cleanly. Left as documentation rather than fixed now — the
 snapshot edit is exactly the kind of thing that's low-risk with real EF tooling to
 verify against, and higher-risk without it.
