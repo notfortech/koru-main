@@ -12,7 +12,8 @@ namespace StudioTechBI.Infrastructure.Data;
 /// EF CLI was available to debug it properly).
 ///
 /// Originally covered just ReportDesignerConsents/SchemaModels/SchemaModelFields (Stories 1-2);
-/// now also covers the Story 3 AI-Assisted match/consent/publish flow additions.
+/// now also covers the Story 3 AI-Assisted match/consent/publish flow additions, plus the
+/// column-alias learning table.
 /// </summary>
 public static class HandwrittenMigrationsBootstrapper
 {
@@ -246,6 +247,50 @@ public static class HandwrittenMigrationsBootstrapper
                     ON [dbo].[ReportDataUsageConsents] ([ReportMatchDraftId]);
                 CREATE INDEX [IX_ReportDataUsageConsents_ClientId]
                     ON [dbo].[ReportDataUsageConsents] ([ClientId]);
+            END
+        ", cancellationToken);
+
+        // ── Column-alias learning ───────────────────────────────────────────────────────────
+
+        await ExecAsync(context, logger, "SchemaModelFieldAliases", @"
+            IF OBJECT_ID('dbo.SchemaModelFieldAliases', 'U') IS NULL
+            BEGIN
+                CREATE TABLE [dbo].[SchemaModelFieldAliases] (
+                    [Id]                          UNIQUEIDENTIFIER NOT NULL,
+                    [SchemaModelFieldId]          UNIQUEIDENTIFIER NOT NULL,
+                    [AliasName]                   NVARCHAR(200)     NOT NULL,
+                    [NormalizedAliasName]         NVARCHAR(200)     NOT NULL,
+                    [ObservedDataType]            NVARCHAR(50)      NULL,
+                    [Confidence]                  FLOAT             NOT NULL,
+                    [Source]                      NVARCHAR(20)      NOT NULL,
+                    [ApprovalStatus]              NVARCHAR(20)      NOT NULL,
+                    [ObservedCount]                INT              NOT NULL,
+                    [FirstSeenAt]                 DATETIME2         NOT NULL,
+                    [LastSeenAt]                  DATETIME2         NOT NULL,
+                    [FirstSeenClientId]           UNIQUEIDENTIFIER  NULL,
+                    [FirstSeenReportMatchDraftId] UNIQUEIDENTIFIER  NULL,
+                    [DecidedBy]                   NVARCHAR(256)     NULL,
+                    [DecidedAt]                   DATETIME2         NULL,
+                    [CreatedAt]                   DATETIME2         NOT NULL,
+                    [UpdatedAt]                   DATETIME2         NULL,
+                    [CreatedBy]                   NVARCHAR(MAX)     NULL,
+                    [UpdatedBy]                   NVARCHAR(MAX)     NULL,
+                    [IsDeleted]                   BIT               NOT NULL,
+                    CONSTRAINT [PK_SchemaModelFieldAliases] PRIMARY KEY ([Id]),
+                    CONSTRAINT [FK_SchemaModelFieldAliases_SchemaModelFields_SchemaModelFieldId]
+                        FOREIGN KEY ([SchemaModelFieldId]) REFERENCES [dbo].[SchemaModelFields] ([Id])
+                        ON DELETE CASCADE,
+                    CONSTRAINT [FK_SchemaModelFieldAliases_ReportMatchDrafts_FirstSeenReportMatchDraftId]
+                        FOREIGN KEY ([FirstSeenReportMatchDraftId]) REFERENCES [dbo].[ReportMatchDrafts] ([Id])
+                        ON DELETE SET NULL
+                );
+
+                CREATE UNIQUE INDEX [IX_SchemaModelFieldAliases_FieldId_NormalizedAliasName]
+                    ON [dbo].[SchemaModelFieldAliases] ([SchemaModelFieldId], [NormalizedAliasName]);
+                CREATE INDEX [IX_SchemaModelFieldAliases_NormalizedAliasName_ApprovalStatus]
+                    ON [dbo].[SchemaModelFieldAliases] ([NormalizedAliasName], [ApprovalStatus]);
+                CREATE INDEX [IX_SchemaModelFieldAliases_ApprovalStatus]
+                    ON [dbo].[SchemaModelFieldAliases] ([ApprovalStatus]);
             END
         ", cancellationToken);
     }
