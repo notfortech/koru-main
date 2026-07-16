@@ -54,6 +54,11 @@ both the migration and the seeder ran successfully.
   time this was written; verify via the same `StartupDbTasksHostedService` log check
   above after the next deploy, and spot-check with `GET /api/admin/schema-model-field-aliases/pending`
   (should return `200` with an empty list, not a SQL error, once the table exists).
+- `20260716030000_AddAiBoundaryAuditEvents.cs` — adds the durable AI-boundary audit
+  log table (`AiBoundaryAuditEvents`). Same posture as the three above:
+  `HandwrittenMigrationsBootstrapper.EnsureTablesExistAsync` is what actually creates
+  it. Spot-check with `GET /api/admin/ai-boundary-audit-log` (should return `200`
+  with an empty or populated list, not a SQL error, once the table exists).
 
 Both were written without `dotnet ef migrations add` — there was no `dotnet`/EF CLI
 available in the environment they were authored in, so they couldn't be generated or

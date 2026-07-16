@@ -25,15 +25,18 @@ public class ReportDesignerClient : IReportDesignerClient
     private readonly HttpClient _httpClient;
     private readonly ILogger<ReportDesignerClient> _logger;
     private readonly ReportDesignerOptions _opts;
+    private readonly IAiBoundaryAuditService _auditService;
 
     public ReportDesignerClient(
         HttpClient httpClient,
         ILogger<ReportDesignerClient> logger,
-        IOptions<ReportDesignerOptions> options)
+        IOptions<ReportDesignerOptions> options,
+        IAiBoundaryAuditService auditService)
     {
         _httpClient = httpClient;
         _logger = logger;
         _opts = options.Value;
+        _auditService = auditService;
     }
 
     public async Task<GenerateReportModelResponse> GenerateReportModelAsync(
@@ -63,6 +66,19 @@ public class ReportDesignerClient : IReportDesignerClient
             request.Schema.Tables.Sum(t => t.Columns.Count),
             request.PreferredTheme ?? "(none)");
 
+        var generateClientId = Guid.TryParse(request.ClientId, out var parsedGenerateClientId) ? parsedGenerateClientId : (Guid?)null;
+        var sentMetadata = JsonSerializer.Serialize(new
+        {
+            source = request.Schema.Source,
+            fileName = request.Schema.FileName,
+            tableCount = request.Schema.Tables.Count,
+            tableNames = request.Schema.Tables.Select(t => t.TableName),
+            totalColumns = request.Schema.Tables.Sum(t => t.Columns.Count),
+            preferredTheme = request.PreferredTheme
+        }, JsonOptions);
+        await _auditService.LogSentAsync(
+            "ReportDesigner", "GenerateReportModel", correlationId, sentMetadata, generateClientId, cancellationToken);
+
         var sw = System.Diagnostics.Stopwatch.StartNew();
 
         // ── Step 1: Connect — send schema, receive sessionId ─────────────────
@@ -87,6 +103,9 @@ public class ReportDesignerClient : IReportDesignerClient
             _logger.LogError(
                 "ReportDesigner.ConnectTimeout DurationMs={DurationMs} CorrelationId={CorrelationId}",
                 sw.ElapsedMilliseconds, correlationId);
+            await _auditService.LogFailedAsync(
+                "ReportDesigner", "GenerateReportModel", correlationId, sw.ElapsedMilliseconds,
+                "Connect request timed out.", clientId: generateClientId, cancellationToken: cancellationToken);
             throw new HttpRequestException(
                 "Report Designer connect request timed out.", ex, HttpStatusCode.RequestTimeout);
         }
@@ -97,6 +116,9 @@ public class ReportDesignerClient : IReportDesignerClient
                 "ReportDesigner.ConnectFailed ExceptionType={ExceptionType} Message={Message} " +
                 "DurationMs={DurationMs} CorrelationId={CorrelationId}",
                 ex.GetType().Name, ex.Message, sw.ElapsedMilliseconds, correlationId);
+            await _auditService.LogFailedAsync(
+                "ReportDesigner", "GenerateReportModel", correlationId, sw.ElapsedMilliseconds,
+                $"Connect failed: {ex.GetType().Name}", clientId: generateClientId, cancellationToken: cancellationToken);
             throw;
         }
 
@@ -112,6 +134,10 @@ public class ReportDesignerClient : IReportDesignerClient
                     "ReportDesigner.ConnectFailed StatusCode={StatusCode} DurationMs={DurationMs} " +
                     "CorrelationId={CorrelationId}",
                     (int)connectResponse.StatusCode, sw.ElapsedMilliseconds, correlationId);
+                await _auditService.LogFailedAsync(
+                    "ReportDesigner", "GenerateReportModel", correlationId, sw.ElapsedMilliseconds,
+                    $"Connect failed with status {(int)connectResponse.StatusCode}",
+                    (int)connectResponse.StatusCode, generateClientId, cancellationToken);
 
                 throw new HttpRequestException(
                     MapStatusCode(connectResponse.StatusCode, connectBody),
@@ -196,6 +222,9 @@ public class ReportDesignerClient : IReportDesignerClient
             _logger.LogError(
                 "ReportDesigner.GenerateTimeout DurationMs={DurationMs} CorrelationId={CorrelationId}",
                 sw.ElapsedMilliseconds, correlationId);
+            await _auditService.LogFailedAsync(
+                "ReportDesigner", "GenerateReportModel", correlationId, sw.ElapsedMilliseconds,
+                "Generate request timed out.", clientId: generateClientId, cancellationToken: cancellationToken);
             throw new HttpRequestException(
                 "Report Designer generate request timed out.", ex, HttpStatusCode.RequestTimeout);
         }
@@ -206,6 +235,9 @@ public class ReportDesignerClient : IReportDesignerClient
                 "ReportDesigner.GenerateFailed ExceptionType={ExceptionType} Message={Message} " +
                 "DurationMs={DurationMs} CorrelationId={CorrelationId}",
                 ex.GetType().Name, ex.Message, sw.ElapsedMilliseconds, correlationId);
+            await _auditService.LogFailedAsync(
+                "ReportDesigner", "GenerateReportModel", correlationId, sw.ElapsedMilliseconds,
+                $"Generate failed: {ex.GetType().Name}", clientId: generateClientId, cancellationToken: cancellationToken);
             throw;
         }
 
@@ -220,6 +252,10 @@ public class ReportDesignerClient : IReportDesignerClient
                     "ReportDesigner.GenerateFailed StatusCode={StatusCode} DurationMs={DurationMs} " +
                     "CorrelationId={CorrelationId}",
                     (int)generateResponse.StatusCode, sw.ElapsedMilliseconds, correlationId);
+                await _auditService.LogFailedAsync(
+                    "ReportDesigner", "GenerateReportModel", correlationId, sw.ElapsedMilliseconds,
+                    $"Generate failed with status {(int)generateResponse.StatusCode}",
+                    (int)generateResponse.StatusCode, generateClientId, cancellationToken);
 
                 throw new HttpRequestException(
                     MapStatusCode(generateResponse.StatusCode, generateBody),
@@ -238,6 +274,9 @@ public class ReportDesignerClient : IReportDesignerClient
                 _logger.LogError(ex,
                     "ReportDesigner.GenerateParseError CorrelationId={CorrelationId} Body={Body}",
                     correlationId, Truncate(generateBody, 1000));
+                await _auditService.LogFailedAsync(
+                    "ReportDesigner", "GenerateReportModel", correlationId, sw.ElapsedMilliseconds,
+                    "Generate response could not be parsed.", (int)generateResponse.StatusCode, generateClientId, cancellationToken);
                 throw new InvalidOperationException(
                     "Report Designer generate response could not be parsed.", ex);
             }
@@ -250,6 +289,15 @@ public class ReportDesignerClient : IReportDesignerClient
                 correlationId,
                 sessionId,
                 sw.ElapsedMilliseconds);
+
+            var receivedMetadata = JsonSerializer.Serialize(new
+            {
+                sessionId,
+                templateCount = templates.Count
+            }, JsonOptions);
+            await _auditService.LogReceivedAsync(
+                "ReportDesigner", "GenerateReportModel", correlationId, receivedMetadata,
+                sw.ElapsedMilliseconds, (int)generateResponse.StatusCode, generateClientId, cancellationToken);
 
             var starSchema = ExtractStarSchema(blueprint);
 
@@ -276,6 +324,15 @@ public class ReportDesignerClient : IReportDesignerClient
             "ReportDesigner.SchemaModelMatchRequested CorrelationId={CorrelationId} ColumnCount={ColumnCount} CandidateCount={CandidateCount}",
             correlationId, request.Columns.Count, request.CandidateModels.Count);
 
+        var matchSentMetadata = JsonSerializer.Serialize(new
+        {
+            columnCount = request.Columns.Count,
+            candidateCount = request.CandidateModels.Count,
+            candidateIds = request.CandidateModels.Select(c => c.Id)
+        }, JsonOptions);
+        await _auditService.LogSentAsync(
+            "ReportDesigner", "MatchSchemaModel", correlationId, matchSentMetadata, cancellationToken: cancellationToken);
+
         var payload = JsonSerializer.Serialize(request, JsonOptions);
         var httpRequest = new HttpRequestMessage(HttpMethod.Post, "api/schema-model-match");
         httpRequest.Headers.Add("X-Correlation-Id", correlationId);
@@ -293,6 +350,9 @@ public class ReportDesignerClient : IReportDesignerClient
             _logger.LogError(
                 "ReportDesigner.SchemaModelMatchTimeout DurationMs={DurationMs} CorrelationId={CorrelationId}",
                 sw.ElapsedMilliseconds, correlationId);
+            await _auditService.LogFailedAsync(
+                "ReportDesigner", "MatchSchemaModel", correlationId, sw.ElapsedMilliseconds,
+                "Match request timed out.", cancellationToken: cancellationToken);
             throw new HttpRequestException(
                 "Schema model match request timed out.", ex, HttpStatusCode.RequestTimeout);
         }
@@ -307,6 +367,10 @@ public class ReportDesignerClient : IReportDesignerClient
                 _logger.LogWarning(
                     "ReportDesigner.SchemaModelMatchFailed StatusCode={StatusCode} DurationMs={DurationMs} CorrelationId={CorrelationId}",
                     (int)response.StatusCode, sw.ElapsedMilliseconds, correlationId);
+                await _auditService.LogFailedAsync(
+                    "ReportDesigner", "MatchSchemaModel", correlationId, sw.ElapsedMilliseconds,
+                    $"Match failed with status {(int)response.StatusCode}", (int)response.StatusCode,
+                    cancellationToken: cancellationToken);
                 throw new HttpRequestException(
                     MapStatusCode(response.StatusCode, body), inner: null, statusCode: response.StatusCode);
             }
@@ -322,6 +386,9 @@ public class ReportDesignerClient : IReportDesignerClient
                 _logger.LogError(ex,
                     "ReportDesigner.SchemaModelMatchParseError CorrelationId={CorrelationId} Body={Body}",
                     correlationId, Truncate(body, 1000));
+                await _auditService.LogFailedAsync(
+                    "ReportDesigner", "MatchSchemaModel", correlationId, sw.ElapsedMilliseconds,
+                    "Match response could not be parsed.", (int)response.StatusCode, cancellationToken: cancellationToken);
                 throw new InvalidOperationException("Schema model match response could not be parsed.", ex);
             }
 
@@ -338,6 +405,17 @@ public class ReportDesignerClient : IReportDesignerClient
                 "ProposedNew={ProposedNew} DurationMs={DurationMs} FieldMappingCount={FieldMappingCount}",
                 correlationId, matchedModelId?.ToString() ?? "(none)", raw.ProposedModel is not null, sw.ElapsedMilliseconds,
                 raw.FieldMappings?.Count ?? 0);
+
+            var matchReceivedMetadata = JsonSerializer.Serialize(new
+            {
+                matchedModelId = matchedModelId?.ToString(),
+                proposedNew = raw.ProposedModel is not null,
+                confidence = raw.Confidence,
+                fieldMappingCount = raw.FieldMappings?.Count ?? 0
+            }, JsonOptions);
+            await _auditService.LogReceivedAsync(
+                "ReportDesigner", "MatchSchemaModel", correlationId, matchReceivedMetadata,
+                sw.ElapsedMilliseconds, (int)response.StatusCode, cancellationToken: cancellationToken);
 
             return new SchemaModelAiMatchResponse(matchedModelId, raw.Confidence, raw.ProposedModel, raw.Reasoning, raw.FieldMappings);
         }

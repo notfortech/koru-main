@@ -46,6 +46,7 @@ public static class DependencyInjection
         services.AddScoped<IBlobStorageService, BlobStorageService>();
         services.AddScoped<IProcessingJobService, ProcessingJobService>();
         services.AddScoped<IAdminLoggingService, AdminLoggingService>();
+        services.AddScoped<IAiBoundaryAuditService, AiBoundaryAuditService>();
         services.AddScoped<IAuditLogService, AuditLogService>();
         services.AddScoped<IAdminDashboardService, AdminDashboardService>();
         services.AddScoped<IClientByCompanyQuery, ClientByCompanyQuery>();
