@@ -8,9 +8,9 @@ namespace StudioTechBI.Infrastructure.Services;
 
 public class AiBoundaryAuditService : IAiBoundaryAuditService
 {
-    // The only AI-backed system koru-main calls out to today. Revisit if/when a second
-    // target is added (e.g. once S5 gives stbi_transformers its own outbound-to-Anthropic
-    // events, or a future integration calls a different AI-backed service directly).
+    // Default when the caller doesn't know/care which AI-backed system was targeted.
+    // koru-main's own call sites always target stbi_transformers; stbi_transformers' own
+    // S5 call sites pass "Anthropic"/"OpenAI" explicitly via the targetService parameter.
     private const string DefaultTargetService = "stbi_transformers";
 
     private readonly ApplicationDbContext _db;
@@ -26,6 +26,7 @@ public class AiBoundaryAuditService : IAiBoundaryAuditService
         string correlationId,
         string metadataJson,
         Guid? clientId = null,
+        string? targetService = null,
         CancellationToken cancellationToken = default) =>
         AddAsync(new AiBoundaryAuditEvent
         {
@@ -34,7 +35,7 @@ public class AiBoundaryAuditService : IAiBoundaryAuditService
             Service = service,
             Operation = operation,
             Phase = "Sent",
-            TargetService = DefaultTargetService,
+            TargetService = targetService ?? DefaultTargetService,
             MetadataJson = metadataJson,
             ClientId = clientId,
             CreatedAt = DateTime.UtcNow
@@ -48,6 +49,7 @@ public class AiBoundaryAuditService : IAiBoundaryAuditService
         long durationMs,
         int? statusCode = null,
         Guid? clientId = null,
+        string? targetService = null,
         CancellationToken cancellationToken = default) =>
         AddAsync(new AiBoundaryAuditEvent
         {
@@ -56,7 +58,7 @@ public class AiBoundaryAuditService : IAiBoundaryAuditService
             Service = service,
             Operation = operation,
             Phase = "Received",
-            TargetService = DefaultTargetService,
+            TargetService = targetService ?? DefaultTargetService,
             MetadataJson = metadataJson,
             DurationMs = durationMs,
             StatusCode = statusCode,
@@ -73,6 +75,7 @@ public class AiBoundaryAuditService : IAiBoundaryAuditService
         string errorSummary,
         int? statusCode = null,
         Guid? clientId = null,
+        string? targetService = null,
         CancellationToken cancellationToken = default) =>
         AddAsync(new AiBoundaryAuditEvent
         {
@@ -81,7 +84,7 @@ public class AiBoundaryAuditService : IAiBoundaryAuditService
             Service = service,
             Operation = operation,
             Phase = "Failed",
-            TargetService = DefaultTargetService,
+            TargetService = targetService ?? DefaultTargetService,
             MetadataJson = "{}",
             DurationMs = durationMs,
             StatusCode = statusCode,

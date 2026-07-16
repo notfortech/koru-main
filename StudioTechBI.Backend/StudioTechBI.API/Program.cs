@@ -90,6 +90,10 @@ MapEnvOverride("DOMAIN_API_CLIENT_SECRET", "DomainApi:ClientSecret");
 MapEnvOverride("DOMAIN_API_BASE_URL", "DomainApi:BaseUrl");
 MapEnvOverride("DOMAIN_API_AUTH_BASE_URL", "DomainApi:AuthBaseUrl");
 MapEnvOverride("DOMAIN_API_SCOPE", "DomainApi:Scope");
+// Shared secret validating inbound calls to POST /api/internal/ai-boundary-audit-log (S5).
+// Must be set to the same value as stbi_transformers' KORU_API_KEY (Koru:ServiceApiKey there) —
+// that's the credential it already sends as X-Service-Api-Key on every call to this backend.
+MapEnvOverride("STBI_TRANSFORMERS_API_KEY", "Security:StbiTransformersApiKey");
 
 if (envOverrides.Count > 0)
 {

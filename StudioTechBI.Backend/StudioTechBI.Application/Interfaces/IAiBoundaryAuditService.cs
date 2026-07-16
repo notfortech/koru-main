@@ -17,6 +17,7 @@ public interface IAiBoundaryAuditService
         string correlationId,
         string metadataJson,
         Guid? clientId = null,
+        string? targetService = null,
         CancellationToken cancellationToken = default);
 
     Task LogReceivedAsync(
@@ -27,6 +28,7 @@ public interface IAiBoundaryAuditService
         long durationMs,
         int? statusCode = null,
         Guid? clientId = null,
+        string? targetService = null,
         CancellationToken cancellationToken = default);
 
     Task LogFailedAsync(
@@ -37,6 +39,7 @@ public interface IAiBoundaryAuditService
         string errorSummary,
         int? statusCode = null,
         Guid? clientId = null,
+        string? targetService = null,
         CancellationToken cancellationToken = default);
 
     Task<IReadOnlyList<AiBoundaryAuditEventDto>> GetRecentAsync(
