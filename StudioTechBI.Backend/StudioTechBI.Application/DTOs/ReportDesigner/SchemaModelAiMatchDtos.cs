@@ -23,15 +23,21 @@ public record SchemaModelAiMatchField(string FieldName, string DataType, bool Is
 /// <summary>
 /// Exactly one of MatchedModelId or ProposedModel is set — see
 /// stbi_transformers's SchemaModelMatchResult for the authoritative contract.
+/// FieldMappings is only meaningful when MatchedModelId is set, and is best-effort —
+/// the AI may omit it even on a match (see stbi_transformers's prompt/parsing).
 /// </summary>
 public record SchemaModelAiMatchResponse(
     Guid? MatchedModelId,
     double Confidence,
     ProposedSchemaModelDto? ProposedModel,
-    string? Reasoning);
+    string? Reasoning,
+    List<SchemaModelFieldMatchDto>? FieldMappings = null);
 
 public record ProposedSchemaModelDto(
     string Name,
     string Industry,
     List<SchemaModelAiMatchField> Fields,
     string? TemplateName = null);
+
+/// <summary>One field-to-column pairing the AI decided on while matching a candidate model.</summary>
+public record SchemaModelFieldMatchDto(string FieldName, string? ClientColumnName);
