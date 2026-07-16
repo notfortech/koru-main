@@ -18,4 +18,15 @@ public interface IReportDesignerClient
         SchemaModelAiMatchRequest request,
         string correlationId,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// S7/S9 — sends an already-generated blueprint (the raw JSON from
+    /// GenerateReportModelResponse.Blueprint) to stbi_transformers' TMDL-authoring agent, which
+    /// also runs its deterministic validator before returning. Check
+    /// AuthorTmdlResponse.Validation.IsValid before treating the files as deployable.
+    /// </summary>
+    Task<AuthorTmdlResponse> AuthorTmdlAsync(
+        System.Text.Json.JsonElement blueprint,
+        string correlationId,
+        CancellationToken cancellationToken = default);
 }

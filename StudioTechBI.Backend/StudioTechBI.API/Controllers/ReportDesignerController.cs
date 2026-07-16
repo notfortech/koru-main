@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using StudioTechBI.Application.DTOs.BindDeploy;
 using StudioTechBI.Application.DTOs.Common;
 using StudioTechBI.Application.DTOs.Connectors;
 using StudioTechBI.Application.DTOs.ReportDesigner;
@@ -23,6 +24,7 @@ public class ReportDesignerController : ControllerBase
     private static readonly string[] AllowedExtensions = { ".xlsx", ".xls", ".csv" };
 
     private readonly IReportDesignerClient _reportDesignerClient;
+    private readonly IBindDeployClient _bindDeployClient;
     private readonly SqlSchemaReaderService _sqlSchemaReader;
     private readonly SharePointSchemaService _sharePointSchemaService;
     private readonly IReportDesignerConsentService _consentService;
@@ -33,6 +35,7 @@ public class ReportDesignerController : ControllerBase
 
     public ReportDesignerController(
         IReportDesignerClient reportDesignerClient,
+        IBindDeployClient bindDeployClient,
         SqlSchemaReaderService sqlSchemaReader,
         SharePointSchemaService sharePointSchemaService,
         IReportDesignerConsentService consentService,
@@ -42,6 +45,7 @@ public class ReportDesignerController : ControllerBase
         ILogger<ReportDesignerController> logger)
     {
         _reportDesignerClient = reportDesignerClient;
+        _bindDeployClient = bindDeployClient;
         _sqlSchemaReader = sqlSchemaReader;
         _sharePointSchemaService = sharePointSchemaService;
         _consentService = consentService;
@@ -312,6 +316,94 @@ public class ReportDesignerController : ControllerBase
             return StatusCode(500, ApiResponse<object>.ErrorResponse(
                 "An error occurred while generating the report model."));
         }
+    }
+
+    /// <summary>
+    /// POST /api/report-designer/publish
+    /// S9 — the "Generate &amp; Publish" capstone. Takes an already-generated blueprint (from a
+    /// prior /generate-model call) and chains: S7 TMDL authoring (stbi_transformers) -&gt; its
+    /// deterministic validator -&gt; S8 dataset deploy (stbi-bind-deploy). Fails closed at the
+    /// validator: invalid TMDL never reaches the deploy step. Requires the same prior consent
+    /// grant as /generate-model — publishing is still downstream of that same AI call.
+    /// </summary>
+    [HttpPost("publish")]
+    public async Task<IActionResult> PublishAsync(
+        [FromBody] PublishReportRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(request.ClientId))
+            return BadRequest(ApiResponse<object>.ErrorResponse("ClientId is required."));
+
+        var client = await _clientResolver.ResolveAsync(request.ClientId, cancellationToken);
+        if (client is null)
+            return NotFound(ApiResponse<object>.ErrorResponse("Client not found."));
+
+        var correlationId = Guid.NewGuid().ToString();
+
+        AuthorTmdlResponse authored;
+        try
+        {
+            authored = await _reportDesignerClient.AuthorTmdlAsync(request.Blueprint, correlationId, cancellationToken);
+        }
+        catch (HttpRequestException ex)
+        {
+            return StatusCode(
+                (int)(ex.StatusCode ?? System.Net.HttpStatusCode.BadGateway),
+                ApiResponse<object>.ErrorResponse(ex.Message));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ApiResponse<object>.ErrorResponse(ex.Message));
+        }
+
+        if (authored.Validation is null || !authored.Validation.IsValid)
+        {
+            _logger.LogWarning(
+                "ReportDesigner.PublishBlockedInvalidTmdl ClientId={ClientId} CorrelationId={CorrelationId} Violations={Violations}",
+                client.Id, correlationId, string.Join(" | ", authored.Validation?.Violations ?? []));
+
+            return UnprocessableEntity(ApiResponse<object>.ErrorResponse(
+                "Authored TMDL failed deterministic validation — publish blocked before deploy.",
+                authored.Validation?.Violations ?? []));
+        }
+
+        var datasetName = string.IsNullOrWhiteSpace(request.DatasetName)
+            ? $"{client.ClientName} Dataset"
+            : request.DatasetName!;
+
+        DeployDatasetResult deployed;
+        try
+        {
+            deployed = await _bindDeployClient.DeployDatasetAsync(
+                new DeployDatasetRequest(
+                    ClientName: $"Client - {client.ClientName}",
+                    DatasetName: datasetName,
+                    TmdlFiles: authored.Files),
+                correlationId,
+                cancellationToken);
+        }
+        catch (HttpRequestException ex)
+        {
+            return StatusCode(
+                (int)(ex.StatusCode ?? System.Net.HttpStatusCode.BadGateway),
+                ApiResponse<object>.ErrorResponse(ex.Message));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ApiResponse<object>.ErrorResponse(ex.Message));
+        }
+
+        return Ok(ApiResponse<PublishReportResponse>.SuccessResponse(
+            new PublishReportResponse(
+                correlationId,
+                deployed.WorkspaceId,
+                deployed.WorkspaceName,
+                deployed.DatasetId,
+                deployed.DatasetName,
+                deployed.Created,
+                authored.Files.Count,
+                deployed.Steps),
+            deployed.Created ? "Report published — new dataset deployed." : "Report published — reused existing dataset."));
     }
 
     /// <summary>

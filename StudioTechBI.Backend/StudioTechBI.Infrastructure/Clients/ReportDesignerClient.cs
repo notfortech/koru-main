@@ -424,6 +424,99 @@ public class ReportDesignerClient : IReportDesignerClient
         }
     }
 
+    public async Task<AuthorTmdlResponse> AuthorTmdlAsync(
+        JsonElement blueprint,
+        string correlationId,
+        CancellationToken cancellationToken = default)
+    {
+        if (_httpClient.BaseAddress is null)
+            throw new InvalidOperationException(
+                "ReportDesignerClient: HttpClient.BaseAddress is null. Verify ReportDesigner:BaseUrl is configured.");
+
+        _logger.LogInformation("ReportDesigner.AuthorTmdlRequested CorrelationId={CorrelationId}", correlationId);
+
+        await _auditService.LogSentAsync(
+            "ReportDesigner", "AuthorTmdl", correlationId, "{}", cancellationToken: cancellationToken);
+
+        var payload = JsonSerializer.Serialize(new { blueprint }, JsonOptions);
+        var httpRequest = new HttpRequestMessage(HttpMethod.Post, "api/blueprint/author-tmdl");
+        httpRequest.Headers.Add("X-Correlation-Id", correlationId);
+        httpRequest.Content = new StringContent(payload, System.Text.Encoding.UTF8, "application/json");
+
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        HttpResponseMessage response;
+        try
+        {
+            response = await _httpClient.SendAsync(httpRequest, cancellationToken);
+        }
+        catch (TaskCanceledException ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            sw.Stop();
+            _logger.LogError(
+                "ReportDesigner.AuthorTmdlTimeout DurationMs={DurationMs} CorrelationId={CorrelationId}",
+                sw.ElapsedMilliseconds, correlationId);
+            await _auditService.LogFailedAsync(
+                "ReportDesigner", "AuthorTmdl", correlationId, sw.ElapsedMilliseconds,
+                "TMDL authoring request timed out.", cancellationToken: cancellationToken);
+            throw new HttpRequestException(
+                "Report Designer TMDL authoring request timed out.", ex, HttpStatusCode.RequestTimeout);
+        }
+
+        using (response)
+        {
+            sw.Stop();
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+
+            // 422 is a real, meaningful response here (deterministic validation failed) — not a
+            // transport failure — so it's parsed rather than thrown on the status code alone.
+            if (!response.IsSuccessStatusCode && response.StatusCode != HttpStatusCode.UnprocessableEntity)
+            {
+                _logger.LogWarning(
+                    "ReportDesigner.AuthorTmdlFailed StatusCode={StatusCode} DurationMs={DurationMs} CorrelationId={CorrelationId}",
+                    (int)response.StatusCode, sw.ElapsedMilliseconds, correlationId);
+                await _auditService.LogFailedAsync(
+                    "ReportDesigner", "AuthorTmdl", correlationId, sw.ElapsedMilliseconds,
+                    $"AuthorTmdl failed with status {(int)response.StatusCode}", (int)response.StatusCode,
+                    cancellationToken: cancellationToken);
+                throw new HttpRequestException(
+                    MapStatusCode(response.StatusCode, body), inner: null, statusCode: response.StatusCode);
+            }
+
+            AuthorTmdlResponse result;
+            try
+            {
+                result = JsonSerializer.Deserialize<AuthorTmdlResponse>(body, JsonOptions)
+                    ?? throw new InvalidOperationException("TMDL authoring returned an empty response body.");
+            }
+            catch (JsonException ex)
+            {
+                _logger.LogError(ex,
+                    "ReportDesigner.AuthorTmdlParseError CorrelationId={CorrelationId} Body={Body}",
+                    correlationId, Truncate(body, 1000));
+                await _auditService.LogFailedAsync(
+                    "ReportDesigner", "AuthorTmdl", correlationId, sw.ElapsedMilliseconds,
+                    "AuthorTmdl response could not be parsed.", (int)response.StatusCode, cancellationToken: cancellationToken);
+                throw new InvalidOperationException("TMDL authoring response could not be parsed.", ex);
+            }
+
+            _logger.LogInformation(
+                "ReportDesigner.AuthorTmdlCompleted CorrelationId={CorrelationId} FileCount={FileCount} IsValid={IsValid} DurationMs={DurationMs}",
+                correlationId, result.Files.Count, result.Validation?.IsValid, sw.ElapsedMilliseconds);
+
+            var receivedMetadata = JsonSerializer.Serialize(new
+            {
+                fileCount = result.Files.Count,
+                isValid = result.Validation?.IsValid,
+                violationCount = result.Validation?.Violations.Count ?? 0
+            }, JsonOptions);
+            await _auditService.LogReceivedAsync(
+                "ReportDesigner", "AuthorTmdl", correlationId, receivedMetadata,
+                sw.ElapsedMilliseconds, (int)response.StatusCode, cancellationToken: cancellationToken);
+
+            return result;
+        }
+    }
+
     private record RawSchemaModelMatchResult(
         string? MatchedModelId,
         double Confidence,

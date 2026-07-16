@@ -94,6 +94,8 @@ MapEnvOverride("DOMAIN_API_SCOPE", "DomainApi:Scope");
 // Must be set to the same value as stbi_transformers' KORU_API_KEY (Koru:ServiceApiKey there) —
 // that's the credential it already sends as X-Service-Api-Key on every call to this backend.
 MapEnvOverride("STBI_TRANSFORMERS_API_KEY", "Security:StbiTransformersApiKey");
+MapEnvOverride("STBI_BIND_DEPLOY_BASE_URL", "BindDeploy:BaseUrl");
+MapEnvOverride("STBI_BIND_DEPLOY_API_KEY", "BindDeploy:ApiKey");
 
 if (envOverrides.Count > 0)
 {
@@ -304,6 +306,7 @@ builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddAgentHostIntegration();
 builder.Services.AddReportDesignerIntegration();
 builder.Services.AddReportGeneratorIntegration();
+builder.Services.AddBindDeployIntegration();
 builder.Services.Configure<PasswordResetOptions>(
     builder.Configuration.GetSection(PasswordResetOptions.SectionName));
 builder.Services.Configure<InsightEngineOptions>(
