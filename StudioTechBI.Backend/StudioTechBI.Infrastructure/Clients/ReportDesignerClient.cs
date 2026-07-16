@@ -77,7 +77,8 @@ public class ReportDesignerClient : IReportDesignerClient
             preferredTheme = request.PreferredTheme
         }, JsonOptions);
         await _auditService.LogSentAsync(
-            "ReportDesigner", "GenerateReportModel", correlationId, sentMetadata, generateClientId, cancellationToken);
+            "ReportDesigner", "GenerateReportModel", correlationId, sentMetadata, generateClientId,
+            cancellationToken: cancellationToken);
 
         var sw = System.Diagnostics.Stopwatch.StartNew();
 
@@ -137,7 +138,7 @@ public class ReportDesignerClient : IReportDesignerClient
                 await _auditService.LogFailedAsync(
                     "ReportDesigner", "GenerateReportModel", correlationId, sw.ElapsedMilliseconds,
                     $"Connect failed with status {(int)connectResponse.StatusCode}",
-                    (int)connectResponse.StatusCode, generateClientId, cancellationToken);
+                    (int)connectResponse.StatusCode, generateClientId, cancellationToken: cancellationToken);
 
                 throw new HttpRequestException(
                     MapStatusCode(connectResponse.StatusCode, connectBody),
@@ -255,7 +256,7 @@ public class ReportDesignerClient : IReportDesignerClient
                 await _auditService.LogFailedAsync(
                     "ReportDesigner", "GenerateReportModel", correlationId, sw.ElapsedMilliseconds,
                     $"Generate failed with status {(int)generateResponse.StatusCode}",
-                    (int)generateResponse.StatusCode, generateClientId, cancellationToken);
+                    (int)generateResponse.StatusCode, generateClientId, cancellationToken: cancellationToken);
 
                 throw new HttpRequestException(
                     MapStatusCode(generateResponse.StatusCode, generateBody),
@@ -276,7 +277,8 @@ public class ReportDesignerClient : IReportDesignerClient
                     correlationId, Truncate(generateBody, 1000));
                 await _auditService.LogFailedAsync(
                     "ReportDesigner", "GenerateReportModel", correlationId, sw.ElapsedMilliseconds,
-                    "Generate response could not be parsed.", (int)generateResponse.StatusCode, generateClientId, cancellationToken);
+                    "Generate response could not be parsed.", (int)generateResponse.StatusCode, generateClientId,
+                    cancellationToken: cancellationToken);
                 throw new InvalidOperationException(
                     "Report Designer generate response could not be parsed.", ex);
             }
@@ -297,7 +299,8 @@ public class ReportDesignerClient : IReportDesignerClient
             }, JsonOptions);
             await _auditService.LogReceivedAsync(
                 "ReportDesigner", "GenerateReportModel", correlationId, receivedMetadata,
-                sw.ElapsedMilliseconds, (int)generateResponse.StatusCode, generateClientId, cancellationToken);
+                sw.ElapsedMilliseconds, (int)generateResponse.StatusCode, generateClientId,
+                cancellationToken: cancellationToken);
 
             var starSchema = ExtractStarSchema(blueprint);
 
