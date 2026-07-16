@@ -43,6 +43,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<SchemaModel> SchemaModels => Set<SchemaModel>();
     public DbSet<SchemaModelField> SchemaModelFields => Set<SchemaModelField>();
     public DbSet<SchemaModelFieldAlias> SchemaModelFieldAliases => Set<SchemaModelFieldAlias>();
+    public DbSet<AiBoundaryAuditEvent> AiBoundaryAuditEvents => Set<AiBoundaryAuditEvent>();
     public DbSet<ReportMatchDraft> ReportMatchDrafts => Set<ReportMatchDraft>();
     public DbSet<ReportMatchColumnMapping> ReportMatchColumnMappings => Set<ReportMatchColumnMapping>();
     public DbSet<ReportDataUsageConsent> ReportDataUsageConsents => Set<ReportDataUsageConsent>();
