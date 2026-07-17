@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using StudioTechBI.Application.Interfaces;
 using StudioTechBI.Application.Models;
@@ -18,8 +19,27 @@ public static class BindDeployIntegrationExtensions
             {
                 var opts = sp.GetRequiredService<IOptionsMonitor<BindDeployOptions>>().CurrentValue;
 
+                // TryCreate rather than `new Uri(...)`: this callback runs during DI construction
+                // of IBindDeployClient, which ReportDesignerController depends on for every one of
+                // its actions — a malformed BaseUrl throwing here would 500 every endpoint on that
+                // controller (extract-schema, match, consent, etc.), not just publish. Leaving
+                // BaseAddress null instead means only BindDeployClient's own actual call fails,
+                // with the clear "BaseAddress is null" message it already raises.
                 if (!string.IsNullOrWhiteSpace(opts.BaseUrl))
-                    client.BaseAddress = new Uri(opts.BaseUrl.TrimEnd('/') + "/");
+                {
+                    if (Uri.TryCreate(opts.BaseUrl.TrimEnd('/') + "/", UriKind.Absolute, out var baseUri))
+                    {
+                        client.BaseAddress = baseUri;
+                    }
+                    else
+                    {
+                        sp.GetRequiredService<ILoggerFactory>()
+                            .CreateLogger("BindDeployIntegration")
+                            .LogError(
+                                "BindDeploy:BaseUrl is not a valid absolute URI: '{BaseUrl}'. Did STBI_BIND_DEPLOY_BASE_URL omit the https:// scheme?",
+                                opts.BaseUrl);
+                    }
+                }
 
                 client.Timeout = TimeSpan.FromSeconds(opts.TimeoutSeconds > 0 ? opts.TimeoutSeconds : 60);
 
