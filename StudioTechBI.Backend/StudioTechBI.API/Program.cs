@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using Polly;
@@ -366,6 +367,27 @@ builder.Services.AddSingleton<StudioTechBI.API.Services.DatabaseReadinessState>(
 builder.Services.AddHostedService<StudioTechBI.API.Services.StartupDbTasksHostedService>();
 
 var app = builder.Build();
+
+// Startup-time config visibility for the newer integrations — BlueprintGenerationBackgroundService
+// already logs its own BaseUrl on start; ReportDesigner/BindDeploy's HttpClients are lazy (built on
+// first use via IHttpClientFactory) and previously gave no signal at boot if BaseUrl/ApiKey were
+// missing, only a failure on the first real call. Logging the resolved values (never the key itself)
+// right after DI is built closes that gap.
+{
+    var startupLogger = app.Services.GetRequiredService<ILogger<Program>>();
+    var reportDesignerOpts = app.Services.GetRequiredService<IOptionsMonitor<ReportDesignerOptions>>().CurrentValue;
+    var bindDeployOpts = app.Services.GetRequiredService<IOptionsMonitor<BindDeployOptions>>().CurrentValue;
+    startupLogger.LogInformation(
+        "ReportDesigner integration configured. BaseUrl={BaseUrl} ApiKeySet={ApiKeySet} TimeoutSeconds={TimeoutSeconds}",
+        string.IsNullOrWhiteSpace(reportDesignerOpts.BaseUrl) ? "(not set)" : reportDesignerOpts.BaseUrl,
+        !string.IsNullOrWhiteSpace(reportDesignerOpts.ApiKey),
+        reportDesignerOpts.TimeoutSeconds);
+    startupLogger.LogInformation(
+        "BindDeploy integration configured. BaseUrl={BaseUrl} ApiKeySet={ApiKeySet} TimeoutSeconds={TimeoutSeconds}",
+        string.IsNullOrWhiteSpace(bindDeployOpts.BaseUrl) ? "(not set)" : bindDeployOpts.BaseUrl,
+        !string.IsNullOrWhiteSpace(bindDeployOpts.ApiKey),
+        bindDeployOpts.TimeoutSeconds);
+}
 
 var enableSwaggerInAzure = app.Configuration.GetValue<bool>("Swagger:Enabled");
 if (app.Environment.IsDevelopment() || enableSwaggerInAzure)
