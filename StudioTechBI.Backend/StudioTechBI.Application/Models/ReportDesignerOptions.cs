@@ -10,9 +10,10 @@ public class ReportDesignerOptions
     /// <summary>
     /// Budgets the entire outbound call to stbi_transformers, including the schema-match and
     /// model-generation endpoints, which call out to an LLM downstream. Must stay comfortably
-    /// above that LLM call's own timeout (180s, see stbi_transformers Program.cs) or a
-    /// legitimately-slow-but-successful call gets killed here before the downstream side would
-    /// have given up on it.
+    /// above that LLM call's own timeout (raised to 5 minutes / 300s alongside the MaxTokens
+    /// increase to 32000 — see stbi_transformers' Program.cs AnthropicClient HttpClient timeout)
+    /// or a legitimately-slow-but-successful call gets killed here before the downstream side
+    /// would have given up on it.
     /// </summary>
-    public int TimeoutSeconds { get; set; } = 210;
+    public int TimeoutSeconds { get; set; } = 330;
 }
