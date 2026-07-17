@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Polly;
 using Polly.Extensions.Http;
@@ -24,8 +25,27 @@ public static class ReportDesignerIntegrationExtensions
             {
                 var opts = sp.GetRequiredService<IOptionsMonitor<ReportDesignerOptions>>().CurrentValue;
 
+                // TryCreate rather than `new Uri(...)`: this callback runs during DI construction
+                // of IReportDesignerClient, which ReportDesignerController depends on for every one
+                // of its actions — a malformed BaseUrl throwing here would 500 every endpoint on
+                // that controller, not just the ones that actually need it. Leaving BaseAddress
+                // null instead means only ReportDesignerClient's own call fails, with the clear
+                // "BaseAddress is null" message it already raises.
                 if (!string.IsNullOrWhiteSpace(opts.BaseUrl))
-                    client.BaseAddress = new Uri(opts.BaseUrl.TrimEnd('/') + "/");
+                {
+                    if (Uri.TryCreate(opts.BaseUrl.TrimEnd('/') + "/", UriKind.Absolute, out var baseUri))
+                    {
+                        client.BaseAddress = baseUri;
+                    }
+                    else
+                    {
+                        sp.GetRequiredService<ILoggerFactory>()
+                            .CreateLogger("ReportDesignerIntegration")
+                            .LogError(
+                                "ReportDesigner:BaseUrl is not a valid absolute URI: '{BaseUrl}'. Did the env var omit the https:// scheme?",
+                                opts.BaseUrl);
+                    }
+                }
 
                 client.Timeout = TimeSpan.FromSeconds(opts.TimeoutSeconds > 0 ? opts.TimeoutSeconds : 210);
 
