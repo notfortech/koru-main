@@ -31,3 +31,26 @@ public record ReportDesignerConsentResponse(
     string SchemaHash,
     DateTimeOffset DecidedAt);
 
+// ── S7/S9: TMDL authoring (stbi_transformers) ────────────────────────────────────────────────
+
+public record TmdlFileDto(string Path, string Content);
+
+public record TmdlValidationDto(bool IsValid, List<string> Violations);
+
+public record AuthorTmdlResponse(
+    List<TmdlFileDto> Files,
+    string Reasoning,
+    TmdlValidationDto? Validation);
+
+// ── S9: publish (author-tmdl -> validate -> deploy, chained) ────────────────────────────────
+
+public record PublishReportResponse(
+    string CorrelationId,
+    string WorkspaceId,
+    string WorkspaceName,
+    string DatasetId,
+    string DatasetName,
+    bool DatasetCreated,
+    int TmdlFileCount,
+    List<string> DeploySteps);
+
