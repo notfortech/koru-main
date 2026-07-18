@@ -25,15 +25,18 @@ public class AgentHostClient : IAgentHostClient
     private readonly HttpClient _httpClient;
     private readonly ILogger<AgentHostClient> _logger;
     private readonly AgentHostOptions _opts;
+    private readonly CreditsOptions _creditsOpts;
 
     public AgentHostClient(
         HttpClient httpClient,
         ILogger<AgentHostClient> logger,
-        IOptions<AgentHostOptions> options)
+        IOptions<AgentHostOptions> options,
+        IOptions<CreditsOptions> creditsOptions)
     {
         _httpClient = httpClient;
         _logger = logger;
         _opts = options.Value;
+        _creditsOpts = creditsOptions.Value;
     }
 
     public async Task<BlueprintGenerationResponse> GenerateBlueprintAsync(
@@ -137,6 +140,20 @@ public class AgentHostClient : IAgentHostClient
     public async Task<CreditCheckResult> CheckCreditsAsync(
         Guid tenantId, string? tenantName, CancellationToken cancellationToken = default)
     {
+        if (_creditsOpts.BypassEnabled)
+        {
+            _logger.LogInformation(
+                "AgentHost.CreditsCheck bypassed — tenant {TenantId} granted {Credits} fixed credits.",
+                tenantId, _creditsOpts.BypassCreditsRemaining);
+            return new CreditCheckResult(
+                Allowed: true,
+                Plan: "bypass",
+                CreditsRemaining: _creditsOpts.BypassCreditsRemaining,
+                IsUnlimited: false,
+                NextResetDate: null,
+                DenialReason: null);
+        }
+
         try
         {
             var httpRequest = new HttpRequestMessage(HttpMethod.Post, "api/credits/check");
@@ -190,6 +207,16 @@ public class AgentHostClient : IAgentHostClient
         Guid tenantId, string feature, string? requestId, long executionTimeMs,
         CancellationToken cancellationToken = default)
     {
+        if (_creditsOpts.BypassEnabled)
+        {
+            return new CreditConsumeResult(
+                CreditsConsumed: 0,
+                CreditsRemaining: _creditsOpts.BypassCreditsRemaining,
+                IsUnlimited: false,
+                Plan: "bypass",
+                ResetDate: null);
+        }
+
         try
         {
             var payload = JsonSerializer.Serialize(
