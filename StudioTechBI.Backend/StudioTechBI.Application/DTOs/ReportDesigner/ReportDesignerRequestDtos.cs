@@ -16,10 +16,17 @@ public record SharePointExtractRequest(
     string DriveItemId,
     string FileName);
 
+/// <summary>
+/// AiProvider lets the caller pick which LLM stbi_transformers should use for this
+/// generation: "anthropic" (Claude Sonnet) or "openai". Null leaves stbi_transformers on
+/// its own default. Only report-model generation supports this choice today — Blueprint
+/// generation (the legacy AgentHost pipeline) is OpenAI-only and has no equivalent switch.
+/// </summary>
 public record GenerateReportModelRequest(
     string ClientId,
     ExtractedSchemaDto Schema,
-    string? PreferredTheme);
+    string? PreferredTheme,
+    string? AiProvider = null);
 
 /// <summary>
 /// Records (or declines) a client's consent to send schema metadata for a specific

@@ -27,6 +27,9 @@ public static class AgentHostIntegrationExtensions
                 "AgentHost:BaseUrl is required. Set the AGENT_HOST_BASE_URL environment variable.")
             .ValidateOnStart();
 
+        services.AddOptions<CreditsOptions>()
+            .BindConfiguration(CreditsOptions.SectionName);
+
         // ── Typed HTTP client with Polly retry + circuit breaker ───────────────
         // Must be keyed to the INTERFACE so that IHttpClientFactory's ConfigureHttpClient
         // delegate (which sets BaseAddress) runs whenever IAgentHostClient is resolved.

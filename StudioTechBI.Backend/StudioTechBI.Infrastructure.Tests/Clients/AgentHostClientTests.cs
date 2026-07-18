@@ -13,7 +13,8 @@ public class AgentHostClientTests
     private static AgentHostClient CreateClient(
         FakeHttpMessageHandler handler,
         Uri? baseAddress,
-        AgentHostOptions? options = null)
+        AgentHostOptions? options = null,
+        CreditsOptions? creditsOptions = null)
     {
         var httpClient = new HttpClient(handler)
         {
@@ -23,7 +24,8 @@ public class AgentHostClientTests
         return new AgentHostClient(
             httpClient,
             NullLogger<AgentHostClient>.Instance,
-            Options.Create(options ?? new AgentHostOptions()));
+            Options.Create(options ?? new AgentHostOptions()),
+            Options.Create(creditsOptions ?? new CreditsOptions()));
     }
 
     private static GenerateBlueprintRequest ValidRequest(Guid? tenantId) => new()

@@ -57,14 +57,15 @@ public class ReportDesignerClient : IReportDesignerClient
         _logger.LogInformation(
             "ReportDesigner.SchemaSentToAI CorrelationId={CorrelationId} Source={Source} " +
             "FileName={FileName} TableCount={TableCount} Tables={TableNames} " +
-            "TotalColumns={TotalColumns} PreferredTheme={PreferredTheme}",
+            "TotalColumns={TotalColumns} PreferredTheme={PreferredTheme} AiProvider={AiProvider}",
             correlationId,
             request.Schema.Source,
             request.Schema.FileName,
             request.Schema.Tables.Count,
             string.Join(",", request.Schema.Tables.Select(t => t.TableName)),
             request.Schema.Tables.Sum(t => t.Columns.Count),
-            request.PreferredTheme ?? "(none)");
+            request.PreferredTheme ?? "(none)",
+            request.AiProvider ?? "(default)");
 
         var generateClientId = Guid.TryParse(request.ClientId, out var parsedGenerateClientId) ? parsedGenerateClientId : (Guid?)null;
         var sentMetadata = JsonSerializer.Serialize(new
@@ -204,9 +205,11 @@ public class ReportDesignerClient : IReportDesignerClient
                 sessionId, correlationId);
         }
 
-        // ── Step 3: Generate — send preferredTheme, receive blueprint ────────
+        // ── Step 3: Generate — send preferredTheme + aiProvider, receive blueprint ──
+        // aiProvider ("anthropic" | "openai") lets the caller pick which LLM stbi_transformers
+        // uses for this generation; null leaves stbi_transformers on its own default.
         var generatePayload = JsonSerializer.Serialize(
-            new { preferredTheme = request.PreferredTheme }, JsonOptions);
+            new { preferredTheme = request.PreferredTheme, aiProvider = request.AiProvider }, JsonOptions);
         var generateRequest = new HttpRequestMessage(
             HttpMethod.Post, $"api/pipeline/{Uri.EscapeDataString(sessionId)}/generate");
         generateRequest.Headers.Add("X-Correlation-Id", correlationId);
