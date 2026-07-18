@@ -271,7 +271,15 @@ public class ReportDesignerClient : IReportDesignerClient
             try
             {
                 using var doc = JsonDocument.Parse(generateBody);
-                blueprint = doc.RootElement.Clone();
+                // /generate returns the whole GenerateResponse envelope ({sessionId, blueprint,
+                // bestTemplateMatch, confidence, generationTimeMs}), not the Blueprint itself —
+                // unwrap it here so GenerateReportModelResponse.Blueprint (and ExtractStarSchema
+                // below) get the actual blueprint object, matching what PublishReportRequest.Blueprint
+                // expects when the frontend echoes it straight back to /publish.
+                if (!doc.RootElement.TryGetProperty("blueprint", out var blueprintElement))
+                    throw new InvalidOperationException(
+                        "Report Designer generate response did not include a 'blueprint' field.");
+                blueprint = blueprintElement.Clone();
             }
             catch (JsonException ex)
             {
