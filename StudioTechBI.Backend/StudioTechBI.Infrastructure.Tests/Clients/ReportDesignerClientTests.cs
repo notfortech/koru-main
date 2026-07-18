@@ -37,20 +37,32 @@ public class ReportDesignerClientTests
         ]
         """;
 
+    // stbi_transformers' POST /generate returns the whole GenerateResponse envelope
+    // ({ sessionId, blueprint, bestTemplateMatch, confidence, generationTimeMs }), not the
+    // Blueprint object directly — these mocks mirror that real shape so the tests actually
+    // exercise the unwrapping in ReportDesignerClient rather than assuming it away.
     private const string BlueprintWithDataModelJson = """
         {
-          "meta": { "title": "Sales Blueprint" },
-          "data_model": {
-            "fact_tables": [ { "name": "Fact_Sales", "grain": "one row per invoice", "source": "excel" } ],
-            "dimension_tables": [ { "name": "Dim_Customer" }, { "name": "Dim_Date" } ],
-            "relationships": [
-              { "from": "Fact_Sales[CustomerId]", "to": "Dim_Customer[CustomerId]", "cardinality": "Many:One" }
-            ]
+          "sessionId": "sess-1",
+          "blueprint": {
+            "meta": { "title": "Sales Blueprint" },
+            "data_model": {
+              "fact_tables": [ { "name": "Fact_Sales", "grain": "one row per invoice", "source": "excel" } ],
+              "dimension_tables": [ { "name": "Dim_Customer" }, { "name": "Dim_Date" } ],
+              "relationships": [
+                { "from": "Fact_Sales[CustomerId]", "to": "Dim_Customer[CustomerId]", "cardinality": "Many:One" }
+              ]
+            }
           }
         }
         """;
 
-    private const string BlueprintWithoutDataModelJson = """{ "meta": { "title": "No Model" } }""";
+    private const string BlueprintWithoutDataModelJson = """
+        {
+          "sessionId": "sess-1",
+          "blueprint": { "meta": { "title": "No Model" } }
+        }
+        """;
 
     private static HttpResponseMessage RouteByPath(
         HttpRequestMessage request, string designsBody, HttpStatusCode designsStatus, string generateBody)
@@ -77,6 +89,11 @@ public class ReportDesignerClientTests
         var client = CreateClient(handler);
 
         var response = await client.GenerateReportModelAsync(ValidRequest(), correlationId: "corr-1");
+
+        // Blueprint must be the unwrapped blueprint object itself — this is what the frontend
+        // echoes straight back as PublishReportRequest.Blueprint, so if this ever regresses back
+        // to the raw envelope, /publish silently breaks downstream instead of failing here.
+        Assert.Equal("Sales Blueprint", response.Blueprint.GetProperty("meta").GetProperty("title").GetString());
 
         Assert.NotNull(response.StarSchema);
         Assert.Equal("Fact_Sales", response.StarSchema!.FactTable);
