@@ -1,0 +1,10 @@
+{
+  "name": "Healthcare — Clinical",
+  "industry": "healthcare",
+  "dataColors": ["#006494", "#2E8B57", "#E74C3C", "#F39C12", "#8E44AD", "#16A085", "#2980B9", "#D35400"],
+  "background": "#F8FBFF",
+  "foreground": "#1a1a2e",
+  "tableAccent": "#006494",
+  "fontFamily": "Segoe UI",
+  "fontSize": 11
+}

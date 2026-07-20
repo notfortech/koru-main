@@ -1,0 +1,10 @@
+{
+  "name": "Finance — Dark Executive",
+  "industry": "finance",
+  "dataColors": ["#0F6E56", "#534AB7", "#D4AF37", "#E74C3C", "#2980B9", "#8E44AD", "#16A085", "#E67E22"],
+  "background": "#FFFFFF",
+  "foreground": "#1a1a2e",
+  "tableAccent": "#0F6E56",
+  "fontFamily": "Segoe UI",
+  "fontSize": 12
+}

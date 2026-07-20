@@ -1,0 +1,55 @@
+table _Measures
+
+	measure 'Total Revenue' = SUM(Fact_BudgetVariance[Amount])
+		formatString: \$#,##0
+		displayFolder: Revenue\Total
+
+	measure 'Total Budget' = SUM(Fact_BudgetVariance[BudgetAmount])
+		formatString: \$#,##0
+		displayFolder: Budget\Total
+
+	measure 'Total Variance' = SUM(Fact_BudgetVariance[Variance])
+		formatString: \$#,##0
+		displayFolder: Variance\Total
+
+	measure 'Revenue YTD' = TOTALYTD([Total Revenue],Dim_Date[Date],"30/06")
+		formatString: \$#,##0
+		displayFolder: Revenue\Time Intelligence
+
+	measure 'Budget YTD' = TOTALYTD([Total Budget],Dim_Date[Date],"30/06")
+		formatString: \$#,##0
+		displayFolder: Budget\Time Intelligence
+
+	measure 'Variance YTD' = TOTALYTD([Total Variance],Dim_Date[Date],"30/06")
+		formatString: \$#,##0
+		displayFolder: Variance\Time Intelligence
+
+	measure 'Revenue PY' = CALCULATE([Total Revenue],SAMEPERIODLASTYEAR(Dim_Date[Date]))
+		formatString: \$#,##0
+		displayFolder: Revenue\Time Intelligence
+
+	measure 'Budget PY' = CALCULATE([Total Budget],SAMEPERIODLASTYEAR(Dim_Date[Date]))
+		formatString: \$#,##0
+		displayFolder: Budget\Time Intelligence
+
+	measure 'Variance PY' = CALCULATE([Total Variance],SAMEPERIODLASTYEAR(Dim_Date[Date]))
+		formatString: \$#,##0
+		displayFolder: Variance\Time Intelligence
+
+	measure 'Variance Percentage' = DIVIDE([Total Variance],[Total Budget])
+		formatString: 0.0%
+		displayFolder: Variance\Percentage
+
+	measure 'Budget Utilisation Rate' = DIVIDE([Total Revenue],[Total Budget])
+		formatString: 0.0%
+		displayFolder: Budget\Percentage
+
+	column BlankColumn
+		isHidden
+		formatString: 0
+		summarizeBy: none
+		sourceColumn: Value
+
+	partition _Measures = calculated
+		mode: import
+		source = {BLANK()}

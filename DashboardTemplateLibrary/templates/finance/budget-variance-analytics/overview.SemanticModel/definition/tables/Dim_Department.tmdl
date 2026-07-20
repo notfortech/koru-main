@@ -1,0 +1,38 @@
+table Dim_Department
+
+	column DepartmentID
+		dataType: string
+		sourceColumn: DepartmentID
+		summarizeBy: none
+		isKey
+
+	column Department
+		dataType: string
+		sourceColumn: Department
+		summarizeBy: none
+
+	column Division
+		dataType: string
+		sourceColumn: Division
+		summarizeBy: none
+
+	column CostCentre
+		dataType: string
+		sourceColumn: CostCentre
+		summarizeBy: none
+
+	partition Dim_Department = m
+		mode: import
+		source =
+				let
+					Source = Excel.Workbook(File.Contents(SourceFilePath), null, true),
+					Data = Source{[Item="Departments",Kind="Sheet"]}[Data],
+					Promoted = Table.PromoteHeaders(Data, [PromoteAllScalars=true]),
+					Typed = Table.TransformColumnTypes(Promoted,{
+						{"DepartmentID", type text}, {"Department", type text},
+						{"Division", type text}, {"CostCentre", type text}
+					})
+				in
+					Typed
+
+	annotation PBI_ResultType = Table

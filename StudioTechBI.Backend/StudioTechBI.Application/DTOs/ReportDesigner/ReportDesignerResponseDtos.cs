@@ -42,7 +42,18 @@ public record AuthorTmdlResponse(
     string Reasoning,
     TmdlValidationDto? Validation);
 
-// ── S9: publish (author-tmdl -> validate -> deploy, chained) ────────────────────────────────
+// ── S9: publish (author-tmdl -> validate -> deploy, chained; or rebind an existing template) ──
+
+/// <summary>
+/// "MatchedTemplate": rebound an existing, already-published template's dataset to this client
+/// (no new TMDL authored — TmdlFileCount is null). "GeneratedFromBlueprint": the original path,
+/// a brand-new semantic model was authored and deployed.
+/// </summary>
+public static class PublishSource
+{
+    public const string MatchedTemplate = "MatchedTemplate";
+    public const string GeneratedFromBlueprint = "GeneratedFromBlueprint";
+}
 
 public record PublishReportResponse(
     string CorrelationId,
@@ -51,6 +62,7 @@ public record PublishReportResponse(
     string DatasetId,
     string DatasetName,
     bool DatasetCreated,
-    int TmdlFileCount,
-    List<string> DeploySteps);
+    int? TmdlFileCount,
+    List<string> DeploySteps,
+    string Source);
 

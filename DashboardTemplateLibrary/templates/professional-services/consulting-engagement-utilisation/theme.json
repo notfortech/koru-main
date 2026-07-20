@@ -1,0 +1,10 @@
+{
+  "name": "Professional Services — Slate",
+  "industry": "professional-services",
+  "dataColors": ["#2C3E50", "#E67E22", "#3498DB", "#E74C3C", "#9B59B6", "#1ABC9C", "#F1C40F", "#95A5A6"],
+  "background": "#F5F6FA",
+  "foreground": "#2C3E50",
+  "tableAccent": "#2C3E50",
+  "fontFamily": "Trebuchet MS",
+  "fontSize": 12
+}

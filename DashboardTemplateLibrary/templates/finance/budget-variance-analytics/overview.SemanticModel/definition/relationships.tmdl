@@ -1,0 +1,11 @@
+relationship Fact_BudgetVariance_Date_Dim_Date
+	fromColumn: Fact_BudgetVariance.Date
+	toColumn: Dim_Date.Date
+
+relationship Fact_BudgetVariance_DepartmentID_Dim_Department
+	fromColumn: Fact_BudgetVariance.DepartmentID
+	toColumn: Dim_Department.DepartmentID
+
+relationship Fact_BudgetVariance_ProductID_Dim_Product
+	fromColumn: Fact_BudgetVariance.ProductID
+	toColumn: Dim_Product.ProductID

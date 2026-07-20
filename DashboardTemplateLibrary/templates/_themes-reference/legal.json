@@ -1,0 +1,10 @@
+{
+  "name": "Legal — Prestige",
+  "industry": "legal",
+  "dataColors": ["#1a3a5c", "#8B4513", "#D4AF37", "#2C3E50", "#7F8C8D", "#C0392B", "#27AE60", "#E67E22"],
+  "background": "#FAFAFA",
+  "foreground": "#1a1a1a",
+  "tableAccent": "#1a3a5c",
+  "fontFamily": "Palatino Linotype",
+  "fontSize": 12
+}

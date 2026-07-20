@@ -1,0 +1,13 @@
+model Model
+	culture: en-AU
+	defaultPowerBIDataSourceVersion: powerBI_V3
+	sourceQueryCulture: en-AU
+	discourageImplicitMeasures
+
+ref table Fact_BudgetVariance
+ref table Dim_Department
+ref table Dim_Product
+ref table Dim_Date
+ref table _Measures
+
+ref culture en-AU

@@ -1,0 +1,10 @@
+{
+  "name": "Real Estate — Prestige Market",
+  "industry": "real-estate",
+  "dataColors": ["#8B0000", "#D4AF37", "#2C3E50", "#C0392B", "#7F8C8D", "#1ABC9C", "#E74C3C", "#2980B9"],
+  "background": "#FFFFFF",
+  "foreground": "#1a1a1a",
+  "tableAccent": "#8B0000",
+  "fontFamily": "Gill Sans MT",
+  "fontSize": 12
+}

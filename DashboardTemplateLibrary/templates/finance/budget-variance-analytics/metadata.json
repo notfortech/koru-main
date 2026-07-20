@@ -1,0 +1,14 @@
+{
+  "industry": "Finance",
+  "template_slug": "budget-variance-analytics",
+  "template_name": "Finance — Budget Variance Analytics",
+  "tier": 1,
+  "schema_model_ref": "Finance — Budget Variance Analytics",
+  "version": "1.0",
+  "blob_path": "templates/finance/budget-variance-analytics/overview.pbix",
+  "status": "semantic_model_ready_pending_pbix_build",
+  "owner": "unassigned",
+  "sensitivity_label": "Confidential",
+  "pii_columns": ["Dim_Department[Department]", "Dim_Product[ProductName]"],
+  "notes": "TMDL adapted from an externally supplied design reference (a Finance premium blueprint + single-file model.tmdl) into this library's multi-file convention -- same pattern as the other 7 industries. RLS design (Department Manager / Executive / Auditor roles, filtering on Dim_Department[DepartmentID] = USERPRINCIPALNAME()) is documented here in notes but not yet implemented as TMDL role blocks, matching this library's existing pattern where no template ships enforced RLS until it moves past scaffolding. Needs a SchemaModel/SchemaModelField/Template row (see SchemaModelSeeder.cs) before TemplateMatchingService/ReportMatchService can find it against client uploads. New industry -- there is no existing SchemaModel to reconcile against."
+}
