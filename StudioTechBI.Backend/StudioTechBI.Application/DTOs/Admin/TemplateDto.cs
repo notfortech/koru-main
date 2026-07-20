@@ -11,4 +11,5 @@ public class TemplateDto
     public List<string> RequiredColumns { get; set; } = new();
     public List<string> OptionalColumns { get; set; } = new();
     public DateTime CreatedDate { get; set; }
+    public bool IsPublishReady { get; set; }
 }

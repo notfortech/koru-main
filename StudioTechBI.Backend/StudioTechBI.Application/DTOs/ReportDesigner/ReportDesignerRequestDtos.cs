@@ -41,12 +41,19 @@ public record ReportDesignerConsentRequest(
 /// <summary>
 /// S9 — the "Generate & Publish" capstone. Blueprint is the raw JSON from an already-successful
 /// GenerateReportModelResponse.Blueprint (the frontend holds it client-side; it was never
-/// persisted server-side, so it's sent back here rather than referenced by id). Chains: S7
-/// TMDL authoring -> its deterministic validator -> S8 dataset deploy. Same consent gate as
-/// generate-model — publishing is still downstream of the same AI call that produced the
-/// blueprint in the first place.
+/// persisted server-side, so it's sent back here rather than referenced by id).
+///
+/// TemplateId is optional and, when supplied, must be a Template the frontend already showed
+/// the client as a match (via /report-designer/match) with IsPublishReady true — the frontend
+/// is the source of truth for "which match is this," not a second server-side match call here.
+/// When present and valid, publish rebinds that existing template's dataset to the client
+/// instead of authoring a brand-new one. When absent (or the template isn't publish-ready),
+/// publish falls back to the original chain: S7 TMDL authoring -> its deterministic validator
+/// -> S8 dataset deploy. Same consent gate as generate-model either way — publishing is still
+/// downstream of the same AI call that produced the blueprint in the first place.
 /// </summary>
 public record PublishReportRequest(
     string ClientId,
     JsonElement Blueprint,
-    string? DatasetName = null);
+    string? DatasetName = null,
+    Guid? TemplateId = null);

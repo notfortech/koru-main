@@ -82,7 +82,8 @@ public class TemplateService : BaseService, ITemplateService
             ModelId = t.ModelId?.ToString(),
             RequiredColumns = DeserializeColumns(t.RequiredColumnsJson),
             OptionalColumns = DeserializeColumns(t.OptionalColumnsJson),
-            CreatedDate = t.CreatedDate
+            CreatedDate = t.CreatedDate,
+            IsPublishReady = t.IsPublishReady
         };
     }
 

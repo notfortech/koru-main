@@ -1,12 +1,15 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using StudioTechBI.Application.DTOs.Admin;
 using StudioTechBI.Application.DTOs.BindDeploy;
 using StudioTechBI.Application.DTOs.Common;
 using StudioTechBI.Application.DTOs.Connectors;
 using StudioTechBI.Application.DTOs.ReportDesigner;
+using StudioTechBI.Application.DTOs.TemplateRefresh;
 using StudioTechBI.Application.Interfaces;
 using StudioTechBI.Application.Utilities;
+using StudioTechBI.Domain.Entities;
 using StudioTechBI.Infrastructure.Services;
 
 namespace StudioTechBI.API.Controllers;
@@ -33,6 +36,9 @@ public class ReportDesignerController : ControllerBase
     private readonly IReportMatchService _reportMatchService;
     private readonly IReportDataUsageConsentService _dataUsageConsentService;
     private readonly IClientResolver _clientResolver;
+    private readonly ITemplateRefreshService _templateRefresh;
+    private readonly ITemplateService _templates;
+    private readonly IPowerBiAssetWriter _powerBiAssetWriter;
     private readonly ILogger<ReportDesignerController> _logger;
 
     public ReportDesignerController(
@@ -45,6 +51,9 @@ public class ReportDesignerController : ControllerBase
         IReportMatchService reportMatchService,
         IReportDataUsageConsentService dataUsageConsentService,
         IClientResolver clientResolver,
+        ITemplateRefreshService templateRefresh,
+        ITemplateService templates,
+        IPowerBiAssetWriter powerBiAssetWriter,
         ILogger<ReportDesignerController> logger)
     {
         _reportDesignerClient = reportDesignerClient;
@@ -56,6 +65,9 @@ public class ReportDesignerController : ControllerBase
         _reportMatchService = reportMatchService;
         _dataUsageConsentService = dataUsageConsentService;
         _clientResolver = clientResolver;
+        _templateRefresh = templateRefresh;
+        _templates = templates;
+        _powerBiAssetWriter = powerBiAssetWriter;
         _logger = logger;
     }
 
@@ -336,11 +348,18 @@ public class ReportDesignerController : ControllerBase
 
     /// <summary>
     /// POST /api/report-designer/publish
-    /// S9 — the "Generate &amp; Publish" capstone. Takes an already-generated blueprint (from a
-    /// prior /generate-model call) and chains: S7 TMDL authoring (stbi_transformers) -&gt; its
-    /// deterministic validator -&gt; S8 dataset deploy (stbi-bind-deploy). Fails closed at the
-    /// validator: invalid TMDL never reaches the deploy step. Requires the same prior consent
-    /// grant as /generate-model — publishing is still downstream of that same AI call.
+    /// S9 — the "Generate &amp; Publish" capstone. Two paths:
+    ///  - request.TemplateId supplied and resolves to an IsPublishReady Template (the frontend
+    ///    already showed this as a match in /report-designer/match — this endpoint trusts that
+    ///    choice rather than re-matching server-side): rebind that template's existing,
+    ///    already-published dataset to this client via ITemplateRefreshService.RebindAsync — no
+    ///    new semantic model authored.
+    ///  - Otherwise (no TemplateId, template not found, or not yet publish-ready): original
+    ///    chain — S7 TMDL authoring (stbi_transformers) -&gt; its deterministic validator -&gt; S8
+    ///    dataset deploy (stbi-bind-deploy). Fails closed at the validator: invalid TMDL never
+    ///    reaches the deploy step.
+    /// Either way requires the same prior consent grant as /generate-model, and writes a
+    /// PowerBiAsset row on success so the report shows up in the client's reports list.
     /// </summary>
     [HttpPost("publish")]
     public async Task<IActionResult> PublishAsync(
@@ -356,6 +375,77 @@ public class ReportDesignerController : ControllerBase
 
         var correlationId = Guid.NewGuid().ToString();
 
+        if (request.TemplateId is Guid templateId)
+        {
+            var template = await _templates.GetByIdAsync(templateId, cancellationToken);
+            if (template is not null && template.IsPublishReady)
+                return await PublishByRebindAsync(client, template, correlationId, cancellationToken);
+
+            _logger.LogInformation(
+                "ReportDesigner.PublishTemplateNotReady ClientId={ClientId} TemplateId={TemplateId} CorrelationId={CorrelationId} — falling back to generation",
+                client.Id, templateId, correlationId);
+        }
+
+        return await PublishByGenerationAsync(client, request, correlationId, cancellationToken);
+    }
+
+    /// <summary>Rebinds an existing, already-published template's dataset to this client instead of authoring a new one.</summary>
+    private async Task<IActionResult> PublishByRebindAsync(
+        Client client, TemplateDto template, string correlationId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            // client.BlobFolderPath is a best-effort source location — the same Azure Blob/URL
+            // gap flagged elsewhere applies here: the schema-extraction endpoints this flow
+            // starts from stream and discard the uploaded file rather than persisting it, so
+            // there is no guaranteed Power-BI-reachable path yet. This wires the branching
+            // decision correctly; it does not itself resolve that gap.
+            var rebind = await _templateRefresh.RebindAsync(
+                new TemplateRefreshRebindRequest(
+                    ClientCode: client.ClientCode ?? client.Id.ToString(),
+                    UseSelectedClient: false,
+                    TemplateId: template.TemplateId,
+                    SourceFilePath: client.BlobFolderPath ?? string.Empty),
+                cancellationToken);
+
+            await _powerBiAssetWriter.WriteAsync(
+                clientId: client.Id,
+                templateId: template.TemplateId,
+                workspaceId: rebind.WorkspaceId,
+                datasetId: rebind.DatasetId,
+                reportId: null,
+                reportType: "matched-template",
+                cancellationToken: cancellationToken);
+
+            return Ok(ApiResponse<PublishReportResponse>.SuccessResponse(
+                new PublishReportResponse(
+                    CorrelationId: correlationId,
+                    WorkspaceId: rebind.WorkspaceId,
+                    WorkspaceName: rebind.WorkspaceName,
+                    DatasetId: rebind.DatasetId,
+                    DatasetName: rebind.DatasetName,
+                    DatasetCreated: true,
+                    TmdlFileCount: null,
+                    DeploySteps: rebind.Steps.ToList(),
+                    Source: PublishSource.MatchedTemplate),
+                $"Published — matched to existing template \"{template.TemplateName}\" and refreshed with your data."));
+        }
+        catch (HttpRequestException ex)
+        {
+            return StatusCode(
+                (int)(ex.StatusCode ?? System.Net.HttpStatusCode.BadGateway),
+                ApiResponse<object>.ErrorResponse(ex.Message));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ApiResponse<object>.ErrorResponse(ex.Message));
+        }
+    }
+
+    /// <summary>Original path: author a brand-new semantic model from the blueprint and deploy it.</summary>
+    private async Task<IActionResult> PublishByGenerationAsync(
+        Client client, PublishReportRequest request, string correlationId, CancellationToken cancellationToken)
+    {
         AuthorTmdlResponse authored;
         try
         {
@@ -409,6 +499,15 @@ public class ReportDesignerController : ControllerBase
             return BadRequest(ApiResponse<object>.ErrorResponse(ex.Message));
         }
 
+        await _powerBiAssetWriter.WriteAsync(
+            clientId: client.Id,
+            templateId: null,
+            workspaceId: deployed.WorkspaceId,
+            datasetId: deployed.DatasetId,
+            reportId: null,
+            reportType: "generated",
+            cancellationToken: cancellationToken);
+
         return Ok(ApiResponse<PublishReportResponse>.SuccessResponse(
             new PublishReportResponse(
                 correlationId,
@@ -418,7 +517,8 @@ public class ReportDesignerController : ControllerBase
                 deployed.DatasetName,
                 deployed.Created,
                 authored.Files.Count,
-                deployed.Steps),
+                deployed.Steps,
+                PublishSource.GeneratedFromBlueprint),
             deployed.Created ? "Report published — new dataset deployed." : "Report published — reused existing dataset."));
     }
 
