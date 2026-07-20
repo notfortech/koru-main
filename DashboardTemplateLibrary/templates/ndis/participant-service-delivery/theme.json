@@ -1,0 +1,11 @@
+{
+  "name": "NDIS — Accessible",
+  "industry": "ndis",
+  "dataColors": ["#6A0DAD", "#00A86B", "#2980B9", "#E74C3C", "#F39C12", "#1ABC9C", "#9B59B6", "#27AE60"],
+  "background": "#FFFFFF",
+  "foreground": "#1a1a1a",
+  "tableAccent": "#6A0DAD",
+  "fontFamily": "Arial",
+  "fontSize": 14,
+  "accessibilityNotes": "High contrast maintained. Min font size 14. Color is never sole differentiator."
+}

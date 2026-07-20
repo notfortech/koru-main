@@ -1,0 +1,10 @@
+{
+  "name": "Construction — Industrial",
+  "industry": "construction",
+  "dataColors": ["#FF6B35", "#1B4332", "#F39C12", "#2C3E50", "#E74C3C", "#27AE60", "#8E44AD", "#7F8C8D"],
+  "background": "#FAFAFA",
+  "foreground": "#1a1a1a",
+  "tableAccent": "#FF6B35",
+  "fontFamily": "Roboto",
+  "fontSize": 12
+}

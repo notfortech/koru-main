@@ -1,0 +1,8 @@
+culture en-AU
+
+	linguisticMetadata =
+			{
+			  "Version": "1.0.0",
+			  "Language": "en-AU"
+			}
+		contentType: json

@@ -1,8 +1,8 @@
 # Dashboard Template Library
 
 This tree mirrors the folder structure to sync into Azure Blob Storage as the shared
-dashboard-template catalog for 7 industries (NDIS, Government, Transport & Rail, Insurance,
-Logistics, Retail, Professional Services / boutique consultancies). It is the "base directory"
+dashboard-template catalog for 8 industries (NDIS, Government, Transport & Rail, Insurance,
+Logistics, Retail, Professional Services / boutique consultancies, Finance). It is the "base directory"
 the AI report-matching feature (`ReportMatchService` / `InsightsEngineController` in
 `StudioTechBI.Backend`) searches against, and the source of truth an analyst opens in Power BI
 Desktop to build the real `.pbix` for each template.
@@ -25,6 +25,7 @@ templates/<industry-slug>/<template-slug>/
                 _Measures.tmdl
     overview_Template_v1.jpg             <- design/preview screenshot (see container note below)
     metadata.json                        <- industry, tier, owner, sensitivity, blob_path, status
+    theme.json                           <- optional: Power BI report theme (see Themes below)
 ```
 
 `templates/<industry-slug>/<template-slug>/overview.pbix` is **exactly** the `BlobPath` format
@@ -78,7 +79,7 @@ changes — it's the same relative paths either way.
   table's Power Query partition reads from. Point it at a real client workbook (or the matching
   sheet names listed in each table's `partition` block) before refreshing.
 - **Fact/dimension column names match `SchemaModelSeeder.cs` exactly** for the 1 industry that
-  was already seeded (NDIS). For the 6 new industries, column names are proposed — add a
+  was already seeded (NDIS). For the 7 new industries, column names are proposed — add a
   `SchemaModel`/`SchemaModelField`/`Template` row per `metadata.json`'s `schema_model_ref` note
   before the AI matching engine can find them against client uploads.
 
@@ -93,6 +94,20 @@ changes — it's the same relative paths either way.
 | `logistics` | `warehouse-freight-operations` | New industry, needs SchemaModel row |
 | `retail` | `store-sales-inventory` | New industry, needs SchemaModel row |
 | `professional-services` | `consulting-engagement-utilisation` | New industry (covers boutique consultancies), needs SchemaModel row |
+| `finance` | `budget-variance-analytics` | New industry, needs SchemaModel row |
+
+## Themes
+
+`theme.json` (currently present for `ndis`, `retail`, `professional-services`,
+and `finance`) matches Power BI's simplified theme schema —
+`dataColors`, `background`, `foreground`, `tableAccent` — and imports
+directly via Power BI Desktop's theme picker. Two extra fields,
+`fontFamily`/`fontSize`, are **not** part of that schema and are silently
+ignored on import; they'd need moving into a `textClasses` block to
+actually apply. Four more industry themes with no template folder yet
+(legal, real-estate, healthcare, construction) are kept under
+`templates/_themes-reference/` so the color/font work isn't lost if those
+industries get scaffolded later.
 
 ## Security notes
 

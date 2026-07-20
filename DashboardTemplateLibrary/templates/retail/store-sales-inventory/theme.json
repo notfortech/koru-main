@@ -1,0 +1,10 @@
+{
+  "name": "Retail — Vibrant",
+  "industry": "retail",
+  "dataColors": ["#E74C3C", "#F39C12", "#2ECC71", "#3498DB", "#9B59B6", "#1ABC9C", "#E67E22", "#C0392B"],
+  "background": "#FFFFFF",
+  "foreground": "#1a1a1a",
+  "tableAccent": "#E74C3C",
+  "fontFamily": "Segoe UI",
+  "fontSize": 12
+}

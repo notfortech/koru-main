@@ -1,0 +1,1889 @@
+{
+  "facts": [
+    {
+      "TransactionID": "TXN-1000",
+      "Date": "2025-10-12",
+      "DepartmentID": "DEPT-04",
+      "ProductID": "P002",
+      "Amount": 96274.59,
+      "BudgetAmount": 9877.1,
+      "Variance": 86397.49
+    },
+    {
+      "TransactionID": "TXN-1001",
+      "Date": "2025-01-08",
+      "DepartmentID": "DEPT-02",
+      "ProductID": "P005",
+      "Amount": 21791.15,
+      "BudgetAmount": 24986.56,
+      "Variance": -3195.41
+    },
+    {
+      "TransactionID": "TXN-1002",
+      "Date": "2025-12-09",
+      "DepartmentID": "DEPT-04",
+      "ProductID": "P005",
+      "Amount": 63866.35,
+      "BudgetAmount": 10810.46,
+      "Variance": 53055.89
+    },
+    {
+      "TransactionID": "TXN-1003",
+      "Date": "2024-09-23",
+      "DepartmentID": "DEPT-07",
+      "ProductID": "P002",
+      "Amount": 90700.79,
+      "BudgetAmount": 114442.79,
+      "Variance": -23742.0
+    },
+    {
+      "TransactionID": "TXN-1004",
+      "Date": "2026-07-14",
+      "DepartmentID": "DEPT-03",
+      "ProductID": "P004",
+      "Amount": 67932.15,
+      "BudgetAmount": 59247.19,
+      "Variance": 8684.96
+    },
+    {
+      "TransactionID": "TXN-1005",
+      "Date": "2025-08-10",
+      "DepartmentID": "DEPT-02",
+      "ProductID": "P001",
+      "Amount": 51697.33,
+      "BudgetAmount": 35318.5,
+      "Variance": 16378.83
+    },
+    {
+      "TransactionID": "TXN-1006",
+      "Date": "2025-08-02",
+      "DepartmentID": "DEPT-05",
+      "ProductID": "P001",
+      "Amount": 57609.17,
+      "BudgetAmount": 75000.98,
+      "Variance": -17391.81
+    },
+    {
+      "TransactionID": "TXN-1007",
+      "Date": "2025-06-28",
+      "DepartmentID": "DEPT-02",
+      "ProductID": "P005",
+      "Amount": 109730.04,
+      "BudgetAmount": 109564.48,
+      "Variance": 165.56
+    },
+    {
+      "TransactionID": "TXN-1008",
+      "Date": "2025-07-15",
+      "DepartmentID": "DEPT-04",
+      "ProductID": "P001",
+      "Amount": 44683.56,
+      "BudgetAmount": 127584.76,
+      "Variance": -82901.2
+    },
+    {
+      "TransactionID": "TXN-1009",
+      "Date": "2025-09-27",
+      "DepartmentID": "DEPT-02",
+      "ProductID": "P002",
+      "Amount": 7827.83,
+      "BudgetAmount": 49440.16,
+      "Variance": -41612.33
+    },
+    {
+      "TransactionID": "TXN-1010",
+      "Date": "2025-04-12",
+      "DepartmentID": "DEPT-06",
+      "ProductID": "P002",
+      "Amount": 130106.07,
+      "BudgetAmount": 79124.61,
+      "Variance": 50981.46
+    },
+    {
+      "TransactionID": "TXN-1011",
+      "Date": "2025-10-20",
+      "DepartmentID": "DEPT-02",
+      "ProductID": "P005",
+      "Amount": 56156.96,
+      "BudgetAmount": 45853.87,
+      "Variance": 10303.09
+    },
+    {
+      "TransactionID": "TXN-1012",
+      "Date": "2025-11-12",
+      "DepartmentID": "DEPT-03",
+      "ProductID": "P004",
+      "Amount": 95611.76,
+      "BudgetAmount": 109157.28,
+      "Variance": -13545.52
+    },
+    {
+      "TransactionID": "TXN-1013",
+      "Date": "2024-10-03",
+      "DepartmentID": "DEPT-04",
+      "ProductID": "P003",
+      "Amount": 57538.86,
+      "BudgetAmount": 197957.05,
+      "Variance": -140418.19
+    },
+    {
+      "TransactionID": "TXN-1014",
+      "Date": "2025-11-28",
+      "DepartmentID": "DEPT-01",
+      "ProductID": "P003",
+      "Amount": 126584.94,
+      "BudgetAmount": 156319.98,
+      "Variance": -29735.04
+    },
+    {
+      "TransactionID": "TXN-1015",
+      "Date": "2024-12-17",
+      "DepartmentID": "DEPT-06",
+      "ProductID": "P002",
+      "Amount": 60773.55,
+      "BudgetAmount": 17906.78,
+      "Variance": 42866.77
+    },
+    {
+      "TransactionID": "TXN-1016",
+      "Date": "2024-09-30",
+      "DepartmentID": "DEPT-08",
+      "ProductID": "P002",
+      "Amount": 98660.36,
+      "BudgetAmount": 82148.22,
+      "Variance": 16512.14
+    },
+    {
+      "TransactionID": "TXN-1017",
+      "Date": "2024-12-23",
+      "DepartmentID": "DEPT-05",
+      "ProductID": "P005",
+      "Amount": 40467.14,
+      "BudgetAmount": 53092.36,
+      "Variance": -12625.22
+    },
+    {
+      "TransactionID": "TXN-1018",
+      "Date": "2025-07-15",
+      "DepartmentID": "DEPT-04",
+      "ProductID": "P002",
+      "Amount": 64836.64,
+      "BudgetAmount": 118788.92,
+      "Variance": -53952.28
+    },
+    {
+      "TransactionID": "TXN-1019",
+      "Date": "2026-06-02",
+      "DepartmentID": "DEPT-02",
+      "ProductID": "P002",
+      "Amount": 76919.42,
+      "BudgetAmount": 22727.34,
+      "Variance": 54192.08
+    },
+    {
+      "TransactionID": "TXN-1020",
+      "Date": "2025-05-14",
+      "DepartmentID": "DEPT-02",
+      "ProductID": "P004",
+      "Amount": 94489.46,
+      "BudgetAmount": 159455.48,
+      "Variance": -64966.02
+    },
+    {
+      "TransactionID": "TXN-1021",
+      "Date": "2025-01-25",
+      "DepartmentID": "DEPT-05",
+      "ProductID": "P005",
+      "Amount": 57861.27,
+      "BudgetAmount": 199243.67,
+      "Variance": -141382.4
+    },
+    {
+      "TransactionID": "TXN-1022",
+      "Date": "2026-03-25",
+      "DepartmentID": "DEPT-05",
+      "ProductID": "P003",
+      "Amount": 129256.18,
+      "BudgetAmount": 7238.8,
+      "Variance": 122017.38
+    },
+    {
+      "TransactionID": "TXN-1023",
+      "Date": "2025-04-12",
+      "DepartmentID": "DEPT-01",
+      "ProductID": "P003",
+      "Amount": 17621.27,
+      "BudgetAmount": 89779.22,
+      "Variance": -72157.95
+    },
+    {
+      "TransactionID": "TXN-1024",
+      "Date": "2025-02-16",
+      "DepartmentID": "DEPT-02",
+      "ProductID": "P003",
+      "Amount": 145811.33,
+      "BudgetAmount": 153582.63,
+      "Variance": -7771.3
+    },
+    {
+      "TransactionID": "TXN-1025",
+      "Date": "2025-12-29",
+      "DepartmentID": "DEPT-03",
+      "ProductID": "P003",
+      "Amount": 126408.73,
+      "BudgetAmount": 103994.26,
+      "Variance": 22414.47
+    },
+    {
+      "TransactionID": "TXN-1026",
+      "Date": "2025-01-23",
+      "DepartmentID": "DEPT-01",
+      "ProductID": "P005",
+      "Amount": 114614.11,
+      "BudgetAmount": 110178.91,
+      "Variance": 4435.2
+    },
+    {
+      "TransactionID": "TXN-1027",
+      "Date": "2025-07-14",
+      "DepartmentID": "DEPT-05",
+      "ProductID": "P002",
+      "Amount": 49299.25,
+      "BudgetAmount": 8797.96,
+      "Variance": 40501.29
+    },
+    {
+      "TransactionID": "TXN-1028",
+      "Date": "2026-05-01",
+      "DepartmentID": "DEPT-02",
+      "ProductID": "P004",
+      "Amount": 9630.85,
+      "BudgetAmount": 176211.87,
+      "Variance": -166581.02
+    },
+    {
+      "TransactionID": "TXN-1029",
+      "Date": "2025-01-21",
+      "DepartmentID": "DEPT-03",
+      "ProductID": "P002",
+      "Amount": 122587.46,
+      "BudgetAmount": 195706.98,
+      "Variance": -73119.52
+    },
+    {
+      "TransactionID": "TXN-1030",
+      "Date": "2026-02-01",
+      "DepartmentID": "DEPT-05",
+      "ProductID": "P005",
+      "Amount": 99302.87,
+      "BudgetAmount": 189635.49,
+      "Variance": -90332.62
+    },
+    {
+      "TransactionID": "TXN-1031",
+      "Date": "2025-12-16",
+      "DepartmentID": "DEPT-04",
+      "ProductID": "P003",
+      "Amount": 130992.52,
+      "BudgetAmount": 87511.9,
+      "Variance": 43480.62
+    },
+    {
+      "TransactionID": "TXN-1032",
+      "Date": "2025-07-03",
+      "DepartmentID": "DEPT-08",
+      "ProductID": "P005",
+      "Amount": 60449.85,
+      "BudgetAmount": 135978.96,
+      "Variance": -75529.11
+    },
+    {
+      "TransactionID": "TXN-1033",
+      "Date": "2026-05-16",
+      "DepartmentID": "DEPT-06",
+      "ProductID": "P001",
+      "Amount": 68271.44,
+      "BudgetAmount": 53341.59,
+      "Variance": 14929.85
+    },
+    {
+      "TransactionID": "TXN-1034",
+      "Date": "2025-12-07",
+      "DepartmentID": "DEPT-01",
+      "ProductID": "P001",
+      "Amount": 88658.0,
+      "BudgetAmount": 49872.37,
+      "Variance": 38785.63
+    },
+    {
+      "TransactionID": "TXN-1035",
+      "Date": "2026-05-12",
+      "DepartmentID": "DEPT-01",
+      "ProductID": "P003",
+      "Amount": 106468.3,
+      "BudgetAmount": 16480.38,
+      "Variance": 89987.92
+    },
+    {
+      "TransactionID": "TXN-1036",
+      "Date": "2024-09-03",
+      "DepartmentID": "DEPT-08",
+      "ProductID": "P002",
+      "Amount": 11557.75,
+      "BudgetAmount": 51410.9,
+      "Variance": -39853.15
+    },
+    {
+      "TransactionID": "TXN-1037",
+      "Date": "2024-12-13",
+      "DepartmentID": "DEPT-08",
+      "ProductID": "P002",
+      "Amount": 81345.86,
+      "BudgetAmount": 146053.75,
+      "Variance": -64707.89
+    },
+    {
+      "TransactionID": "TXN-1038",
+      "Date": "2026-01-07",
+      "DepartmentID": "DEPT-02",
+      "ProductID": "P001",
+      "Amount": 117908.29,
+      "BudgetAmount": 162461.91,
+      "Variance": -44553.62
+    },
+    {
+      "TransactionID": "TXN-1039",
+      "Date": "2025-05-26",
+      "DepartmentID": "DEPT-08",
+      "ProductID": "P001",
+      "Amount": 99188.43,
+      "BudgetAmount": 74088.03,
+      "Variance": 25100.4
+    },
+    {
+      "TransactionID": "TXN-1040",
+      "Date": "2026-04-11",
+      "DepartmentID": "DEPT-01",
+      "ProductID": "P004",
+      "Amount": 101331.32,
+      "BudgetAmount": 196912.22,
+      "Variance": -95580.9
+    },
+    {
+      "TransactionID": "TXN-1041",
+      "Date": "2026-03-31",
+      "DepartmentID": "DEPT-04",
+      "ProductID": "P002",
+      "Amount": 109503.82,
+      "BudgetAmount": 161115.54,
+      "Variance": -51611.72
+    },
+    {
+      "TransactionID": "TXN-1042",
+      "Date": "2025-05-14",
+      "DepartmentID": "DEPT-03",
+      "ProductID": "P003",
+      "Amount": 29341.13,
+      "BudgetAmount": 92479.64,
+      "Variance": -63138.51
+    },
+    {
+      "TransactionID": "TXN-1043",
+      "Date": "2026-05-04",
+      "DepartmentID": "DEPT-08",
+      "ProductID": "P005",
+      "Amount": 69931.58,
+      "BudgetAmount": 175524.76,
+      "Variance": -105593.18
+    },
+    {
+      "TransactionID": "TXN-1044",
+      "Date": "2025-01-13",
+      "DepartmentID": "DEPT-01",
+      "ProductID": "P001",
+      "Amount": 15588.4,
+      "BudgetAmount": 132168.25,
+      "Variance": -116579.85
+    },
+    {
+      "TransactionID": "TXN-1045",
+      "Date": "2026-01-31",
+      "DepartmentID": "DEPT-07",
+      "ProductID": "P004",
+      "Amount": 139028.68,
+      "BudgetAmount": 170495.67,
+      "Variance": -31466.99
+    },
+    {
+      "TransactionID": "TXN-1046",
+      "Date": "2026-05-21",
+      "DepartmentID": "DEPT-03",
+      "ProductID": "P004",
+      "Amount": 72722.4,
+      "BudgetAmount": 173606.83,
+      "Variance": -100884.43
+    },
+    {
+      "TransactionID": "TXN-1047",
+      "Date": "2025-04-11",
+      "DepartmentID": "DEPT-05",
+      "ProductID": "P004",
+      "Amount": 1321.15,
+      "BudgetAmount": 81132.24,
+      "Variance": -79811.09
+    },
+    {
+      "TransactionID": "TXN-1048",
+      "Date": "2024-12-28",
+      "DepartmentID": "DEPT-08",
+      "ProductID": "P002",
+      "Amount": 104792.13,
+      "BudgetAmount": 147448.54,
+      "Variance": -42656.41
+    },
+    {
+      "TransactionID": "TXN-1049",
+      "Date": "2026-05-22",
+      "DepartmentID": "DEPT-01",
+      "ProductID": "P003",
+      "Amount": 29294.78,
+      "BudgetAmount": 47451.68,
+      "Variance": -18156.9
+    },
+    {
+      "TransactionID": "TXN-1050",
+      "Date": "2025-02-21",
+      "DepartmentID": "DEPT-03",
+      "ProductID": "P001",
+      "Amount": 9517.63,
+      "BudgetAmount": 118914.63,
+      "Variance": -109397.0
+    },
+    {
+      "TransactionID": "TXN-1051",
+      "Date": "2026-01-11",
+      "DepartmentID": "DEPT-02",
+      "ProductID": "P005",
+      "Amount": 144156.06,
+      "BudgetAmount": 20621.74,
+      "Variance": 123534.32
+    },
+    {
+      "TransactionID": "TXN-1052",
+      "Date": "2025-06-02",
+      "DepartmentID": "DEPT-02",
+      "ProductID": "P005",
+      "Amount": 11126.17,
+      "BudgetAmount": 173054.74,
+      "Variance": -161928.57
+    },
+    {
+      "TransactionID": "TXN-1053",
+      "Date": "2024-10-24",
+      "DepartmentID": "DEPT-02",
+      "ProductID": "P004",
+      "Amount": 37686.09,
+      "BudgetAmount": 120931.23,
+      "Variance": -83245.14
+    },
+    {
+      "TransactionID": "TXN-1054",
+      "Date": "2025-08-31",
+      "DepartmentID": "DEPT-05",
+      "ProductID": "P002",
+      "Amount": 98948.6,
+      "BudgetAmount": 115219.25,
+      "Variance": -16270.65
+    },
+    {
+      "TransactionID": "TXN-1055",
+      "Date": "2025-10-22",
+      "DepartmentID": "DEPT-07",
+      "ProductID": "P002",
+      "Amount": 100789.17,
+      "BudgetAmount": 66265.85,
+      "Variance": 34523.32
+    },
+    {
+      "TransactionID": "TXN-1056",
+      "Date": "2025-08-31",
+      "DepartmentID": "DEPT-02",
+      "ProductID": "P001",
+      "Amount": 101081.84,
+      "BudgetAmount": 63499.43,
+      "Variance": 37582.41
+    },
+    {
+      "TransactionID": "TXN-1057",
+      "Date": "2026-04-09",
+      "DepartmentID": "DEPT-02",
+      "ProductID": "P005",
+      "Amount": 69284.54,
+      "BudgetAmount": 199698.62,
+      "Variance": -130414.08
+    },
+    {
+      "TransactionID": "TXN-1058",
+      "Date": "2025-07-28",
+      "DepartmentID": "DEPT-02",
+      "ProductID": "P002",
+      "Amount": 32759.99,
+      "BudgetAmount": 56714.08,
+      "Variance": -23954.09
+    },
+    {
+      "TransactionID": "TXN-1059",
+      "Date": "2025-01-10",
+      "DepartmentID": "DEPT-05",
+      "ProductID": "P005",
+      "Amount": 56059.54,
+      "BudgetAmount": 35760.63,
+      "Variance": 20298.91
+    },
+    {
+      "TransactionID": "TXN-1060",
+      "Date": "2025-01-25",
+      "DepartmentID": "DEPT-01",
+      "ProductID": "P005",
+      "Amount": 147594.14,
+      "BudgetAmount": 162384.49,
+      "Variance": -14790.35
+    },
+    {
+      "TransactionID": "TXN-1061",
+      "Date": "2026-03-05",
+      "DepartmentID": "DEPT-05",
+      "ProductID": "P001",
+      "Amount": 45607.43,
+      "BudgetAmount": 134360.8,
+      "Variance": -88753.37
+    },
+    {
+      "TransactionID": "TXN-1062",
+      "Date": "2026-02-11",
+      "DepartmentID": "DEPT-05",
+      "ProductID": "P003",
+      "Amount": 133567.19,
+      "BudgetAmount": 149771.25,
+      "Variance": -16204.06
+    },
+    {
+      "TransactionID": "TXN-1063",
+      "Date": "2025-12-24",
+      "DepartmentID": "DEPT-05",
+      "ProductID": "P005",
+      "Amount": 91119.64,
+      "BudgetAmount": 144934.38,
+      "Variance": -53814.74
+    },
+    {
+      "TransactionID": "TXN-1064",
+      "Date": "2026-05-29",
+      "DepartmentID": "DEPT-02",
+      "ProductID": "P004",
+      "Amount": 73791.25,
+      "BudgetAmount": 181540.62,
+      "Variance": -107749.37
+    },
+    {
+      "TransactionID": "TXN-1065",
+      "Date": "2025-08-13",
+      "DepartmentID": "DEPT-03",
+      "ProductID": "P003",
+      "Amount": 124572.87,
+      "BudgetAmount": 13596.92,
+      "Variance": 110975.95
+    },
+    {
+      "TransactionID": "TXN-1066",
+      "Date": "2024-07-28",
+      "DepartmentID": "DEPT-07",
+      "ProductID": "P005",
+      "Amount": 25075.71,
+      "BudgetAmount": 91157.92,
+      "Variance": -66082.21
+    },
+    {
+      "TransactionID": "TXN-1067",
+      "Date": "2024-08-12",
+      "DepartmentID": "DEPT-03",
+      "ProductID": "P005",
+      "Amount": 2440.79,
+      "BudgetAmount": 19672.55,
+      "Variance": -17231.76
+    },
+    {
+      "TransactionID": "TXN-1068",
+      "Date": "2025-01-01",
+      "DepartmentID": "DEPT-03",
+      "ProductID": "P004",
+      "Amount": 6368.19,
+      "BudgetAmount": 76997.12,
+      "Variance": -70628.93
+    },
+    {
+      "TransactionID": "TXN-1069",
+      "Date": "2026-06-10",
+      "DepartmentID": "DEPT-06",
+      "ProductID": "P002",
+      "Amount": 19989.38,
+      "BudgetAmount": 65110.38,
+      "Variance": -45121.0
+    },
+    {
+      "TransactionID": "TXN-1070",
+      "Date": "2025-07-23",
+      "DepartmentID": "DEPT-07",
+      "ProductID": "P005",
+      "Amount": 102627.94,
+      "BudgetAmount": 135052.02,
+      "Variance": -32424.08
+    },
+    {
+      "TransactionID": "TXN-1071",
+      "Date": "2025-11-20",
+      "DepartmentID": "DEPT-03",
+      "ProductID": "P002",
+      "Amount": 112672.16,
+      "BudgetAmount": 185523.95,
+      "Variance": -72851.79
+    },
+    {
+      "TransactionID": "TXN-1072",
+      "Date": "2025-08-14",
+      "DepartmentID": "DEPT-07",
+      "ProductID": "P002",
+      "Amount": 132331.01,
+      "BudgetAmount": 9833.34,
+      "Variance": 122497.67
+    },
+    {
+      "TransactionID": "TXN-1073",
+      "Date": "2026-04-01",
+      "DepartmentID": "DEPT-07",
+      "ProductID": "P001",
+      "Amount": 40754.05,
+      "BudgetAmount": 158538.03,
+      "Variance": -117783.98
+    },
+    {
+      "TransactionID": "TXN-1074",
+      "Date": "2025-04-05",
+      "DepartmentID": "DEPT-06",
+      "ProductID": "P003",
+      "Amount": 128930.39,
+      "BudgetAmount": 48374.57,
+      "Variance": 80555.82
+    },
+    {
+      "TransactionID": "TXN-1075",
+      "Date": "2025-12-04",
+      "DepartmentID": "DEPT-01",
+      "ProductID": "P002",
+      "Amount": 123259.92,
+      "BudgetAmount": 174907.99,
+      "Variance": -51648.07
+    },
+    {
+      "TransactionID": "TXN-1076",
+      "Date": "2026-05-10",
+      "DepartmentID": "DEPT-05",
+      "ProductID": "P003",
+      "Amount": 60371.43,
+      "BudgetAmount": 59327.6,
+      "Variance": 1043.83
+    },
+    {
+      "TransactionID": "TXN-1077",
+      "Date": "2025-01-17",
+      "DepartmentID": "DEPT-06",
+      "ProductID": "P001",
+      "Amount": 96580.78,
+      "BudgetAmount": 82937.28,
+      "Variance": 13643.5
+    },
+    {
+      "TransactionID": "TXN-1078",
+      "Date": "2026-01-19",
+      "DepartmentID": "DEPT-05",
+      "ProductID": "P001",
+      "Amount": 18185.92,
+      "BudgetAmount": 194228.12,
+      "Variance": -176042.2
+    },
+    {
+      "TransactionID": "TXN-1079",
+      "Date": "2025-09-02",
+      "DepartmentID": "DEPT-07",
+      "ProductID": "P005",
+      "Amount": 17151.98,
+      "BudgetAmount": 89739.93,
+      "Variance": -72587.95
+    },
+    {
+      "TransactionID": "TXN-1080",
+      "Date": "2024-12-07",
+      "DepartmentID": "DEPT-04",
+      "ProductID": "P003",
+      "Amount": 147651.14,
+      "BudgetAmount": 27550.93,
+      "Variance": 120100.21
+    },
+    {
+      "TransactionID": "TXN-1081",
+      "Date": "2025-02-03",
+      "DepartmentID": "DEPT-04",
+      "ProductID": "P003",
+      "Amount": 7613.59,
+      "BudgetAmount": 90031.22,
+      "Variance": -82417.63
+    },
+    {
+      "TransactionID": "TXN-1082",
+      "Date": "2025-08-16",
+      "DepartmentID": "DEPT-06",
+      "ProductID": "P001",
+      "Amount": 65263.31,
+      "BudgetAmount": 190030.52,
+      "Variance": -124767.21
+    },
+    {
+      "TransactionID": "TXN-1083",
+      "Date": "2025-09-07",
+      "DepartmentID": "DEPT-07",
+      "ProductID": "P003",
+      "Amount": 108243.39,
+      "BudgetAmount": 63562.84,
+      "Variance": 44680.55
+    },
+    {
+      "TransactionID": "TXN-1084",
+      "Date": "2026-03-12",
+      "DepartmentID": "DEPT-04",
+      "ProductID": "P004",
+      "Amount": 60957.66,
+      "BudgetAmount": 62652.76,
+      "Variance": -1695.1
+    },
+    {
+      "TransactionID": "TXN-1085",
+      "Date": "2026-01-23",
+      "DepartmentID": "DEPT-05",
+      "ProductID": "P004",
+      "Amount": 100074.49,
+      "BudgetAmount": 78933.33,
+      "Variance": 21141.16
+    },
+    {
+      "TransactionID": "TXN-1086",
+      "Date": "2025-09-30",
+      "DepartmentID": "DEPT-04",
+      "ProductID": "P004",
+      "Amount": 82642.64,
+      "BudgetAmount": 5079.16,
+      "Variance": 77563.48
+    },
+    {
+      "TransactionID": "TXN-1087",
+      "Date": "2025-08-25",
+      "DepartmentID": "DEPT-08",
+      "ProductID": "P004",
+      "Amount": 118078.07,
+      "BudgetAmount": 123299.01,
+      "Variance": -5220.94
+    },
+    {
+      "TransactionID": "TXN-1088",
+      "Date": "2025-03-23",
+      "DepartmentID": "DEPT-03",
+      "ProductID": "P001",
+      "Amount": 66881.81,
+      "BudgetAmount": 46671.77,
+      "Variance": 20210.04
+    },
+    {
+      "TransactionID": "TXN-1089",
+      "Date": "2024-10-24",
+      "DepartmentID": "DEPT-06",
+      "ProductID": "P001",
+      "Amount": 43284.17,
+      "BudgetAmount": 134451.5,
+      "Variance": -91167.33
+    },
+    {
+      "TransactionID": "TXN-1090",
+      "Date": "2024-08-31",
+      "DepartmentID": "DEPT-05",
+      "ProductID": "P002",
+      "Amount": 122945.1,
+      "BudgetAmount": 151471.94,
+      "Variance": -28526.84
+    },
+    {
+      "TransactionID": "TXN-1091",
+      "Date": "2026-06-03",
+      "DepartmentID": "DEPT-04",
+      "ProductID": "P004",
+      "Amount": 121177.87,
+      "BudgetAmount": 33734.02,
+      "Variance": 87443.85
+    },
+    {
+      "TransactionID": "TXN-1092",
+      "Date": "2025-04-10",
+      "DepartmentID": "DEPT-07",
+      "ProductID": "P005",
+      "Amount": 92079.82,
+      "BudgetAmount": 154855.42,
+      "Variance": -62775.6
+    },
+    {
+      "TransactionID": "TXN-1093",
+      "Date": "2025-03-01",
+      "DepartmentID": "DEPT-07",
+      "ProductID": "P002",
+      "Amount": 29970.85,
+      "BudgetAmount": 140789.08,
+      "Variance": -110818.23
+    },
+    {
+      "TransactionID": "TXN-1094",
+      "Date": "2026-04-02",
+      "DepartmentID": "DEPT-07",
+      "ProductID": "P002",
+      "Amount": 22988.13,
+      "BudgetAmount": 139086.37,
+      "Variance": -116098.24
+    },
+    {
+      "TransactionID": "TXN-1095",
+      "Date": "2025-02-05",
+      "DepartmentID": "DEPT-08",
+      "ProductID": "P001",
+      "Amount": 27207.12,
+      "BudgetAmount": 191803.38,
+      "Variance": -164596.26
+    },
+    {
+      "TransactionID": "TXN-1096",
+      "Date": "2026-03-18",
+      "DepartmentID": "DEPT-08",
+      "ProductID": "P002",
+      "Amount": 84053.46,
+      "BudgetAmount": 183906.65,
+      "Variance": -99853.19
+    },
+    {
+      "TransactionID": "TXN-1097",
+      "Date": "2024-12-25",
+      "DepartmentID": "DEPT-06",
+      "ProductID": "P004",
+      "Amount": 120411.07,
+      "BudgetAmount": 135177.66,
+      "Variance": -14766.59
+    },
+    {
+      "TransactionID": "TXN-1098",
+      "Date": "2025-02-19",
+      "DepartmentID": "DEPT-07",
+      "ProductID": "P005",
+      "Amount": 92285.2,
+      "BudgetAmount": 145258.42,
+      "Variance": -52973.22
+    },
+    {
+      "TransactionID": "TXN-1099",
+      "Date": "2025-03-21",
+      "DepartmentID": "DEPT-08",
+      "ProductID": "P003",
+      "Amount": 67441.13,
+      "BudgetAmount": 36035.79,
+      "Variance": 31405.34
+    },
+    {
+      "TransactionID": "TXN-1100",
+      "Date": "2025-10-10",
+      "DepartmentID": "DEPT-08",
+      "ProductID": "P002",
+      "Amount": 113014.74,
+      "BudgetAmount": 168773.26,
+      "Variance": -55758.52
+    },
+    {
+      "TransactionID": "TXN-1101",
+      "Date": "2025-10-01",
+      "DepartmentID": "DEPT-04",
+      "ProductID": "P003",
+      "Amount": 41915.02,
+      "BudgetAmount": 20109.25,
+      "Variance": 21805.77
+    },
+    {
+      "TransactionID": "TXN-1102",
+      "Date": "2026-04-29",
+      "DepartmentID": "DEPT-03",
+      "ProductID": "P002",
+      "Amount": 51041.28,
+      "BudgetAmount": 179140.23,
+      "Variance": -128098.95
+    },
+    {
+      "TransactionID": "TXN-1103",
+      "Date": "2024-07-27",
+      "DepartmentID": "DEPT-04",
+      "ProductID": "P001",
+      "Amount": 35457.96,
+      "BudgetAmount": 140320.21,
+      "Variance": -104862.25
+    },
+    {
+      "TransactionID": "TXN-1104",
+      "Date": "2025-03-30",
+      "DepartmentID": "DEPT-07",
+      "ProductID": "P001",
+      "Amount": 62815.32,
+      "BudgetAmount": 69521.87,
+      "Variance": -6706.55
+    },
+    {
+      "TransactionID": "TXN-1105",
+      "Date": "2024-11-29",
+      "DepartmentID": "DEPT-01",
+      "ProductID": "P005",
+      "Amount": 31818.32,
+      "BudgetAmount": 86927.99,
+      "Variance": -55109.67
+    },
+    {
+      "TransactionID": "TXN-1106",
+      "Date": "2025-07-25",
+      "DepartmentID": "DEPT-05",
+      "ProductID": "P004",
+      "Amount": 57676.77,
+      "BudgetAmount": 6149.74,
+      "Variance": 51527.03
+    },
+    {
+      "TransactionID": "TXN-1107",
+      "Date": "2025-05-17",
+      "DepartmentID": "DEPT-04",
+      "ProductID": "P004",
+      "Amount": 128163.74,
+      "BudgetAmount": 190918.92,
+      "Variance": -62755.18
+    },
+    {
+      "TransactionID": "TXN-1108",
+      "Date": "2026-06-21",
+      "DepartmentID": "DEPT-07",
+      "ProductID": "P003",
+      "Amount": 33693.82,
+      "BudgetAmount": 89988.02,
+      "Variance": -56294.2
+    },
+    {
+      "TransactionID": "TXN-1109",
+      "Date": "2026-02-01",
+      "DepartmentID": "DEPT-08",
+      "ProductID": "P002",
+      "Amount": 100662.17,
+      "BudgetAmount": 160637.75,
+      "Variance": -59975.58
+    },
+    {
+      "TransactionID": "TXN-1110",
+      "Date": "2025-06-12",
+      "DepartmentID": "DEPT-01",
+      "ProductID": "P001",
+      "Amount": 147127.57,
+      "BudgetAmount": 109154.11,
+      "Variance": 37973.46
+    },
+    {
+      "TransactionID": "TXN-1111",
+      "Date": "2025-04-04",
+      "DepartmentID": "DEPT-03",
+      "ProductID": "P001",
+      "Amount": 96769.7,
+      "BudgetAmount": 31461.4,
+      "Variance": 65308.3
+    },
+    {
+      "TransactionID": "TXN-1112",
+      "Date": "2025-04-11",
+      "DepartmentID": "DEPT-06",
+      "ProductID": "P003",
+      "Amount": 39763.29,
+      "BudgetAmount": 68833.77,
+      "Variance": -29070.48
+    },
+    {
+      "TransactionID": "TXN-1113",
+      "Date": "2025-05-15",
+      "DepartmentID": "DEPT-05",
+      "ProductID": "P001",
+      "Amount": 114423.23,
+      "BudgetAmount": 78929.61,
+      "Variance": 35493.62
+    },
+    {
+      "TransactionID": "TXN-1114",
+      "Date": "2026-05-28",
+      "DepartmentID": "DEPT-06",
+      "ProductID": "P002",
+      "Amount": 71075.72,
+      "BudgetAmount": 151059.73,
+      "Variance": -79984.01
+    },
+    {
+      "TransactionID": "TXN-1115",
+      "Date": "2024-09-21",
+      "DepartmentID": "DEPT-01",
+      "ProductID": "P001",
+      "Amount": 97871.47,
+      "BudgetAmount": 157340.44,
+      "Variance": -59468.97
+    },
+    {
+      "TransactionID": "TXN-1116",
+      "Date": "2026-06-30",
+      "DepartmentID": "DEPT-03",
+      "ProductID": "P002",
+      "Amount": 142492.15,
+      "BudgetAmount": 43875.33,
+      "Variance": 98616.82
+    },
+    {
+      "TransactionID": "TXN-1117",
+      "Date": "2024-12-20",
+      "DepartmentID": "DEPT-04",
+      "ProductID": "P004",
+      "Amount": 19806.93,
+      "BudgetAmount": 135544.47,
+      "Variance": -115737.54
+    },
+    {
+      "TransactionID": "TXN-1118",
+      "Date": "2026-01-30",
+      "DepartmentID": "DEPT-02",
+      "ProductID": "P002",
+      "Amount": 105220.28,
+      "BudgetAmount": 154545.13,
+      "Variance": -49324.85
+    },
+    {
+      "TransactionID": "TXN-1119",
+      "Date": "2026-06-24",
+      "DepartmentID": "DEPT-05",
+      "ProductID": "P005",
+      "Amount": 144743.4,
+      "BudgetAmount": 26079.26,
+      "Variance": 118664.14
+    },
+    {
+      "TransactionID": "TXN-1120",
+      "Date": "2025-06-09",
+      "DepartmentID": "DEPT-04",
+      "ProductID": "P001",
+      "Amount": 101924.75,
+      "BudgetAmount": 191843.7,
+      "Variance": -89918.95
+    },
+    {
+      "TransactionID": "TXN-1121",
+      "Date": "2025-11-14",
+      "DepartmentID": "DEPT-02",
+      "ProductID": "P003",
+      "Amount": 89222.58,
+      "BudgetAmount": 166961.47,
+      "Variance": -77738.89
+    },
+    {
+      "TransactionID": "TXN-1122",
+      "Date": "2026-03-19",
+      "DepartmentID": "DEPT-01",
+      "ProductID": "P003",
+      "Amount": 127693.69,
+      "BudgetAmount": 122080.26,
+      "Variance": 5613.43
+    },
+    {
+      "TransactionID": "TXN-1123",
+      "Date": "2026-05-11",
+      "DepartmentID": "DEPT-06",
+      "ProductID": "P001",
+      "Amount": 80379.04,
+      "BudgetAmount": 133996.66,
+      "Variance": -53617.62
+    },
+    {
+      "TransactionID": "TXN-1124",
+      "Date": "2026-04-03",
+      "DepartmentID": "DEPT-07",
+      "ProductID": "P003",
+      "Amount": 127586.77,
+      "BudgetAmount": 165354.53,
+      "Variance": -37767.76
+    },
+    {
+      "TransactionID": "TXN-1125",
+      "Date": "2024-07-26",
+      "DepartmentID": "DEPT-03",
+      "ProductID": "P004",
+      "Amount": 95702.18,
+      "BudgetAmount": 166597.93,
+      "Variance": -70895.75
+    },
+    {
+      "TransactionID": "TXN-1126",
+      "Date": "2024-09-22",
+      "DepartmentID": "DEPT-05",
+      "ProductID": "P005",
+      "Amount": 27244.41,
+      "BudgetAmount": 106740.62,
+      "Variance": -79496.21
+    },
+    {
+      "TransactionID": "TXN-1127",
+      "Date": "2025-03-12",
+      "DepartmentID": "DEPT-08",
+      "ProductID": "P004",
+      "Amount": 121421.68,
+      "BudgetAmount": 109943.72,
+      "Variance": 11477.96
+    },
+    {
+      "TransactionID": "TXN-1128",
+      "Date": "2025-08-24",
+      "DepartmentID": "DEPT-04",
+      "ProductID": "P001",
+      "Amount": 124034.46,
+      "BudgetAmount": 120532.55,
+      "Variance": 3501.91
+    },
+    {
+      "TransactionID": "TXN-1129",
+      "Date": "2025-04-01",
+      "DepartmentID": "DEPT-07",
+      "ProductID": "P003",
+      "Amount": 42560.31,
+      "BudgetAmount": 92906.39,
+      "Variance": -50346.08
+    },
+    {
+      "TransactionID": "TXN-1130",
+      "Date": "2026-01-15",
+      "DepartmentID": "DEPT-08",
+      "ProductID": "P002",
+      "Amount": 5276.3,
+      "BudgetAmount": 170935.8,
+      "Variance": -165659.5
+    },
+    {
+      "TransactionID": "TXN-1131",
+      "Date": "2025-10-07",
+      "DepartmentID": "DEPT-05",
+      "ProductID": "P005",
+      "Amount": 53868.92,
+      "BudgetAmount": 55378.72,
+      "Variance": -1509.8
+    },
+    {
+      "TransactionID": "TXN-1132",
+      "Date": "2026-04-24",
+      "DepartmentID": "DEPT-04",
+      "ProductID": "P004",
+      "Amount": 2512.52,
+      "BudgetAmount": 189872.2,
+      "Variance": -187359.68
+    },
+    {
+      "TransactionID": "TXN-1133",
+      "Date": "2024-08-12",
+      "DepartmentID": "DEPT-08",
+      "ProductID": "P004",
+      "Amount": 73798.1,
+      "BudgetAmount": 152842.11,
+      "Variance": -79044.01
+    },
+    {
+      "TransactionID": "TXN-1134",
+      "Date": "2025-09-22",
+      "DepartmentID": "DEPT-04",
+      "ProductID": "P004",
+      "Amount": 67778.01,
+      "BudgetAmount": 8362.44,
+      "Variance": 59415.57
+    },
+    {
+      "TransactionID": "TXN-1135",
+      "Date": "2024-12-02",
+      "DepartmentID": "DEPT-06",
+      "ProductID": "P004",
+      "Amount": 104076.29,
+      "BudgetAmount": 64710.18,
+      "Variance": 39366.11
+    },
+    {
+      "TransactionID": "TXN-1136",
+      "Date": "2025-01-03",
+      "DepartmentID": "DEPT-06",
+      "ProductID": "P003",
+      "Amount": 83467.47,
+      "BudgetAmount": 72032.69,
+      "Variance": 11434.78
+    },
+    {
+      "TransactionID": "TXN-1137",
+      "Date": "2025-11-05",
+      "DepartmentID": "DEPT-04",
+      "ProductID": "P001",
+      "Amount": 105725.39,
+      "BudgetAmount": 57828.7,
+      "Variance": 47896.69
+    },
+    {
+      "TransactionID": "TXN-1138",
+      "Date": "2025-01-18",
+      "DepartmentID": "DEPT-03",
+      "ProductID": "P002",
+      "Amount": 108471.37,
+      "BudgetAmount": 66531.85,
+      "Variance": 41939.52
+    },
+    {
+      "TransactionID": "TXN-1139",
+      "Date": "2024-11-24",
+      "DepartmentID": "DEPT-05",
+      "ProductID": "P001",
+      "Amount": 33241.31,
+      "BudgetAmount": 99418.72,
+      "Variance": -66177.41
+    },
+    {
+      "TransactionID": "TXN-1140",
+      "Date": "2025-07-16",
+      "DepartmentID": "DEPT-03",
+      "ProductID": "P003",
+      "Amount": 125061.63,
+      "BudgetAmount": 62768.06,
+      "Variance": 62293.57
+    },
+    {
+      "TransactionID": "TXN-1141",
+      "Date": "2025-10-13",
+      "DepartmentID": "DEPT-01",
+      "ProductID": "P001",
+      "Amount": 3108.11,
+      "BudgetAmount": 109156.34,
+      "Variance": -106048.23
+    },
+    {
+      "TransactionID": "TXN-1142",
+      "Date": "2026-03-13",
+      "DepartmentID": "DEPT-08",
+      "ProductID": "P001",
+      "Amount": 83450.49,
+      "BudgetAmount": 140996.39,
+      "Variance": -57545.9
+    },
+    {
+      "TransactionID": "TXN-1143",
+      "Date": "2025-03-27",
+      "DepartmentID": "DEPT-08",
+      "ProductID": "P004",
+      "Amount": 131035.24,
+      "BudgetAmount": 116942.52,
+      "Variance": 14092.72
+    },
+    {
+      "TransactionID": "TXN-1144",
+      "Date": "2025-11-04",
+      "DepartmentID": "DEPT-08",
+      "ProductID": "P001",
+      "Amount": 51765.18,
+      "BudgetAmount": 193272.04,
+      "Variance": -141506.86
+    },
+    {
+      "TransactionID": "TXN-1145",
+      "Date": "2026-05-06",
+      "DepartmentID": "DEPT-01",
+      "ProductID": "P002",
+      "Amount": 123495.23,
+      "BudgetAmount": 83137.95,
+      "Variance": 40357.28
+    },
+    {
+      "TransactionID": "TXN-1146",
+      "Date": "2025-09-12",
+      "DepartmentID": "DEPT-02",
+      "ProductID": "P002",
+      "Amount": 23230.44,
+      "BudgetAmount": 114753.72,
+      "Variance": -91523.28
+    },
+    {
+      "TransactionID": "TXN-1147",
+      "Date": "2024-11-07",
+      "DepartmentID": "DEPT-04",
+      "ProductID": "P005",
+      "Amount": 18649.28,
+      "BudgetAmount": 154066.47,
+      "Variance": -135417.19
+    },
+    {
+      "TransactionID": "TXN-1148",
+      "Date": "2025-09-19",
+      "DepartmentID": "DEPT-07",
+      "ProductID": "P003",
+      "Amount": 57676.33,
+      "BudgetAmount": 182158.35,
+      "Variance": -124482.02
+    },
+    {
+      "TransactionID": "TXN-1149",
+      "Date": "2026-04-10",
+      "DepartmentID": "DEPT-04",
+      "ProductID": "P002",
+      "Amount": 85725.79,
+      "BudgetAmount": 16744.91,
+      "Variance": 68980.88
+    },
+    {
+      "TransactionID": "TXN-1150",
+      "Date": "2025-11-17",
+      "DepartmentID": "DEPT-03",
+      "ProductID": "P005",
+      "Amount": 40432.27,
+      "BudgetAmount": 20831.56,
+      "Variance": 19600.71
+    },
+    {
+      "TransactionID": "TXN-1151",
+      "Date": "2025-04-15",
+      "DepartmentID": "DEPT-08",
+      "ProductID": "P003",
+      "Amount": 12184.67,
+      "BudgetAmount": 5521.77,
+      "Variance": 6662.9
+    },
+    {
+      "TransactionID": "TXN-1152",
+      "Date": "2025-10-04",
+      "DepartmentID": "DEPT-08",
+      "ProductID": "P001",
+      "Amount": 5863.34,
+      "BudgetAmount": 61180.45,
+      "Variance": -55317.11
+    },
+    {
+      "TransactionID": "TXN-1153",
+      "Date": "2024-10-18",
+      "DepartmentID": "DEPT-04",
+      "ProductID": "P004",
+      "Amount": 103420.35,
+      "BudgetAmount": 185162.65,
+      "Variance": -81742.3
+    },
+    {
+      "TransactionID": "TXN-1154",
+      "Date": "2026-02-18",
+      "DepartmentID": "DEPT-05",
+      "ProductID": "P002",
+      "Amount": 18101.67,
+      "BudgetAmount": 48837.84,
+      "Variance": -30736.17
+    },
+    {
+      "TransactionID": "TXN-1155",
+      "Date": "2025-09-09",
+      "DepartmentID": "DEPT-05",
+      "ProductID": "P004",
+      "Amount": 11640.07,
+      "BudgetAmount": 37354.94,
+      "Variance": -25714.87
+    },
+    {
+      "TransactionID": "TXN-1156",
+      "Date": "2024-08-03",
+      "DepartmentID": "DEPT-07",
+      "ProductID": "P003",
+      "Amount": 19528.7,
+      "BudgetAmount": 139292.21,
+      "Variance": -119763.51
+    },
+    {
+      "TransactionID": "TXN-1157",
+      "Date": "2026-04-29",
+      "DepartmentID": "DEPT-01",
+      "ProductID": "P004",
+      "Amount": 75570.35,
+      "BudgetAmount": 101290.07,
+      "Variance": -25719.72
+    },
+    {
+      "TransactionID": "TXN-1158",
+      "Date": "2026-06-24",
+      "DepartmentID": "DEPT-02",
+      "ProductID": "P002",
+      "Amount": 110445.55,
+      "BudgetAmount": 122724.16,
+      "Variance": -12278.61
+    },
+    {
+      "TransactionID": "TXN-1159",
+      "Date": "2024-12-08",
+      "DepartmentID": "DEPT-01",
+      "ProductID": "P003",
+      "Amount": 144324.75,
+      "BudgetAmount": 168011.93,
+      "Variance": -23687.18
+    },
+    {
+      "TransactionID": "TXN-1160",
+      "Date": "2026-01-22",
+      "DepartmentID": "DEPT-08",
+      "ProductID": "P005",
+      "Amount": 86860.8,
+      "BudgetAmount": 153806.26,
+      "Variance": -66945.46
+    },
+    {
+      "TransactionID": "TXN-1161",
+      "Date": "2026-01-16",
+      "DepartmentID": "DEPT-07",
+      "ProductID": "P004",
+      "Amount": 98074.91,
+      "BudgetAmount": 183634.19,
+      "Variance": -85559.28
+    },
+    {
+      "TransactionID": "TXN-1162",
+      "Date": "2025-05-28",
+      "DepartmentID": "DEPT-06",
+      "ProductID": "P003",
+      "Amount": 145389.23,
+      "BudgetAmount": 96652.03,
+      "Variance": 48737.2
+    },
+    {
+      "TransactionID": "TXN-1163",
+      "Date": "2025-08-17",
+      "DepartmentID": "DEPT-07",
+      "ProductID": "P004",
+      "Amount": 100849.89,
+      "BudgetAmount": 172257.95,
+      "Variance": -71408.06
+    },
+    {
+      "TransactionID": "TXN-1164",
+      "Date": "2025-01-03",
+      "DepartmentID": "DEPT-01",
+      "ProductID": "P004",
+      "Amount": 43944.45,
+      "BudgetAmount": 189312.74,
+      "Variance": -145368.29
+    },
+    {
+      "TransactionID": "TXN-1165",
+      "Date": "2026-03-24",
+      "DepartmentID": "DEPT-07",
+      "ProductID": "P005",
+      "Amount": 14120.91,
+      "BudgetAmount": 54217.78,
+      "Variance": -40096.87
+    },
+    {
+      "TransactionID": "TXN-1166",
+      "Date": "2025-01-11",
+      "DepartmentID": "DEPT-08",
+      "ProductID": "P004",
+      "Amount": 123914.15,
+      "BudgetAmount": 5224.46,
+      "Variance": 118689.69
+    },
+    {
+      "TransactionID": "TXN-1167",
+      "Date": "2024-10-21",
+      "DepartmentID": "DEPT-08",
+      "ProductID": "P004",
+      "Amount": 9076.41,
+      "BudgetAmount": 106095.68,
+      "Variance": -97019.27
+    },
+    {
+      "TransactionID": "TXN-1168",
+      "Date": "2025-01-04",
+      "DepartmentID": "DEPT-03",
+      "ProductID": "P003",
+      "Amount": 114238.59,
+      "BudgetAmount": 44693.86,
+      "Variance": 69544.73
+    },
+    {
+      "TransactionID": "TXN-1169",
+      "Date": "2026-03-18",
+      "DepartmentID": "DEPT-01",
+      "ProductID": "P005",
+      "Amount": 66279.3,
+      "BudgetAmount": 141158.76,
+      "Variance": -74879.46
+    },
+    {
+      "TransactionID": "TXN-1170",
+      "Date": "2025-09-05",
+      "DepartmentID": "DEPT-01",
+      "ProductID": "P005",
+      "Amount": 120097.75,
+      "BudgetAmount": 143407.65,
+      "Variance": -23309.9
+    },
+    {
+      "TransactionID": "TXN-1171",
+      "Date": "2026-03-26",
+      "DepartmentID": "DEPT-08",
+      "ProductID": "P001",
+      "Amount": 61790.61,
+      "BudgetAmount": 48816.63,
+      "Variance": 12973.98
+    },
+    {
+      "TransactionID": "TXN-1172",
+      "Date": "2025-09-25",
+      "DepartmentID": "DEPT-05",
+      "ProductID": "P004",
+      "Amount": 97508.74,
+      "BudgetAmount": 35024.37,
+      "Variance": 62484.37
+    },
+    {
+      "TransactionID": "TXN-1173",
+      "Date": "2025-11-13",
+      "DepartmentID": "DEPT-08",
+      "ProductID": "P005",
+      "Amount": 125373.87,
+      "BudgetAmount": 196147.7,
+      "Variance": -70773.83
+    },
+    {
+      "TransactionID": "TXN-1174",
+      "Date": "2024-11-14",
+      "DepartmentID": "DEPT-03",
+      "ProductID": "P001",
+      "Amount": 22551.65,
+      "BudgetAmount": 42169.02,
+      "Variance": -19617.37
+    },
+    {
+      "TransactionID": "TXN-1175",
+      "Date": "2025-05-22",
+      "DepartmentID": "DEPT-06",
+      "ProductID": "P005",
+      "Amount": 42160.86,
+      "BudgetAmount": 159051.21,
+      "Variance": -116890.35
+    },
+    {
+      "TransactionID": "TXN-1176",
+      "Date": "2025-09-18",
+      "DepartmentID": "DEPT-08",
+      "ProductID": "P002",
+      "Amount": 40808.73,
+      "BudgetAmount": 5500.23,
+      "Variance": 35308.5
+    },
+    {
+      "TransactionID": "TXN-1177",
+      "Date": "2025-08-14",
+      "DepartmentID": "DEPT-07",
+      "ProductID": "P004",
+      "Amount": 67535.56,
+      "BudgetAmount": 99446.57,
+      "Variance": -31911.01
+    },
+    {
+      "TransactionID": "TXN-1178",
+      "Date": "2024-08-05",
+      "DepartmentID": "DEPT-04",
+      "ProductID": "P005",
+      "Amount": 139994.99,
+      "BudgetAmount": 174572.33,
+      "Variance": -34577.34
+    },
+    {
+      "TransactionID": "TXN-1179",
+      "Date": "2025-05-26",
+      "DepartmentID": "DEPT-01",
+      "ProductID": "P003",
+      "Amount": 58062.66,
+      "BudgetAmount": 171922.53,
+      "Variance": -113859.87
+    },
+    {
+      "TransactionID": "TXN-1180",
+      "Date": "2025-06-25",
+      "DepartmentID": "DEPT-07",
+      "ProductID": "P002",
+      "Amount": 111961.07,
+      "BudgetAmount": 142519.44,
+      "Variance": -30558.37
+    },
+    {
+      "TransactionID": "TXN-1181",
+      "Date": "2025-02-21",
+      "DepartmentID": "DEPT-06",
+      "ProductID": "P001",
+      "Amount": 74803.97,
+      "BudgetAmount": 12218.82,
+      "Variance": 62585.15
+    },
+    {
+      "TransactionID": "TXN-1182",
+      "Date": "2025-01-28",
+      "DepartmentID": "DEPT-08",
+      "ProductID": "P001",
+      "Amount": 131254.37,
+      "BudgetAmount": 90859.71,
+      "Variance": 40394.66
+    },
+    {
+      "TransactionID": "TXN-1183",
+      "Date": "2024-09-18",
+      "DepartmentID": "DEPT-03",
+      "ProductID": "P001",
+      "Amount": 108644.13,
+      "BudgetAmount": 84945.83,
+      "Variance": 23698.3
+    },
+    {
+      "TransactionID": "TXN-1184",
+      "Date": "2025-08-08",
+      "DepartmentID": "DEPT-07",
+      "ProductID": "P001",
+      "Amount": 70954.1,
+      "BudgetAmount": 193994.71,
+      "Variance": -123040.61
+    },
+    {
+      "TransactionID": "TXN-1185",
+      "Date": "2025-01-20",
+      "DepartmentID": "DEPT-07",
+      "ProductID": "P003",
+      "Amount": 127913.03,
+      "BudgetAmount": 171206.56,
+      "Variance": -43293.53
+    },
+    {
+      "TransactionID": "TXN-1186",
+      "Date": "2025-03-08",
+      "DepartmentID": "DEPT-01",
+      "ProductID": "P005",
+      "Amount": 94393.08,
+      "BudgetAmount": 178050.54,
+      "Variance": -83657.46
+    },
+    {
+      "TransactionID": "TXN-1187",
+      "Date": "2025-09-29",
+      "DepartmentID": "DEPT-04",
+      "ProductID": "P001",
+      "Amount": 11194.69,
+      "BudgetAmount": 128076.4,
+      "Variance": -116881.71
+    },
+    {
+      "TransactionID": "TXN-1188",
+      "Date": "2024-10-10",
+      "DepartmentID": "DEPT-02",
+      "ProductID": "P004",
+      "Amount": 65661.75,
+      "BudgetAmount": 24196.41,
+      "Variance": 41465.34
+    },
+    {
+      "TransactionID": "TXN-1189",
+      "Date": "2026-06-21",
+      "DepartmentID": "DEPT-01",
+      "ProductID": "P003",
+      "Amount": 25788.35,
+      "BudgetAmount": 63395.89,
+      "Variance": -37607.54
+    },
+    {
+      "TransactionID": "TXN-1190",
+      "Date": "2025-07-02",
+      "DepartmentID": "DEPT-07",
+      "ProductID": "P002",
+      "Amount": 119625.38,
+      "BudgetAmount": 62206.72,
+      "Variance": 57418.66
+    },
+    {
+      "TransactionID": "TXN-1191",
+      "Date": "2024-08-21",
+      "DepartmentID": "DEPT-03",
+      "ProductID": "P002",
+      "Amount": 37385.42,
+      "BudgetAmount": 85350.09,
+      "Variance": -47964.67
+    },
+    {
+      "TransactionID": "TXN-1192",
+      "Date": "2025-06-24",
+      "DepartmentID": "DEPT-04",
+      "ProductID": "P004",
+      "Amount": 27085.33,
+      "BudgetAmount": 123850.9,
+      "Variance": -96765.57
+    },
+    {
+      "TransactionID": "TXN-1193",
+      "Date": "2025-04-04",
+      "DepartmentID": "DEPT-05",
+      "ProductID": "P004",
+      "Amount": 137011.52,
+      "BudgetAmount": 32907.96,
+      "Variance": 104103.56
+    },
+    {
+      "TransactionID": "TXN-1194",
+      "Date": "2025-03-31",
+      "DepartmentID": "DEPT-05",
+      "ProductID": "P005",
+      "Amount": 39043.68,
+      "BudgetAmount": 6832.5,
+      "Variance": 32211.18
+    },
+    {
+      "TransactionID": "TXN-1195",
+      "Date": "2025-08-01",
+      "DepartmentID": "DEPT-05",
+      "ProductID": "P004",
+      "Amount": 24538.37,
+      "BudgetAmount": 91137.31,
+      "Variance": -66598.94
+    },
+    {
+      "TransactionID": "TXN-1196",
+      "Date": "2025-09-14",
+      "DepartmentID": "DEPT-04",
+      "ProductID": "P004",
+      "Amount": 103856.71,
+      "BudgetAmount": 94082.98,
+      "Variance": 9773.73
+    },
+    {
+      "TransactionID": "TXN-1197",
+      "Date": "2025-06-25",
+      "DepartmentID": "DEPT-06",
+      "ProductID": "P005",
+      "Amount": 128146.98,
+      "BudgetAmount": 25797.39,
+      "Variance": 102349.59
+    },
+    {
+      "TransactionID": "TXN-1198",
+      "Date": "2026-06-28",
+      "DepartmentID": "DEPT-07",
+      "ProductID": "P003",
+      "Amount": 45084.99,
+      "BudgetAmount": 141359.42,
+      "Variance": -96274.43
+    },
+    {
+      "TransactionID": "TXN-1199",
+      "Date": "2026-05-31",
+      "DepartmentID": "DEPT-08",
+      "ProductID": "P003",
+      "Amount": 2206.6,
+      "BudgetAmount": 173688.14,
+      "Variance": -171481.54
+    }
+  ],
+  "dimensions": {
+    "Dim_Department": [
+      {
+        "DepartmentID": "DEPT-01",
+        "Department": "Sales",
+        "Division": "Division A",
+        "CostCentre": "CC100"
+      },
+      {
+        "DepartmentID": "DEPT-02",
+        "Department": "Marketing",
+        "Division": "Division A",
+        "CostCentre": "CC101"
+      },
+      {
+        "DepartmentID": "DEPT-03",
+        "Department": "Operations",
+        "Division": "Division A",
+        "CostCentre": "CC102"
+      },
+      {
+        "DepartmentID": "DEPT-04",
+        "Department": "Finance",
+        "Division": "Division A",
+        "CostCentre": "CC103"
+      },
+      {
+        "DepartmentID": "DEPT-05",
+        "Department": "HR",
+        "Division": "Division B",
+        "CostCentre": "CC104"
+      },
+      {
+        "DepartmentID": "DEPT-06",
+        "Department": "IT",
+        "Division": "Division B",
+        "CostCentre": "CC105"
+      },
+      {
+        "DepartmentID": "DEPT-07",
+        "Department": "Legal",
+        "Division": "Division B",
+        "CostCentre": "CC106"
+      },
+      {
+        "DepartmentID": "DEPT-08",
+        "Department": "Procurement",
+        "Division": "Division B",
+        "CostCentre": "CC107"
+      }
+    ],
+    "Dim_Product": [
+      {
+        "ProductID": "P001",
+        "ProductName": "Software",
+        "ProductCategory": "Cloud",
+        "ProductSubcategory": "Cloud Sub"
+      },
+      {
+        "ProductID": "P002",
+        "ProductName": "Consulting",
+        "ProductCategory": "Professional",
+        "ProductSubcategory": "Professional Sub"
+      },
+      {
+        "ProductID": "P003",
+        "ProductName": "Hardware",
+        "ProductCategory": "Infrastructure",
+        "ProductSubcategory": "Infrastructure Sub"
+      },
+      {
+        "ProductID": "P004",
+        "ProductName": "Support",
+        "ProductCategory": "Services",
+        "ProductSubcategory": "Services Sub"
+      },
+      {
+        "ProductID": "P005",
+        "ProductName": "Training",
+        "ProductCategory": "Education",
+        "ProductSubcategory": "Education Sub"
+      }
+    ]
+  },
+  "rowCount": 500
+}

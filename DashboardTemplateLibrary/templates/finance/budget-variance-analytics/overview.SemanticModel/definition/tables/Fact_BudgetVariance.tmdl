@@ -1,0 +1,58 @@
+table Fact_BudgetVariance
+
+	column TransactionID
+		dataType: string
+		sourceColumn: TransactionID
+		summarizeBy: none
+		isKey
+
+	column Date
+		dataType: dateTime
+		formatString: Short Date
+		sourceColumn: Date
+		summarizeBy: none
+
+	column DepartmentID
+		dataType: string
+		sourceColumn: DepartmentID
+		summarizeBy: none
+
+	column ProductID
+		dataType: string
+		sourceColumn: ProductID
+		summarizeBy: none
+
+	column Amount
+		dataType: decimal
+		formatString: \$#,##0.00
+		sourceColumn: Amount
+		summarizeBy: none
+
+	column BudgetAmount
+		dataType: decimal
+		formatString: \$#,##0.00
+		sourceColumn: BudgetAmount
+		summarizeBy: none
+
+	column Variance
+		dataType: decimal
+		formatString: \$#,##0.00
+		sourceColumn: Variance
+		summarizeBy: none
+
+	partition Fact_BudgetVariance = m
+		mode: import
+		source =
+				let
+					Source = Excel.Workbook(File.Contents(SourceFilePath), null, true),
+					Data = Source{[Item="Transactions",Kind="Sheet"]}[Data],
+					Promoted = Table.PromoteHeaders(Data, [PromoteAllScalars=true]),
+					Typed = Table.TransformColumnTypes(Promoted,{
+						{"TransactionID", type text}, {"Date", type date},
+						{"DepartmentID", type text}, {"ProductID", type text},
+						{"Amount", type number}, {"BudgetAmount", type number}, {"Variance", type number}
+					})
+				in
+					Typed
+
+	annotation PBI_ResultType = Table
