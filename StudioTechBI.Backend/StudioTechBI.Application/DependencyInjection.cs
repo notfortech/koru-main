@@ -30,6 +30,7 @@ public static class DependencyInjection
         services.AddScoped<ISchemaModelFieldAliasService, SchemaModelFieldAliasService>();
         services.AddScoped<IReportMatchService, ReportMatchService>();
         services.AddScoped<IReportDataUsageConsentService, ReportDataUsageConsentService>();
+        services.AddScoped<ITemplateRefreshService, TemplateRefreshService>();
 
         return services;
     }
