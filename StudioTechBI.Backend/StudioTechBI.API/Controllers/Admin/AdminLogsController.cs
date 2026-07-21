@@ -36,4 +36,15 @@ public class AdminLogsController : ControllerBase
         var list = await _loggingService.GetTechnicalLogsAsync(limit, level, cancellationToken);
         return Ok(list);
     }
+
+    /// <summary>Dashboard Template Generator run history — successes and failures, per client.</summary>
+    [HttpGet("dashboard-template")]
+    public async Task<ActionResult<IReadOnlyList<Application.DTOs.Admin.FunctionalLogDto>>> GetDashboardTemplateLogs(
+        [FromQuery] int? limit,
+        [FromQuery] Guid? clientId,
+        CancellationToken cancellationToken)
+    {
+        var list = await _loggingService.GetDashboardTemplateLogsAsync(limit, clientId, cancellationToken);
+        return Ok(list);
+    }
 }

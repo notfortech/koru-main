@@ -77,7 +77,8 @@ public class PowerBiAssetQuery : IPowerBiAssetQuery
             WorkspaceId = asset.WorkspaceId,
             DatasetId = asset.DatasetId,
             ReportId = asset.ReportId,
-            CapacityId = asset.CapacityId
+            CapacityId = asset.CapacityId,
+            CreatedAt = asset.CreatedAt
         };
     }
 
@@ -132,7 +133,8 @@ public class PowerBiAssetQuery : IPowerBiAssetQuery
             WorkspaceId = asset.WorkspaceId,
             DatasetId = asset.DatasetId,
             ReportId = asset.ReportId,
-            CapacityId = asset.CapacityId
+            CapacityId = asset.CapacityId,
+            CreatedAt = asset.CreatedAt
         };
     }
 
@@ -176,7 +178,8 @@ public class PowerBiAssetQuery : IPowerBiAssetQuery
             WorkspaceId = a.WorkspaceId,
             DatasetId = a.DatasetId,
             ReportId = a.ReportId,
-            CapacityId = a.CapacityId
+            CapacityId = a.CapacityId,
+            CreatedAt = a.CreatedAt
         }).ToList();
     }
 }

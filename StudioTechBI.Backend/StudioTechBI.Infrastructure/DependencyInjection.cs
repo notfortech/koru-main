@@ -60,6 +60,7 @@ public static class DependencyInjection
         services.AddScoped<IReportTemplateAssetService, ReportTemplateAssetService>();
         services.AddScoped<IWorkbookWriter, WorkbookWriter>();
         services.AddScoped<IBlobSasUriProvider, BlobSasUriProvider>();
+        services.AddScoped<IDashboardTemplateLogWriter, DashboardTemplateLogWriter>();
 
         services.Configure<InsightEngineOptions>(configuration.GetSection(InsightEngineOptions.SectionName));
         services.AddHttpClient<InsightEngineClient>()

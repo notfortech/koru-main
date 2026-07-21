@@ -1,11 +1,13 @@
 using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 using StudioTechBI.Application.DTOs.BindDeploy;
 using StudioTechBI.Application.DTOs.Common;
 using StudioTechBI.Application.DTOs.DashboardTemplate;
 using StudioTechBI.Application.DTOs.ReportDesigner;
 using StudioTechBI.Application.Interfaces;
+using StudioTechBI.Application.Models;
 using StudioTechBI.Application.Utilities;
 
 namespace StudioTechBI.API.Controllers;
@@ -44,7 +46,9 @@ public class DashboardTemplateController : ControllerBase
     private readonly IReportVisualGenerator _reportVisualGenerator;
     private readonly IPbipImportClient _pbipImportClient;
     private readonly IPowerBiAssetWriter _powerBiAssetWriter;
+    private readonly IDashboardTemplateLogWriter _logWriter;
     private readonly IClientResolver _clientResolver;
+    private readonly DashboardTemplateOptions _options;
     private readonly ILogger<DashboardTemplateController> _logger;
 
     public DashboardTemplateController(
@@ -56,7 +60,9 @@ public class DashboardTemplateController : ControllerBase
         IReportVisualGenerator reportVisualGenerator,
         IPbipImportClient pbipImportClient,
         IPowerBiAssetWriter powerBiAssetWriter,
+        IDashboardTemplateLogWriter logWriter,
         IClientResolver clientResolver,
+        IOptions<DashboardTemplateOptions> options,
         ILogger<DashboardTemplateController> logger)
     {
         _reportDesignerClient = reportDesignerClient;
@@ -67,8 +73,23 @@ public class DashboardTemplateController : ControllerBase
         _reportVisualGenerator = reportVisualGenerator;
         _pbipImportClient = pbipImportClient;
         _powerBiAssetWriter = powerBiAssetWriter;
+        _logWriter = logWriter;
         _clientResolver = clientResolver;
+        _options = options.Value;
         _logger = logger;
+    }
+
+    /// <summary>Best-effort — a logging failure must never break the actual response.</summary>
+    private async Task LogAttemptAsync(Guid clientId, string clientName, bool success, string summary, IReadOnlyList<string> logLines, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _logWriter.LogAsync(clientId, clientName, success, summary, logLines, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "DashboardTemplate.LogWriteFailed ClientId={ClientId}", clientId);
+        }
     }
 
     /// <summary>
@@ -130,11 +151,13 @@ public class DashboardTemplateController : ControllerBase
         catch (HttpRequestException ex)
         {
             _logger.LogError(ex, "DashboardTemplate.AuthorTmdlFailed ClientId={ClientId} CorrelationId={CorrelationId}", client.Id, correlationId);
+            await LogAttemptAsync(client.Id, client.ClientName, false, "Failed to author the semantic model.", new[] { ex.Message }, cancellationToken);
             return StatusCode(502, ApiResponse<object>.ErrorResponse("Failed to author the semantic model. Please try again."));
         }
         catch (InvalidOperationException ex)
         {
             _logger.LogError(ex, "DashboardTemplate.AuthorTmdlFailed ClientId={ClientId} CorrelationId={CorrelationId}", client.Id, correlationId);
+            await LogAttemptAsync(client.Id, client.ClientName, false, "Failed to author the semantic model.", new[] { ex.Message }, cancellationToken);
             return StatusCode(502, ApiResponse<object>.ErrorResponse("Failed to author the semantic model. Please try again."));
         }
 
@@ -148,6 +171,7 @@ public class DashboardTemplateController : ControllerBase
             catch (InvalidOperationException ex)
             {
                 _logger.LogWarning(ex, "DashboardTemplate.BlendFailed ClientId={ClientId} CorrelationId={CorrelationId}", client.Id, correlationId);
+                await LogAttemptAsync(client.Id, client.ClientName, false, "Could not read the uploaded file to blend with the generated model.", new[] { ex.Message }, cancellationToken);
                 return UnprocessableEntity(ApiResponse<object>.ErrorResponse(
                     "Could not read the uploaded file to blend with the generated model.", new List<string> { ex.Message }));
             }
@@ -173,7 +197,13 @@ public class DashboardTemplateController : ControllerBase
         var uploadedCount = blended.Provenance.Count(p => p.Source == ProvenanceSource.Uploaded);
         var mockedCount = blended.Provenance.Count(p => p.Source == ProvenanceSource.Mocked);
 
-        var reportDisplayName = $"{client.ClientName} — {designLabel ?? "Dashboard Template"}";
+        // Timestamped so repeat generations for the same client get genuinely new Power BI
+        // artifacts (new datasetId/reportId) instead of colliding with — and Overwrite-ing — a
+        // prior generation's dataset. Necessary because, for now, every client's generations
+        // share the one configured workspace (see DashboardTemplateOptions) rather than each
+        // having their own — naming is the only differentiator until that changes.
+        var generatedAt = DateTime.UtcNow;
+        var reportDisplayName = $"{client.ClientName} — {designLabel ?? "Dashboard Template"} — {generatedAt:yyyy-MM-dd HH:mm:ss} UTC";
         var generation = _reportVisualGenerator.Generate(blueprintElement, blended.Tables, patchedFiles, reportDisplayName);
 
         var deployed = false;
@@ -199,7 +229,7 @@ public class DashboardTemplateController : ControllerBase
                 var importRequest = new PbipImportRequest(
                     ClientName: client.ClientName,
                     ReportName: reportDisplayName,
-                    WorkspaceName: $"Client - {client.ClientName}",
+                    WorkspaceName: _options.WorkspaceName,
                     Files: pbipFiles);
 
                 var importResult = await _pbipImportClient.ImportAsync(importRequest, correlationId, cancellationToken);
@@ -238,6 +268,8 @@ public class DashboardTemplateController : ControllerBase
         _logger.LogInformation(
             "DashboardTemplate.Generated ClientId={ClientId} CorrelationId={CorrelationId} Uploaded={Uploaded} Mocked={Mocked} TmdlPatched={TmdlPatched} Deployed={Deployed}",
             client.Id, correlationId, uploadedCount, mockedCount, tmdlPatched, deployed);
+
+        await LogAttemptAsync(client.Id, client.ClientName, deployed, summary, visualLog, cancellationToken);
 
         return Ok(ApiResponse<GenerateDashboardTemplateResponse>.SuccessResponse(
             new GenerateDashboardTemplateResponse(

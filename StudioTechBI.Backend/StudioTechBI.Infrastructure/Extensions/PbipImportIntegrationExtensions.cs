@@ -18,6 +18,8 @@ public static class PbipImportIntegrationExtensions
     {
         services.AddOptions<BindDeployOptions>()
             .BindConfiguration(BindDeployOptions.SectionName);
+        services.AddOptions<DashboardTemplateOptions>()
+            .BindConfiguration(DashboardTemplateOptions.SectionName);
 
         services.AddHttpClient<IPbipImportClient, PbipImportClient>()
             .ConfigureHttpClient((sp, client) =>
