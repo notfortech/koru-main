@@ -428,7 +428,8 @@ public class ReportsController : ControllerBase
             reportType = a.ReportType,
             reportId = a.ReportId,
             datasetId = a.DatasetId,
-            workspaceId = a.WorkspaceId
+            workspaceId = a.WorkspaceId,
+            createdAt = a.CreatedAt
         }).ToList();
 
         return Ok(new
@@ -482,7 +483,8 @@ public class ReportsController : ControllerBase
             reportType = a.ReportType,
             reportId = a.ReportId,
             datasetId = a.DatasetId,
-            workspaceId = a.WorkspaceId
+            workspaceId = a.WorkspaceId,
+            createdAt = a.CreatedAt
         }).ToList();
 
         return Ok(new
