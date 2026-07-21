@@ -221,10 +221,16 @@ public class DashboardTemplateController : ControllerBase
             try
             {
                 var slug = SanitizeSlug($"{client.ClientName}-{correlationId[..8]}");
+                var reportFolder = $"{slug}.Report";
+                var semanticModelFolder = $"{slug}.SemanticModel";
+
                 var pbipFiles = new List<PbipFileDto>();
                 pbipFiles.AddRange(patchedFiles.Select(f => new PbipFileDto(ToSemanticModelPath(slug, f.Path), f.Content)));
-                pbipFiles.Add(new PbipFileDto($"{slug}.Report/report.json", generation.ReportJson));
-                pbipFiles.Add(new PbipFileDto($"{slug}.Report/.platform", generation.PlatformManifestJson));
+                pbipFiles.Add(new PbipFileDto($"{reportFolder}/report.json", generation.ReportJson));
+                pbipFiles.Add(new PbipFileDto($"{reportFolder}/.platform", generation.PlatformManifestJson));
+                pbipFiles.Add(new PbipFileDto($"{reportFolder}/definition.pbir", PbipSkeletonBuilder.BuildReportDefinitionPbir(semanticModelFolder)));
+                pbipFiles.Add(new PbipFileDto($"{semanticModelFolder}/.platform", PbipSkeletonBuilder.BuildSemanticModelPlatformManifest(reportDisplayName)));
+                pbipFiles.Add(new PbipFileDto($"{slug}.pbip", PbipSkeletonBuilder.BuildTopLevelProjectJson(reportFolder)));
 
                 var importRequest = new PbipImportRequest(
                     ClientName: client.ClientName,
