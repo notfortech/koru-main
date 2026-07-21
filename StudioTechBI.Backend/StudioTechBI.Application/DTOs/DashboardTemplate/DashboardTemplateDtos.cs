@@ -20,6 +20,11 @@ public static class ProvenanceSource
     public const string Mocked = "mocked";
 }
 
+/// <summary>Output of report/visual generation (Phase 3): the assembled report.json + minimal
+/// .platform manifest, plus a log of type fallbacks, axis inference, and unresolved
+/// measure/field references — folded into the same log the response surfaces.</summary>
+public record ReportGenerationResult(string ReportJson, string PlatformManifestJson, List<string> Log);
+
 public record GenerateDashboardTemplateResponse(
     string CorrelationId,
     List<ProvenanceEntryDto> Provenance,
@@ -27,4 +32,12 @@ public record GenerateDashboardTemplateResponse(
     string? BlendedDatasetDownloadUrl,
     List<TmdlFileDto> PatchedTmdlFiles,
     bool TmdlPatched,
-    string Summary);
+    string Summary,
+    bool Deployed,
+    string? WorkspaceId,
+    string? DatasetId,
+    string? ReportId,
+    List<string> VisualGenerationLog,
+    string? DesignBlueprintTemplateId,
+    string? DesignBlueprintTier,
+    string? DesignBlueprintLabel);

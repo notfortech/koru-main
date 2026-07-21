@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using StudioTechBI.Application.DTOs.BindDeploy;
 using StudioTechBI.Application.DTOs.Common;
 using StudioTechBI.Application.DTOs.DashboardTemplate;
 using StudioTechBI.Application.DTOs.ReportDesigner;
@@ -10,14 +11,21 @@ using StudioTechBI.Application.Utilities;
 namespace StudioTechBI.API.Controllers;
 
 /// <summary>
-/// Dashboard Template Generator (Phase 1+2) — a wholly new, separate flow from Report
-/// Designer's publish (ReportDesignerController.PublishAsync). Given a client's uploaded file
-/// and an already-generated blueprint (from POST /api/report-designer/generate-model), blends
-/// real values with clearly-labeled mock values for any columns the upload doesn't cover,
-/// patches the authored TMDL's data source to a short-lived SAS URL, and returns everything
-/// (provenance log, blended dataset, patched TMDL) for the client to inspect or take further.
-/// Does not deploy to Power BI — that remains Report Designer's publish flow, and report/visual
-/// generation is a later phase, not built yet.
+/// Dashboard Template Generator — a wholly new, separate flow from Report Designer's publish
+/// (ReportDesignerController.PublishAsync). Given a client's uploaded file and an
+/// already-generated blueprint (from POST /api/report-designer/generate-model, or the richer
+/// "Design Blueprint" format — see BlueprintFormatDetector), this:
+///  1. Blends real values with clearly-labeled mock values for any columns the upload doesn't
+///     cover (Phase 1 — DataBlendService).
+///  2. Patches the authored TMDL's data source to a short-lived SAS URL (Phase 2 — TmdlSourcePatcher).
+///  3. Generates a real report.json with visuals (Phase 3 — ReportVisualGenerator; genuinely
+///     greenfield, see that class's remarks).
+///  4. Assembles a PBIP file set and publishes it via stbi-bind-deploy's new Import API client
+///     (Phase 4 — IPbipImportClient), writing a PowerBiAsset row on success so the existing
+///     embed-token flow picks it up automatically.
+/// The deploy step (3-4) fails soft: if it errors, the request still returns everything Phase 1-2
+/// already produce (blended dataset + patched TMDL), with the failure appended to the same log —
+/// no live Power BI tenant was available to verify this pipeline against in this session.
 /// </summary>
 [ApiController]
 [Route("api/dashboard-template")]
@@ -33,6 +41,9 @@ public class DashboardTemplateController : ControllerBase
     private readonly IWorkbookWriter _workbookWriter;
     private readonly IBlobStorageService _blobStorage;
     private readonly IBlobSasUriProvider _sasUriProvider;
+    private readonly IReportVisualGenerator _reportVisualGenerator;
+    private readonly IPbipImportClient _pbipImportClient;
+    private readonly IPowerBiAssetWriter _powerBiAssetWriter;
     private readonly IClientResolver _clientResolver;
     private readonly ILogger<DashboardTemplateController> _logger;
 
@@ -42,6 +53,9 @@ public class DashboardTemplateController : ControllerBase
         IWorkbookWriter workbookWriter,
         IBlobStorageService blobStorage,
         IBlobSasUriProvider sasUriProvider,
+        IReportVisualGenerator reportVisualGenerator,
+        IPbipImportClient pbipImportClient,
+        IPowerBiAssetWriter powerBiAssetWriter,
         IClientResolver clientResolver,
         ILogger<DashboardTemplateController> logger)
     {
@@ -50,6 +64,9 @@ public class DashboardTemplateController : ControllerBase
         _workbookWriter = workbookWriter;
         _blobStorage = blobStorage;
         _sasUriProvider = sasUriProvider;
+        _reportVisualGenerator = reportVisualGenerator;
+        _pbipImportClient = pbipImportClient;
+        _powerBiAssetWriter = powerBiAssetWriter;
         _clientResolver = clientResolver;
         _logger = logger;
     }
@@ -57,7 +74,8 @@ public class DashboardTemplateController : ControllerBase
     /// <summary>
     /// POST /api/dashboard-template/generate
     /// Multipart form: file (the client's Excel upload), clientId, blueprint (raw JSON string —
-    /// the same blueprint object returned earlier by POST /api/report-designer/generate-model).
+    /// either the Analytics Blueprint from POST /api/report-designer/generate-model, or a Design
+    /// Blueprint — auto-detected, see BlueprintFormatDetector).
     /// </summary>
     [HttpPost("generate")]
     [RequestSizeLimit(MaxFileSizeBytes)]
@@ -99,6 +117,10 @@ public class DashboardTemplateController : ControllerBase
 
         var correlationId = Guid.NewGuid().ToString();
         var blueprintElement = blueprintDoc.RootElement;
+        var isDesignBlueprint = BlueprintFormatDetector.IsDesignBlueprint(blueprintElement);
+        var designTemplateId = isDesignBlueprint ? ReadStringProperty(blueprintElement, "templateId") : null;
+        var designTier = isDesignBlueprint ? ReadStringProperty(blueprintElement, "tier") : null;
+        var designLabel = isDesignBlueprint ? ReadStringProperty(blueprintElement, "label") : null;
 
         AuthorTmdlResponse authored;
         try
@@ -150,13 +172,72 @@ public class DashboardTemplateController : ControllerBase
 
         var uploadedCount = blended.Provenance.Count(p => p.Source == ProvenanceSource.Uploaded);
         var mockedCount = blended.Provenance.Count(p => p.Source == ProvenanceSource.Mocked);
+
+        var reportDisplayName = $"{client.ClientName} — {designLabel ?? "Dashboard Template"}";
+        var generation = _reportVisualGenerator.Generate(blueprintElement, blended.Tables, patchedFiles, reportDisplayName);
+
+        var deployed = false;
+        string? workspaceId = null;
+        string? datasetId = null;
+        string? reportId = null;
+        var visualLog = new List<string>(generation.Log);
+
+        if (!downloadUrl.HasSasScheme())
+        {
+            visualLog.Add("Deploy skipped: no SAS download URL was available for the blended dataset — Power BI would not be able to fetch it.");
+        }
+        else
+        {
+            try
+            {
+                var slug = SanitizeSlug($"{client.ClientName}-{correlationId[..8]}");
+                var pbipFiles = new List<PbipFileDto>();
+                pbipFiles.AddRange(patchedFiles.Select(f => new PbipFileDto(ToSemanticModelPath(slug, f.Path), f.Content)));
+                pbipFiles.Add(new PbipFileDto($"{slug}.Report/report.json", generation.ReportJson));
+                pbipFiles.Add(new PbipFileDto($"{slug}.Report/.platform", generation.PlatformManifestJson));
+
+                var importRequest = new PbipImportRequest(
+                    ClientName: client.ClientName,
+                    ReportName: reportDisplayName,
+                    WorkspaceName: $"Client - {client.ClientName}",
+                    Files: pbipFiles);
+
+                var importResult = await _pbipImportClient.ImportAsync(importRequest, correlationId, cancellationToken);
+                visualLog.AddRange(importResult.Steps);
+
+                await _powerBiAssetWriter.WriteAsync(
+                    clientId: client.Id,
+                    templateId: null,
+                    workspaceId: importResult.WorkspaceId,
+                    datasetId: importResult.DatasetId,
+                    reportId: importResult.ReportId,
+                    reportType: "dashboard-template-generated",
+                    cancellationToken: cancellationToken);
+
+                deployed = true;
+                workspaceId = importResult.WorkspaceId;
+                datasetId = importResult.DatasetId;
+                reportId = importResult.ReportId;
+
+                _logger.LogInformation(
+                    "DashboardTemplate.Deployed ClientId={ClientId} CorrelationId={CorrelationId} WorkspaceId={WorkspaceId} DatasetId={DatasetId} ReportId={ReportId}",
+                    client.Id, correlationId, workspaceId, datasetId, reportId);
+            }
+            catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException)
+            {
+                _logger.LogWarning(ex, "DashboardTemplate.DeployFailed ClientId={ClientId} CorrelationId={CorrelationId}", client.Id, correlationId);
+                visualLog.Add($"Deploy to Power BI failed: {ex.Message}. The blended dataset and semantic model below are still available to download and fix manually.");
+            }
+        }
+
         var summary = $"{uploadedCount} of {blended.Provenance.Count} columns used from your file; " +
                       $"{mockedCount} column(s) mocked — see the provenance log for which ones." +
-                      (tmdlPatched ? "" : " Note: the authored semantic model's data source could not be auto-patched; wire SourceFilePath manually.");
+                      (tmdlPatched ? "" : " Note: the authored semantic model's data source could not be auto-patched; wire SourceFilePath manually.") +
+                      (deployed ? " A live Power BI report was generated with visuals." : " The Power BI report was not deployed — see the log for why.");
 
         _logger.LogInformation(
-            "DashboardTemplate.Generated ClientId={ClientId} CorrelationId={CorrelationId} Uploaded={Uploaded} Mocked={Mocked} TmdlPatched={TmdlPatched}",
-            client.Id, correlationId, uploadedCount, mockedCount, tmdlPatched);
+            "DashboardTemplate.Generated ClientId={ClientId} CorrelationId={CorrelationId} Uploaded={Uploaded} Mocked={Mocked} TmdlPatched={TmdlPatched} Deployed={Deployed}",
+            client.Id, correlationId, uploadedCount, mockedCount, tmdlPatched, deployed);
 
         return Ok(ApiResponse<GenerateDashboardTemplateResponse>.SuccessResponse(
             new GenerateDashboardTemplateResponse(
@@ -166,7 +247,49 @@ public class DashboardTemplateController : ControllerBase
                 downloadUrl,
                 patchedFiles,
                 tmdlPatched,
-                summary),
+                summary,
+                deployed,
+                workspaceId,
+                datasetId,
+                reportId,
+                visualLog,
+                designTemplateId,
+                designTier,
+                designLabel),
             "Dashboard template generated."));
     }
+
+    private static string? ReadStringProperty(JsonElement element, string propertyName) =>
+        element.TryGetProperty(propertyName, out var value) && value.ValueKind == JsonValueKind.String
+            ? value.GetString()
+            : null;
+
+    /// <summary>Re-roots authored TMDL paths under "{slug}.SemanticModel/definition/..." regardless
+    /// of AuthorTmdlAsync's raw path convention — if the path already contains a "definition/"
+    /// segment, everything from there onward is preserved; otherwise the whole relative path is
+    /// kept as-is under the canonical prefix.</summary>
+    private static string ToSemanticModelPath(string slug, string rawPath)
+    {
+        var normalized = rawPath.Replace('\\', '/').TrimStart('/');
+        const string marker = "definition/";
+        var idx = normalized.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+        var relative = idx >= 0 ? normalized[(idx + marker.Length)..] : normalized;
+        return $"{slug}.SemanticModel/definition/{relative}";
+    }
+
+    private static string SanitizeSlug(string value)
+    {
+        var chars = value.Select(c => char.IsLetterOrDigit(c) || c is '-' or '_' ? c : '-').ToArray();
+        var slug = new string(chars).Trim('-');
+        return string.IsNullOrWhiteSpace(slug) ? "dashboard-template" : slug;
+    }
+}
+
+internal static class DashboardTemplateControllerExtensions
+{
+    /// <summary>A null/blob-path fallback (rather than a real SAS URL) means Power BI's cloud
+    /// service has nothing reachable to fetch — deploy is skipped rather than attempted knowing
+    /// it will fail on the refresh step.</summary>
+    public static bool HasSasScheme(this string? downloadUrl) =>
+        !string.IsNullOrWhiteSpace(downloadUrl) && downloadUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase);
 }

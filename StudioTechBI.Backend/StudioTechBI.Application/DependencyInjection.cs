@@ -32,6 +32,7 @@ public static class DependencyInjection
         services.AddScoped<IReportDataUsageConsentService, ReportDataUsageConsentService>();
         services.AddScoped<ITemplateRefreshService, TemplateRefreshService>();
         services.AddScoped<IDataBlendService, DataBlendService>();
+        services.AddScoped<IReportVisualGenerator, ReportVisualGenerator>();
 
         return services;
     }
