@@ -58,6 +58,8 @@ public static class DependencyInjection
         services.AddScoped<IPowerBiAssetWriter, PowerBiAssetWriter>();
         services.AddScoped<IClientPortalDashboardService, ClientPortalDashboardService>();
         services.AddScoped<IReportTemplateAssetService, ReportTemplateAssetService>();
+        services.AddScoped<IWorkbookWriter, WorkbookWriter>();
+        services.AddScoped<IBlobSasUriProvider, BlobSasUriProvider>();
 
         services.Configure<InsightEngineOptions>(configuration.GetSection(InsightEngineOptions.SectionName));
         services.AddHttpClient<InsightEngineClient>()
