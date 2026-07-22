@@ -6,7 +6,10 @@ namespace StudioTechBI.Infrastructure.Services;
 
 public class DashboardTemplateLogWriter : IDashboardTemplateLogWriter
 {
-    private const int MaxDescriptionLength = 8000;
+    // Must match FunctionalLogConfiguration's HasMaxLength(2000) on the real
+    // nvarchar(2000) Description column — a larger cap here throws a truncation
+    // SqlException on every write with a non-trivial log (i.e. nearly every one).
+    private const int MaxDescriptionLength = 2000;
 
     private readonly ApplicationDbContext _db;
 
