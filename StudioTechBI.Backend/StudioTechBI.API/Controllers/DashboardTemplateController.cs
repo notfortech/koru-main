@@ -230,6 +230,7 @@ public class DashboardTemplateController : ControllerBase
                 pbipFiles.Add(new PbipFileDto($"{reportFolder}/.platform", generation.PlatformManifestJson));
                 pbipFiles.Add(new PbipFileDto($"{reportFolder}/definition.pbir", PbipSkeletonBuilder.BuildReportDefinitionPbir(semanticModelFolder)));
                 pbipFiles.Add(new PbipFileDto($"{semanticModelFolder}/.platform", PbipSkeletonBuilder.BuildSemanticModelPlatformManifest(reportDisplayName)));
+                pbipFiles.Add(new PbipFileDto($"{semanticModelFolder}/definition.pbism", PbipSkeletonBuilder.BuildSemanticModelDefinitionPbism()));
                 pbipFiles.Add(new PbipFileDto($"{slug}.pbip", PbipSkeletonBuilder.BuildTopLevelProjectJson(reportFolder)));
 
                 var importRequest = new PbipImportRequest(

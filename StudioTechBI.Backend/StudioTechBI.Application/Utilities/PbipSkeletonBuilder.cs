@@ -61,4 +61,21 @@ public static class PbipSkeletonBuilder
         };
         return root.ToJsonString();
     }
+
+    /// <summary>"{slug}.SemanticModel/definition.pbism" — the Semantic Model item's required
+    /// entry-point file. Confirmed via Microsoft's skills-for-fabric reference as a fixed, required
+    /// file with no per-project customization ("no modifications are needed"). Its absence is the
+    /// root cause found via live testing: a hand-built PBIP zip missing only this file reproduced
+    /// RequestedFileIsEncryptedOrCorrupted identically to the app's own generated zips, while a real
+    /// compiled .pbix imported successfully against the same workspace/credentials/endpoint.</summary>
+    public static string BuildSemanticModelDefinitionPbism()
+    {
+        var root = new JsonObject
+        {
+            ["$schema"] = "https://developer.microsoft.com/json-schemas/fabric/item/semanticModel/definitionProperties/1.0.0/schema.json",
+            ["version"] = "4.2",
+            ["settings"] = new JsonObject { ["qnaEnabled"] = true }
+        };
+        return root.ToJsonString();
+    }
 }
