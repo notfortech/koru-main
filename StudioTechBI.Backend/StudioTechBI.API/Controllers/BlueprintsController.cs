@@ -1,9 +1,13 @@
 using System.Security.Claims;
+using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 using StudioTechBI.Application.DTOs.Blueprints;
 using StudioTechBI.Application.DTOs.Common;
+using StudioTechBI.Application.DTOs.InsightsEngine;
 using StudioTechBI.Application.Interfaces;
+using StudioTechBI.Application.Models;
 
 namespace StudioTechBI.API.Controllers;
 
@@ -20,12 +24,21 @@ public class BlueprintsController : BaseApiController
 {
     private readonly IAiGateway _gateway;
     private readonly IClientService _clientService;
+    private readonly IInsightsEngineReportInsightsClient _reportInsights;
+    private readonly IOptionsMonitor<InsightsEngineOptions> _insightsEngineOptions;
     private readonly ILogger<BlueprintsController> _logger;
 
-    public BlueprintsController(IAiGateway gateway, IClientService clientService, ILogger<BlueprintsController> logger)
+    public BlueprintsController(
+        IAiGateway gateway,
+        IClientService clientService,
+        IInsightsEngineReportInsightsClient reportInsights,
+        IOptionsMonitor<InsightsEngineOptions> insightsEngineOptions,
+        ILogger<BlueprintsController> logger)
     {
         _gateway = gateway;
         _clientService = clientService;
+        _reportInsights = reportInsights;
+        _insightsEngineOptions = insightsEngineOptions;
         _logger = logger;
     }
 
@@ -194,6 +207,143 @@ public class BlueprintsController : BaseApiController
 
         return Content(json, "application/json");
     }
+
+    /// <summary>
+    /// POST /api/blueprints/{id}/ai-summary
+    /// "Ask AI Assistant" — a plain-language explanation of this blueprint, grounded on its own
+    /// already-generated JSON (meta/kpis/measures/pages/self_review/confidence), not a fresh AI
+    /// call over raw data. Same InsightsEngine proxy pattern already used by the Report
+    /// Generator's ai-summary endpoint and the embedded-report AI Insights panel.
+    /// </summary>
+    [HttpPost("{id:guid}/ai-summary")]
+    public async Task<IActionResult> GetAiSummary(Guid id, CancellationToken cancellationToken)
+    {
+        var opt = _insightsEngineOptions.CurrentValue;
+        if (!opt.ExternalCopilotAiEnabled)
+            return Ok(new { enabled = false, message = "AI is not enabled for this client." });
+
+        var json = await _gateway.GetBlueprintJsonAsync(id, cancellationToken);
+        if (string.IsNullOrWhiteSpace(json))
+            return NotFound(ApiResponse<object>.ErrorResponse($"No generated JSON found for blueprint '{id}'."));
+
+        JsonDocument doc;
+        try
+        {
+            doc = JsonDocument.Parse(json);
+        }
+        catch (JsonException)
+        {
+            return StatusCode(502, new { enabled = false, message = "Blueprint JSON could not be parsed." });
+        }
+        using var _ = doc;
+        var root = doc.RootElement;
+
+        var samples = new List<DatasetQueryTableSample>();
+        foreach (var name in new[] { "meta", "self_review", "confidence" })
+        {
+            var sample = ObjectToSample(root, name);
+            if (sample is not null) samples.Add(sample);
+        }
+        foreach (var name in new[] { "kpis", "measures", "pages" })
+        {
+            var sample = ArrayToSample(root, name);
+            if (sample is not null) samples.Add(sample);
+        }
+
+        var pageTitles = root.TryGetProperty("pages", out var pagesEl) && pagesEl.ValueKind == JsonValueKind.Array
+            ? pagesEl.EnumerateArray()
+                .Select(p => p.TryGetProperty("name", out var n) ? n.GetString() : null)
+                .Where(n => !string.IsNullOrWhiteSpace(n))
+                .Take(50)
+                .Select(n => n!)
+                .ToList()
+            : new List<string>();
+
+        var req = new ReportPageInsightsRequest
+        {
+            ReportType = "blueprint",
+            ActivePageName = "Blueprint",
+            VisualTitles = pageTitles,
+            Prompts = new List<string>
+            {
+                "Explain what this deployment blueprint delivers, in plain language a non-technical stakeholder could follow.",
+                "Summarize the key measures/KPIs and how the report pages are organized.",
+                "Call out anything a reviewer should pay attention to — risks, gaps, or a notably low confidence/self-review score.",
+            },
+            DatasetSamples = samples.Count > 0 ? samples : null
+        };
+
+        try
+        {
+            var resp = await _reportInsights.GetInsightsFromMetadataAsync(req, cancellationToken);
+            return Ok(new
+            {
+                enabled = true,
+                provider = resp.Provider,
+                summary = resp.Summary,
+                insights = resp.Insights,
+                followUps = resp.FollowUps
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "AI summary proxy failed for blueprint {BlueprintId}.", id);
+            return StatusCode(502, new { enabled = false, message = "AI summary service is temporarily unavailable." });
+        }
+    }
+
+    /// <summary>Flattens a JSON object's scalar properties into a one-row sample. Nested
+    /// objects/arrays are skipped to keep it simple — deliberately generic so it works regardless
+    /// of the blueprint schema's exact field names.</summary>
+    private static DatasetQueryTableSample? ObjectToSample(JsonElement root, string propertyName)
+    {
+        if (!root.TryGetProperty(propertyName, out var obj) || obj.ValueKind != JsonValueKind.Object)
+            return null;
+
+        var columns = new List<string>();
+        var row = new Dictionary<string, string>();
+        foreach (var prop in obj.EnumerateObject())
+        {
+            if (prop.Value.ValueKind is JsonValueKind.Object) continue;
+            columns.Add(prop.Name);
+            row[prop.Name] = ScalarToString(prop.Value);
+        }
+        return columns.Count == 0 ? null : new DatasetQueryTableSample { Source = propertyName, Columns = columns, Rows = new List<Dictionary<string, string>> { row } };
+    }
+
+    /// <summary>Converts a JSON array of objects into a tabular sample — columns are the union of
+    /// whatever property names actually appear, so this works regardless of the blueprint
+    /// schema's exact field names.</summary>
+    private static DatasetQueryTableSample? ArrayToSample(JsonElement root, string propertyName, int maxRows = 20)
+    {
+        if (!root.TryGetProperty(propertyName, out var arr) || arr.ValueKind != JsonValueKind.Array || arr.GetArrayLength() == 0)
+            return null;
+
+        var columns = new List<string>();
+        var rows = new List<Dictionary<string, string>>();
+        foreach (var item in arr.EnumerateArray().Take(maxRows))
+        {
+            if (item.ValueKind != JsonValueKind.Object) continue;
+            var row = new Dictionary<string, string>();
+            foreach (var prop in item.EnumerateObject())
+            {
+                if (prop.Value.ValueKind is JsonValueKind.Object) continue;
+                if (!columns.Contains(prop.Name)) columns.Add(prop.Name);
+                row[prop.Name] = ScalarToString(prop.Value);
+            }
+            if (row.Count > 0) rows.Add(row);
+        }
+        return rows.Count == 0 ? null : new DatasetQueryTableSample { Source = propertyName, Columns = columns, Rows = rows };
+    }
+
+    private static string ScalarToString(JsonElement value) => value.ValueKind switch
+    {
+        JsonValueKind.String => value.GetString() ?? "",
+        JsonValueKind.Number => value.ToString(),
+        JsonValueKind.True or JsonValueKind.False => value.GetBoolean().ToString(),
+        JsonValueKind.Array => string.Join(", ", value.EnumerateArray().Select(v => v.ValueKind == JsonValueKind.String ? v.GetString() : v.ToString())),
+        _ => ""
+    };
 
     // ── Delete ─────────────────────────────────────────────────────────────────
 
