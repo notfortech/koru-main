@@ -266,9 +266,10 @@ public class BlueprintsController : BaseApiController
             VisualTitles = pageTitles,
             Prompts = new List<string>
             {
-                "Explain what this deployment blueprint delivers, in plain language a non-technical stakeholder could follow.",
-                "Summarize the key measures/KPIs and how the report pages are organized.",
-                "Call out anything a reviewer should pay attention to — risks, gaps, or a notably low confidence/self-review score.",
+                "DatasetSamples below contains this blueprint's real, already-generated content (its actual meta/self-review/confidence fields, and every KPI/measure/page it defines) — treat every value in it as ground truth and use it directly.",
+                "Explain what this deployment blueprint delivers, citing its actual KPI names, measure names, confidence score, and self-review verdict from DatasetSamples — not a generic description of \"a blueprint with N pages.\"",
+                "Summarize the key measures/KPIs (by name) and how the report pages are organized.",
+                "Call out anything a reviewer should pay attention to — risks, gaps, or a notably low confidence/self-review score, citing the actual numbers.",
             },
             DatasetSamples = samples.Count > 0 ? samples : null
         };
