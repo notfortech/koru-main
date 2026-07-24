@@ -14,6 +14,10 @@ public class ClientDto
     /// no logo is set (default StudioTechBI branding applies).</summary>
     public string? LogoUrl { get; set; }
 
+    /// <summary>Admin-declared entitlement — branding only actually renders for this client's
+    /// users when this is true AND a logo is set.</summary>
+    public bool IsPremiumSubscriber { get; set; }
+
     public bool IsActive { get; set; }
     public DateTime CreatedDate { get; set; }
     public string? PowerBIWorkspaceId { get; set; }

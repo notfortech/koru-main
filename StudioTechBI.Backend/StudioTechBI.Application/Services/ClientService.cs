@@ -134,6 +134,7 @@ public class ClientService : BaseService, IClientService
         client.ClientName = dto.ClientName.Trim();
         client.Industry = dto.Industry?.Trim();
         client.TemplateVersion = dto.TemplateVersion?.Trim();
+        client.IsPremiumSubscriber = dto.IsPremiumSubscriber;
         client.IsActive = dto.IsActive;
         if (!string.IsNullOrEmpty(client.ClientCode))
             client.BlobFolderPath = client.ClientCode;
@@ -369,6 +370,7 @@ public class ClientService : BaseService, IClientService
             Industry = c.Industry,
             BlobFolderPath = c.BlobFolderPath,
             TemplateVersion = c.TemplateVersion,
+            IsPremiumSubscriber = c.IsPremiumSubscriber,
             IsActive = c.IsActive,
             CreatedDate = c.CreatedDate,
             PowerBIWorkspaceId = c.PowerBIWorkspaceId,

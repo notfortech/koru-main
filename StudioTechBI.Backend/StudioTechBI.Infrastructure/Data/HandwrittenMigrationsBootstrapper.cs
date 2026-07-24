@@ -168,6 +168,12 @@ public static class HandwrittenMigrationsBootstrapper
                 ALTER TABLE [dbo].[Clients] ADD [LogoBlobPath] NVARCHAR(500) NULL;
         ", cancellationToken);
 
+        await ExecAsync(context, logger, "Clients.IsPremiumSubscriber column", @"
+            IF COL_LENGTH('dbo.Clients', 'IsPremiumSubscriber') IS NULL
+                ALTER TABLE [dbo].[Clients] ADD [IsPremiumSubscriber] BIT NOT NULL
+                    CONSTRAINT [DF_Clients_IsPremiumSubscriber] DEFAULT (0);
+        ", cancellationToken);
+
         await ExecAsync(context, logger, "ReportMatchDrafts", @"
             IF OBJECT_ID('dbo.ReportMatchDrafts', 'U') IS NULL
             BEGIN
