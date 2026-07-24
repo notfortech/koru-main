@@ -123,7 +123,10 @@ public class ReportGeneratorController : ControllerBase
     /// DatasetQueryTableSample is for, so this reuses that client/gate unchanged.
     /// </summary>
     [HttpPost("ai-summary")]
-    public async Task<IActionResult> GetAiSummaryAsync([FromBody] GeneratedReportDto report, CancellationToken cancellationToken)
+    public async Task<IActionResult> GetAiSummaryAsync(
+        [FromBody] GeneratedReportDto report,
+        [FromQuery] string? question,
+        CancellationToken cancellationToken)
     {
         var opt = _insightsEngineOptions.CurrentValue;
         if (!opt.ExternalCopilotAiEnabled)
@@ -170,18 +173,26 @@ public class ReportGeneratorController : ControllerBase
             });
         }
 
-        var req = new ReportPageInsightsRequest
-        {
-            ReportType = "report-generator",
-            ActivePageName = string.IsNullOrWhiteSpace(report.TemplateName) ? "Report" : report.TemplateName!,
-            VisualTitles = report.Charts.Select(c => c.Title).Take(50).ToList(),
-            Prompts = new List<string>
+        // A follow-up chip click sends the exact question it asked back here — answer that one
+        // question specifically (still grounded on the same DatasetSamples) instead of the
+        // general "explain the whole report" prompt set, so the drawer can behave like a small
+        // running Q&A rather than only ever regenerating the same top-level summary.
+        var prompts = string.IsNullOrWhiteSpace(question)
+            ? new List<string>
             {
                 "DatasetSamples below contains the report's real, already-computed KPI values and chart data (not a live query) — treat every number in it as ground truth and use it directly.",
                 "Interpret the data: cite specific figures from DatasetSamples by name (e.g. \"Average of sale_year is 2,008\", \"Median price totals $17.1M\") — do not describe only the report's page/visual structure, and do not say data values are unavailable when DatasetSamples is present.",
                 "Call out any notable trends, comparisons, or outliers visible in the actual numbers.",
                 "What should someone reviewing this report pay attention to first, based on the real values?",
-            },
+            }
+            : new List<string> { question.Trim() };
+
+        var req = new ReportPageInsightsRequest
+        {
+            ReportType = "report-generator",
+            ActivePageName = string.IsNullOrWhiteSpace(report.TemplateName) ? "Report" : report.TemplateName!,
+            VisualTitles = report.Charts.Select(c => c.Title).Take(50).ToList(),
+            Prompts = prompts,
             DatasetSamples = samples.Count > 0 ? samples : null
         };
 

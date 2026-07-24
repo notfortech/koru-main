@@ -216,7 +216,7 @@ public class BlueprintsController : BaseApiController
     /// Generator's ai-summary endpoint and the embedded-report AI Insights panel.
     /// </summary>
     [HttpPost("{id:guid}/ai-summary")]
-    public async Task<IActionResult> GetAiSummary(Guid id, CancellationToken cancellationToken)
+    public async Task<IActionResult> GetAiSummary(Guid id, [FromQuery] string? question, CancellationToken cancellationToken)
     {
         var opt = _insightsEngineOptions.CurrentValue;
         if (!opt.ExternalCopilotAiEnabled)
@@ -259,18 +259,25 @@ public class BlueprintsController : BaseApiController
                 .ToList()
             : new List<string>();
 
-        var req = new ReportPageInsightsRequest
-        {
-            ReportType = "blueprint",
-            ActivePageName = "Blueprint",
-            VisualTitles = pageTitles,
-            Prompts = new List<string>
+        // A follow-up chip click sends the exact question it asked back here — answer that one
+        // question specifically (still grounded on the same DatasetSamples) instead of the
+        // general "explain this blueprint" prompt set.
+        var prompts = string.IsNullOrWhiteSpace(question)
+            ? new List<string>
             {
                 "DatasetSamples below contains this blueprint's real, already-generated content (its actual meta/self-review/confidence fields, and every KPI/measure/page it defines) — treat every value in it as ground truth and use it directly.",
                 "Explain what this deployment blueprint delivers, citing its actual KPI names, measure names, confidence score, and self-review verdict from DatasetSamples — not a generic description of \"a blueprint with N pages.\"",
                 "Summarize the key measures/KPIs (by name) and how the report pages are organized.",
                 "Call out anything a reviewer should pay attention to — risks, gaps, or a notably low confidence/self-review score, citing the actual numbers.",
-            },
+            }
+            : new List<string> { question.Trim() };
+
+        var req = new ReportPageInsightsRequest
+        {
+            ReportType = "blueprint",
+            ActivePageName = "Blueprint",
+            VisualTitles = pageTitles,
+            Prompts = prompts,
             DatasetSamples = samples.Count > 0 ? samples : null
         };
 
