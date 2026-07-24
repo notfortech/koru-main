@@ -1,5 +1,15 @@
 # Database setup – Users table and migrations
 
+> **This document is stale and describes an earlier SQLite-based setup.**
+> The app now runs on **SQL Server** in every non-demo environment, and DB
+> initialization happens in `StudioTechBI.API.Services.StartupDbTasksHostedService`
+> (not a direct `Program.cs` call to `MigrateAsync`) — see `MIGRATIONS.md` for
+> the accurate, current flow, including why several recent tables are created
+> by a hand-authored bootstrapper rather than EF migrations alone. To
+> provision a fresh test database in one command, use
+> `scripts/setup-db.sh` (see `scripts/README.md`). The rest of this file is
+> kept for historical context only.
+
 ## Confirmation: Users table is created by the backend
 
 The **Users** table (and all other tables) are defined in the initial migration and are created automatically when the API starts.
