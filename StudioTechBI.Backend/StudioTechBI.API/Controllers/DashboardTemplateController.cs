@@ -48,6 +48,7 @@ public class DashboardTemplateController : ControllerBase
     private readonly IPowerBiAssetWriter _powerBiAssetWriter;
     private readonly IDashboardTemplateLogWriter _logWriter;
     private readonly IClientResolver _clientResolver;
+    private readonly IAiGateway _aiGateway;
     private readonly DashboardTemplateOptions _options;
     private readonly ILogger<DashboardTemplateController> _logger;
 
@@ -62,6 +63,7 @@ public class DashboardTemplateController : ControllerBase
         IPowerBiAssetWriter powerBiAssetWriter,
         IDashboardTemplateLogWriter logWriter,
         IClientResolver clientResolver,
+        IAiGateway aiGateway,
         IOptions<DashboardTemplateOptions> options,
         ILogger<DashboardTemplateController> logger)
     {
@@ -75,6 +77,7 @@ public class DashboardTemplateController : ControllerBase
         _powerBiAssetWriter = powerBiAssetWriter;
         _logWriter = logWriter;
         _clientResolver = clientResolver;
+        _aiGateway = aiGateway;
         _options = options.Value;
         _logger = logger;
     }
@@ -94,16 +97,21 @@ public class DashboardTemplateController : ControllerBase
 
     /// <summary>
     /// POST /api/dashboard-template/generate
-    /// Multipart form: file (the client's Excel upload), clientId, blueprint (raw JSON string —
-    /// either the Analytics Blueprint from POST /api/report-designer/generate-model, or a Design
-    /// Blueprint — auto-detected, see BlueprintFormatDetector).
+    /// Multipart form: file (the client's Excel upload), clientId, and either blueprint (raw
+    /// JSON string — either the Analytics Blueprint from POST /api/report-designer/generate-model,
+    /// or a Design Blueprint — auto-detected, see BlueprintFormatDetector) or blueprintId (a
+    /// Blueprint Generator ID from POST /api/blueprints/generate — resolved here via the same
+    /// IAiGateway.GetBlueprintJsonAsync the Blueprints screen's own PDF/JSON download already
+    /// uses, so a generated blueprint can be turned into a dashboard template directly without
+    /// the caller re-copying its JSON by hand). Exactly one of the two must be supplied.
     /// </summary>
     [HttpPost("generate")]
     [RequestSizeLimit(MaxFileSizeBytes)]
     public async Task<IActionResult> GenerateAsync(
         IFormFile file,
         [FromForm] string clientId,
-        [FromForm] string blueprint,
+        [FromForm] string? blueprint,
+        [FromForm] Guid? blueprintId,
         CancellationToken cancellationToken)
     {
         if (file is null || file.Length == 0)
@@ -120,10 +128,24 @@ public class DashboardTemplateController : ControllerBase
         if (string.IsNullOrWhiteSpace(clientId))
             return BadRequest(ApiResponse<object>.ErrorResponse("clientId is required."));
 
+        if (string.IsNullOrWhiteSpace(blueprint) && blueprintId is null)
+            return BadRequest(ApiResponse<object>.ErrorResponse("Either blueprint or blueprintId is required."));
+
+        if (!string.IsNullOrWhiteSpace(blueprint) && blueprintId is not null)
+            return BadRequest(ApiResponse<object>.ErrorResponse("Supply only one of blueprint or blueprintId, not both."));
+
+        if (blueprintId is not null)
+        {
+            blueprint = await _aiGateway.GetBlueprintJsonAsync(blueprintId.Value, cancellationToken);
+            if (string.IsNullOrWhiteSpace(blueprint))
+                return NotFound(ApiResponse<object>.ErrorResponse(
+                    $"No generated JSON found for blueprint '{blueprintId}'. It may still be processing, or generation may have failed."));
+        }
+
         JsonDocument blueprintDoc;
         try
         {
-            blueprintDoc = JsonDocument.Parse(blueprint);
+            blueprintDoc = JsonDocument.Parse(blueprint!);
         }
         catch (JsonException)
         {

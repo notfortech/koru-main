@@ -9,6 +9,11 @@ public class ClientDto
     public string? Industry { get; set; }
     public string? BlobFolderPath { get; set; }
     public string? TemplateVersion { get; set; }
+
+    /// <summary>Short-lived read SAS URL for the client's uploaded white-label logo, null when
+    /// no logo is set (default StudioTechBI branding applies).</summary>
+    public string? LogoUrl { get; set; }
+
     public bool IsActive { get; set; }
     public DateTime CreatedDate { get; set; }
     public string? PowerBIWorkspaceId { get; set; }

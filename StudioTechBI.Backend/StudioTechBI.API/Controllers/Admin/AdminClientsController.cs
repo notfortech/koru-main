@@ -71,6 +71,44 @@ public class AdminClientsController : BaseApiController
         return NoContent();
     }
 
+    private const long MaxLogoSizeBytes = 5 * 1024 * 1024; // 5 MB
+
+    /// <summary>Upload (or replace) a client's white-label logo. Once set, that client's portal
+    /// top bar shows this logo + the client's name instead of StudioTechBI's own branding.</summary>
+    [HttpPost("{id:guid}/logo")]
+    [RequestSizeLimit(MaxLogoSizeBytes)]
+    public async Task<IActionResult> UploadLogo(Guid id, IFormFile file, CancellationToken cancellationToken)
+    {
+        if (file is null || file.Length == 0)
+            return BadRequest(ApiResponse<object>.ErrorResponse("No file uploaded."));
+        if (file.Length > MaxLogoSizeBytes)
+            return BadRequest(ApiResponse<object>.ErrorResponse("Logo file exceeds the 5 MB limit."));
+
+        try
+        {
+            await using var stream = file.OpenReadStream();
+            var client = await _clientService.SetLogoAsync(id, stream, file.FileName, file.ContentType, cancellationToken);
+            if (client == null)
+                return NotFound();
+            return HandleResult(ApiResponse<ClientDto>.SuccessResponse(client, "Logo uploaded."));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ApiResponse<object>.ErrorResponse(ex.Message));
+        }
+    }
+
+    /// <summary>Remove a client's white-label logo — reverts that client's portal to default
+    /// StudioTechBI branding.</summary>
+    [HttpDelete("{id:guid}/logo")]
+    public async Task<IActionResult> DeleteLogo(Guid id, CancellationToken cancellationToken)
+    {
+        var client = await _clientService.ClearLogoAsync(id, cancellationToken);
+        if (client == null)
+            return NotFound();
+        return HandleResult(ApiResponse<ClientDto>.SuccessResponse(client, "Logo removed."));
+    }
+
     /// <summary>
     /// Phase 1 onboarding: creates the client (and blob folders), activates the portal user, assigns them to this client,
     /// and ensures the Client role. Does not configure Power BI report/workspace/dataset IDs (phase 2).
