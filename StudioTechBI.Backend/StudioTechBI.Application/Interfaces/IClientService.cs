@@ -12,6 +12,14 @@ public interface IClientService
     Task<ClientDto?> GetByClientCodeOrIdAsync(string clientCodeOrId, CancellationToken cancellationToken = default);
     Task<ClientDto?> UpdateAsync(Guid id, ClientUpdateDto dto, CancellationToken cancellationToken = default);
     Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken = default);
+
+    /// <summary>Uploads (overwriting any existing) white-label logo for this client. Throws
+    /// InvalidOperationException for an unsupported file type. Returns null if the client doesn't exist.</summary>
+    Task<ClientDto?> SetLogoAsync(Guid id, Stream content, string fileName, string? contentType, CancellationToken cancellationToken = default);
+
+    /// <summary>Clears the client's logo — reverts to default StudioTechBI branding. Returns null
+    /// if the client doesn't exist.</summary>
+    Task<ClientDto?> ClearLogoAsync(Guid id, CancellationToken cancellationToken = default);
     /// <summary>Assigns a user to a client so they can access that client's reports. Admin only.</summary>
     Task<bool> AssignUserToClientAsync(Guid userId, Guid clientId, CancellationToken cancellationToken = default);
 

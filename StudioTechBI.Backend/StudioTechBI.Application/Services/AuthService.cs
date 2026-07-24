@@ -22,7 +22,10 @@ public class AuthService : BaseService, IAuthService
     private readonly IUnitOfWork _unitOfWork;
     private readonly ILogger<AuthService> _logger;
     private readonly IClientByCompanyQuery _clientByCompanyQuery;
+    private readonly IBlobSasUriProvider _sasUriProvider;
     private readonly PasswordResetOptions _passwordResetOptions;
+
+    private static readonly TimeSpan LogoSasValidFor = TimeSpan.FromHours(24);
 
     public AuthService(
         IRepository<User> userRepository,
@@ -34,6 +37,7 @@ public class AuthService : BaseService, IAuthService
         IUnitOfWork unitOfWork,
         ILogger<AuthService> logger,
         IClientByCompanyQuery clientByCompanyQuery,
+        IBlobSasUriProvider sasUriProvider,
         IOptions<PasswordResetOptions> passwordResetOptions)
         : base(unitOfWork)
     {
@@ -46,6 +50,7 @@ public class AuthService : BaseService, IAuthService
         _unitOfWork = unitOfWork;
         _logger = logger;
         _clientByCompanyQuery = clientByCompanyQuery;
+        _sasUriProvider = sasUriProvider;
         _passwordResetOptions = passwordResetOptions.Value;
     }
 
@@ -92,7 +97,7 @@ public class AuthService : BaseService, IAuthService
             AccessToken = accessToken,
             RefreshToken = refreshToken,
             ExpiresAt = DateTime.UtcNow.AddMinutes(60),
-            User = MapUserToDto(user, roles, client),
+            User = await MapUserToDtoAsync(user, roles, client),
             ClientId = client?.Id ?? user.ClientId,
             ClientCode = client?.ClientCode ?? client?.BlobFolderPath
         };
@@ -178,7 +183,7 @@ public class AuthService : BaseService, IAuthService
                 AccessToken = accessToken,
                 RefreshToken = refreshToken,
                 ExpiresAt = DateTime.UtcNow.AddMinutes(60),
-                User = MapUserToDto(user, roles, client),
+                User = await MapUserToDtoAsync(user, roles, client),
                 ClientId = client?.Id ?? user.ClientId,
                 ClientCode = client?.ClientCode ?? client?.BlobFolderPath
             };
@@ -235,7 +240,7 @@ public class AuthService : BaseService, IAuthService
             AccessToken = accessToken,
             RefreshToken = refreshToken,
             ExpiresAt = DateTime.UtcNow.AddMinutes(60),
-            User = MapUserToDto(user, roles, client),
+            User = await MapUserToDtoAsync(user, roles, client),
             ClientId = client?.Id ?? user.ClientId,
             ClientCode = client?.ClientCode ?? client?.BlobFolderPath
         };
@@ -423,8 +428,12 @@ public class AuthService : BaseService, IAuthService
         return claims;
     }
 
-    private UserDto MapUserToDto(User user, List<string> roles, Client? client)
+    private async Task<UserDto> MapUserToDtoAsync(User user, List<string> roles, Client? client)
     {
+        string? logoUrl = null;
+        if (!string.IsNullOrEmpty(client?.LogoBlobPath))
+            logoUrl = await _sasUriProvider.GetReadSasUriAsync(client.LogoBlobPath, LogoSasValidFor);
+
         return new UserDto
         {
             Id = user.Id,
@@ -435,6 +444,10 @@ public class AuthService : BaseService, IAuthService
             IsActive = user.IsActive,
             ClientId = client?.Id ?? user.ClientId,
             ClientCode = client?.ClientCode ?? client?.BlobFolderPath,
+            // Both null when no logo is configured -- useClientBranding() falls back to default
+            // StudioTechBI branding with no special-casing needed downstream.
+            CompanyName = logoUrl != null ? client?.ClientName : null,
+            LogoUrl = logoUrl,
             Roles = roles
         };
     }

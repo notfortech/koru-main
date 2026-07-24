@@ -8,6 +8,12 @@ public class Client : BaseEntity
     public string? Industry { get; set; }
     public string? BlobFolderPath { get; set; }
     public string? TemplateVersion { get; set; }
+
+    /// <summary>Blob path to this client's uploaded white-label logo (e.g.
+    /// "{clientId}/branding/logo.png"), null when the client uses default StudioTechBI branding.
+    /// Set/cleared via AdminClientsController's logo upload/delete endpoints.</summary>
+    public string? LogoBlobPath { get; set; }
+
     public bool IsActive { get; set; } = true;
     public DateTime CreatedDate { get; set; } = DateTime.UtcNow;
 

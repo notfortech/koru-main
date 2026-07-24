@@ -16,6 +16,7 @@ public class ClientConfiguration : IEntityTypeConfiguration<Client>
         builder.Property(e => e.Industry).HasMaxLength(200);
         builder.Property(e => e.BlobFolderPath).HasMaxLength(1000);
         builder.Property(e => e.TemplateVersion).HasMaxLength(50);
+        builder.Property(e => e.LogoBlobPath).HasMaxLength(500);
         builder.Property(e => e.CreatedDate).IsRequired();
         builder.HasMany(e => e.ProcessingJobs)
             .WithOne(j => j.Client)

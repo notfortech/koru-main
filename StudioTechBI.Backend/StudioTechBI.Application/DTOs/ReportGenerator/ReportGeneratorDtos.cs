@@ -25,7 +25,9 @@ public record ReportKpiDto(
     string Label,
     double Value,
     string Column,
-    string Aggregation);
+    string Aggregation,
+    double? Change = null,
+    string? Unit = null);
 
 public record ReportChartDto(
     string Type,
@@ -36,4 +38,6 @@ public record ReportChartDto(
 
 public record ReportChartSeriesDto(
     string Name,
-    List<double> Values);
+    List<double> Values,
+    string? Unit = null,
+    List<double>? PercentOfTotal = null);

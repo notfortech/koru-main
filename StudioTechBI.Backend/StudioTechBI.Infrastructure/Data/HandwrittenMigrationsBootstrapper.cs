@@ -162,6 +162,12 @@ public static class HandwrittenMigrationsBootstrapper
                     CONSTRAINT [DF_Templates_IsPublishReady] DEFAULT (0);
         ", cancellationToken);
 
+        // ── Client white-labeling ────────────────────────────────────────────────────────────
+        await ExecAsync(context, logger, "Clients.LogoBlobPath column", @"
+            IF COL_LENGTH('dbo.Clients', 'LogoBlobPath') IS NULL
+                ALTER TABLE [dbo].[Clients] ADD [LogoBlobPath] NVARCHAR(500) NULL;
+        ", cancellationToken);
+
         await ExecAsync(context, logger, "ReportMatchDrafts", @"
             IF OBJECT_ID('dbo.ReportMatchDrafts', 'U') IS NULL
             BEGIN

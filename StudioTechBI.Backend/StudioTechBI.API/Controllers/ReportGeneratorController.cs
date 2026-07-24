@@ -1,8 +1,11 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 using StudioTechBI.Application.DTOs.Common;
+using StudioTechBI.Application.DTOs.InsightsEngine;
 using StudioTechBI.Application.DTOs.ReportGenerator;
 using StudioTechBI.Application.Interfaces;
+using StudioTechBI.Application.Models;
 
 namespace StudioTechBI.API.Controllers;
 
@@ -22,10 +25,23 @@ public class ReportGeneratorController : ControllerBase
     private static readonly string[] AllowedExtensions = { ".xlsx", ".csv" };
 
     private readonly IReportGeneratorClient _reportGeneratorClient;
+    private readonly IInsightsEngineReportInsightsClient _reportInsights;
+    private readonly IOptionsMonitor<InsightsEngineOptions> _insightsEngineOptions;
+    private readonly IReportGeneratorPdfService _pdfService;
+    private readonly ILogger<ReportGeneratorController> _logger;
 
-    public ReportGeneratorController(IReportGeneratorClient reportGeneratorClient)
+    public ReportGeneratorController(
+        IReportGeneratorClient reportGeneratorClient,
+        IInsightsEngineReportInsightsClient reportInsights,
+        IOptionsMonitor<InsightsEngineOptions> insightsEngineOptions,
+        IReportGeneratorPdfService pdfService,
+        ILogger<ReportGeneratorController> logger)
     {
         _reportGeneratorClient = reportGeneratorClient;
+        _reportInsights = reportInsights;
+        _insightsEngineOptions = insightsEngineOptions;
+        _pdfService = pdfService;
+        _logger = logger;
     }
 
     /// <summary>
@@ -95,5 +111,126 @@ public class ReportGeneratorController : ControllerBase
         {
             return BadRequest(ApiResponse<object>.ErrorResponse(ex.Message));
         }
+    }
+
+    /// <summary>
+    /// POST /api/report-generator/ai-summary
+    /// Given an already-generated report result (no re-upload of the source file — the summary
+    /// is grounded on the computed results, not raw data), returns a plain-language AI summary.
+    /// Proxies to the same InsightsEngine.Api used by the embedded-report AI Insights panel
+    /// (see ReportsController.GetAiInsightsForReportPage) — the engine's computed KPIs/charts
+    /// are already a "small tabular excerpt for LLM grounding", exactly what
+    /// DatasetQueryTableSample is for, so this reuses that client/gate unchanged.
+    /// </summary>
+    [HttpPost("ai-summary")]
+    public async Task<IActionResult> GetAiSummaryAsync([FromBody] GeneratedReportDto report, CancellationToken cancellationToken)
+    {
+        var opt = _insightsEngineOptions.CurrentValue;
+        if (!opt.ExternalCopilotAiEnabled)
+        {
+            return Ok(new { enabled = false, message = "AI is not enabled for this client." });
+        }
+
+        if (report is null || (report.Kpis.Count == 0 && report.Charts.Count == 0))
+            return BadRequest(new { enabled = false, message = "No report data supplied to summarize." });
+
+        var samples = new List<DatasetQueryTableSample>();
+        if (report.Kpis.Count > 0)
+        {
+            samples.Add(new DatasetQueryTableSample
+            {
+                Source = "kpis",
+                Columns = new List<string> { "Label", "Value", "Aggregation", "Change", "Unit" },
+                Rows = report.Kpis.Take(50).Select(k => new Dictionary<string, string>
+                {
+                    ["Label"] = k.Label,
+                    ["Value"] = k.Value.ToString("G"),
+                    ["Aggregation"] = k.Aggregation,
+                    ["Change"] = k.Change?.ToString("G") ?? "",
+                    ["Unit"] = k.Unit ?? "",
+                }).ToList()
+            });
+        }
+        foreach (var chart in report.Charts.Take(10))
+        {
+            var labels = chart.Categories ?? chart.X ?? new List<string>();
+            var rows = new List<Dictionary<string, string>>();
+            for (var i = 0; i < labels.Count && i < 50; i++)
+            {
+                var row = new Dictionary<string, string> { ["Category"] = labels[i] };
+                foreach (var s in chart.Series)
+                    row[s.Name] = i < s.Values.Count ? s.Values[i].ToString("G") : "";
+                rows.Add(row);
+            }
+            samples.Add(new DatasetQueryTableSample
+            {
+                Source = $"chart:{chart.Title}",
+                Columns = new List<string> { "Category" }.Concat(chart.Series.Select(s => s.Name)).ToList(),
+                Rows = rows
+            });
+        }
+
+        var req = new ReportPageInsightsRequest
+        {
+            ReportType = "report-generator",
+            ActivePageName = string.IsNullOrWhiteSpace(report.TemplateName) ? "Report" : report.TemplateName!,
+            VisualTitles = report.Charts.Select(c => c.Title).Take(50).ToList(),
+            Prompts = new List<string>
+            {
+                "Summarize what this report shows in plain language.",
+                "Call out any notable changes, trends, or outliers.",
+                "What should someone reviewing this report pay attention to first?",
+            },
+            DatasetSamples = samples.Count > 0 ? samples : null
+        };
+
+        try
+        {
+            var resp = await _reportInsights.GetInsightsFromMetadataAsync(req, cancellationToken);
+            return Ok(new
+            {
+                enabled = true,
+                provider = resp.Provider,
+                summary = resp.Summary,
+                insights = resp.Insights,
+                followUps = resp.FollowUps
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "AI summary proxy failed for report template {TemplateId}.", report.TemplateId);
+            return StatusCode(502, new { enabled = false, message = "AI summary service is temporarily unavailable." });
+        }
+    }
+
+    public sealed class ReportPdfExportRequest
+    {
+        public GeneratedReportDto Report { get; set; } = null!;
+        public string? AiSummary { get; set; }
+        public List<string>? Insights { get; set; }
+    }
+
+    /// <summary>
+    /// POST /api/report-generator/export-pdf
+    /// Renders the already-generated report result as a downloadable PDF (QuestPDF). Optionally
+    /// includes an AI summary/insights block if the caller already fetched one via ai-summary —
+    /// this endpoint never triggers an AI call itself.
+    /// </summary>
+    [HttpPost("export-pdf")]
+    public IActionResult ExportPdf([FromBody] ReportPdfExportRequest request)
+    {
+        if (request?.Report is null)
+            return BadRequest(ApiResponse<object>.ErrorResponse("No report data supplied to export."));
+
+        var bytes = _pdfService.Generate(request.Report, request.AiSummary, request.Insights);
+        var fileName = SanitizeFileName(request.Report.TemplateName ?? "report") + "-report.pdf";
+        return File(bytes, "application/pdf", fileName);
+    }
+
+    private static string SanitizeFileName(string name)
+    {
+        var invalid = Path.GetInvalidFileNameChars();
+        var cleaned = new string(name.Select(c => invalid.Contains(c) ? '-' : c).ToArray()).Trim();
+        return string.IsNullOrWhiteSpace(cleaned) ? "report" : cleaned;
     }
 }

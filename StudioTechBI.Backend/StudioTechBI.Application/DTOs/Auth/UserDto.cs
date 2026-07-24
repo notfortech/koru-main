@@ -22,6 +22,15 @@ public class UserDto
     /// <summary>Client code e.g. AU-001. Populated from Client.ClientCode when user has ClientId.</summary>
     [JsonPropertyName("clientCode")]
     public string? ClientCode { get; set; }
+    /// <summary>White-label company display name (Client.ClientName), only meaningful together
+    /// with LogoUrl. Null when the client has no logo configured -- default StudioTechBI branding
+    /// applies.</summary>
+    [JsonPropertyName("companyName")]
+    public string? CompanyName { get; set; }
+    /// <summary>Short-lived read SAS URL for the client's uploaded white-label logo, null when
+    /// none is configured. Refreshed on every login/token refresh.</summary>
+    [JsonPropertyName("logoUrl")]
+    public string? LogoUrl { get; set; }
     [JsonPropertyName("roles")]
     public List<string> Roles { get; set; } = new();
 }

@@ -16,8 +16,12 @@ public class ClientService : BaseService, IClientService
     private readonly IRepository<CompanyUser> _companyUserRepository;
     private readonly IRepository<ClientBlobFolder> _clientBlobFolderRepository;
     private readonly IBlobStorageService _blobStorage;
+    private readonly IBlobSasUriProvider _sasUriProvider;
     private readonly ILogger<ClientService> _logger;
     private readonly IClientByCompanyQuery _clientByCompanyQuery;
+
+    private static readonly string[] AllowedLogoExtensions = { ".png", ".jpg", ".jpeg", ".svg" };
+    private static readonly TimeSpan LogoSasValidFor = TimeSpan.FromHours(24);
 
     public ClientService(
         IUnitOfWork unitOfWork,
@@ -29,6 +33,7 @@ public class ClientService : BaseService, IClientService
         IRepository<CompanyUser> companyUserRepository,
         IRepository<ClientBlobFolder> clientBlobFolderRepository,
         IBlobStorageService blobStorage,
+        IBlobSasUriProvider sasUriProvider,
         ILogger<ClientService> logger,
         IClientByCompanyQuery clientByCompanyQuery)
         : base(unitOfWork)
@@ -41,6 +46,7 @@ public class ClientService : BaseService, IClientService
         _companyUserRepository = companyUserRepository;
         _clientBlobFolderRepository = clientBlobFolderRepository;
         _blobStorage = blobStorage;
+        _sasUriProvider = sasUriProvider;
         _logger = logger;
         _clientByCompanyQuery = clientByCompanyQuery;
     }
@@ -77,19 +83,23 @@ public class ClientService : BaseService, IClientService
         }
 
         _logger.LogInformation("Created client {ClientId}", client.Id);
-        return MapToDto(client);
+        return await MapToDtoWithLogoAsync(client, cancellationToken);
     }
 
     public async Task<IReadOnlyList<ClientDto>> GetAllAsync(CancellationToken cancellationToken = default)
     {
         var list = await _clientRepository.GetAllAsync(cancellationToken);
-        return list.Where(c => !c.IsDeleted).Select(MapToDto).ToList();
+        var active = list.Where(c => !c.IsDeleted).ToList();
+        var dtos = new List<ClientDto>(active.Count);
+        foreach (var client in active)
+            dtos.Add(await MapToDtoWithLogoAsync(client, cancellationToken));
+        return dtos;
     }
 
     public async Task<ClientDto?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
     {
         var client = await _clientRepository.GetByIdAsync(id, cancellationToken);
-        return client == null || client.IsDeleted ? null : MapToDto(client);
+        return client == null || client.IsDeleted ? null : await MapToDtoWithLogoAsync(client, cancellationToken);
     }
 
     public async Task<ClientDto?> GetByClientCodeAsync(string clientCode, CancellationToken cancellationToken = default)
@@ -99,7 +109,7 @@ public class ClientService : BaseService, IClientService
         var codeLower = code.ToLowerInvariant();
         var clients = await _clientRepository.FindAsync(c => !c.IsDeleted && c.ClientCode != null && c.ClientCode.ToLower() == codeLower, cancellationToken);
         var client = clients.FirstOrDefault();
-        return client == null ? null : MapToDto(client);
+        return client == null ? null : await MapToDtoWithLogoAsync(client, cancellationToken);
     }
 
     public async Task<ClientDto?> GetByClientCodeOrIdAsync(string clientCodeOrId, CancellationToken cancellationToken = default)
@@ -133,6 +143,44 @@ public class ClientService : BaseService, IClientService
         await _clientRepository.UpdateAsync(client, cancellationToken);
         await UnitOfWork.SaveChangesAsync(cancellationToken);
         _logger.LogInformation("Updated client {ClientId}", id);
+        return await MapToDtoWithLogoAsync(client, cancellationToken);
+    }
+
+    public async Task<ClientDto?> SetLogoAsync(Guid id, Stream content, string fileName, string? contentType, CancellationToken cancellationToken = default)
+    {
+        var client = await _clientRepository.GetByIdAsync(id, cancellationToken);
+        if (client == null || client.IsDeleted) return null;
+
+        var ext = Path.GetExtension(fileName).ToLowerInvariant();
+        if (!AllowedLogoExtensions.Contains(ext))
+            throw new InvalidOperationException(
+                $"Unsupported logo file type '{ext}'. Allowed: {string.Join(", ", AllowedLogoExtensions)}");
+
+        var blobPath = $"{client.Id}/branding/logo{ext}";
+        await _blobStorage.UploadClientBlobAsync(blobPath, content, contentType, cancellationToken);
+
+        client.LogoBlobPath = blobPath;
+        await _clientRepository.UpdateAsync(client, cancellationToken);
+        await UnitOfWork.SaveChangesAsync(cancellationToken);
+        _logger.LogInformation("Set logo for client {ClientId}", id);
+
+        return await MapToDtoWithLogoAsync(client, cancellationToken);
+    }
+
+    public async Task<ClientDto?> ClearLogoAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        var client = await _clientRepository.GetByIdAsync(id, cancellationToken);
+        if (client == null || client.IsDeleted) return null;
+
+        // The blob itself is left in storage rather than deleted -- clearing LogoBlobPath is what
+        // actually turns white-labeling off (Logo.tsx falls back to default branding the moment
+        // branding.logoUrl is absent); an orphaned blob is harmless and cheap to leave behind
+        // rather than adding a new delete-blob code path just for this.
+        client.LogoBlobPath = null;
+        await _clientRepository.UpdateAsync(client, cancellationToken);
+        await UnitOfWork.SaveChangesAsync(cancellationToken);
+        _logger.LogInformation("Cleared logo for client {ClientId}", id);
+
         return MapToDto(client);
     }
 
@@ -327,5 +375,15 @@ public class ClientService : BaseService, IClientService
             PowerBIDatasetId = c.PowerBIDatasetId,
             PowerBIReportId = c.PowerBIReportId
         };
+    }
+
+    /// <summary>Same as MapToDto, plus a freshly-signed LogoUrl when the client has a logo set.
+    /// SAS generation is a local signing operation (no network call), so doing this per-DTO is cheap.</summary>
+    private async Task<ClientDto> MapToDtoWithLogoAsync(Client c, CancellationToken cancellationToken)
+    {
+        var dto = MapToDto(c);
+        if (!string.IsNullOrEmpty(c.LogoBlobPath))
+            dto.LogoUrl = await _sasUriProvider.GetReadSasUriAsync(c.LogoBlobPath, LogoSasValidFor, cancellationToken);
+        return dto;
     }
 }
