@@ -177,9 +177,10 @@ public class ReportGeneratorController : ControllerBase
             VisualTitles = report.Charts.Select(c => c.Title).Take(50).ToList(),
             Prompts = new List<string>
             {
-                "Summarize what this report shows in plain language.",
-                "Call out any notable changes, trends, or outliers.",
-                "What should someone reviewing this report pay attention to first?",
+                "DatasetSamples below contains the report's real, already-computed KPI values and chart data (not a live query) — treat every number in it as ground truth and use it directly.",
+                "Interpret the data: cite specific figures from DatasetSamples by name (e.g. \"Average of sale_year is 2,008\", \"Median price totals $17.1M\") — do not describe only the report's page/visual structure, and do not say data values are unavailable when DatasetSamples is present.",
+                "Call out any notable trends, comparisons, or outliers visible in the actual numbers.",
+                "What should someone reviewing this report pay attention to first, based on the real values?",
             },
             DatasetSamples = samples.Count > 0 ? samples : null
         };
