@@ -109,6 +109,7 @@ public sealed class TemplateRefreshService : ITemplateRefreshService
         }, cancellationToken);
 
         return new TemplateRefreshRebindResponse(
-            result.WorkspaceId, result.WorkspaceName, result.DatasetId, result.DatasetName, result.RefreshTriggered, result.Steps);
+            result.WorkspaceId, result.WorkspaceName, result.DatasetId, result.DatasetName, result.RefreshTriggered, result.Steps,
+            result.ReportId, result.ReportName, result.ReportCloned);
     }
 }

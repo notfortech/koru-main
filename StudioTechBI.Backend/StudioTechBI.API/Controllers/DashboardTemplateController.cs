@@ -2,10 +2,12 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
+using StudioTechBI.Application.DTOs.Admin;
 using StudioTechBI.Application.DTOs.BindDeploy;
 using StudioTechBI.Application.DTOs.Common;
 using StudioTechBI.Application.DTOs.DashboardTemplate;
 using StudioTechBI.Application.DTOs.ReportDesigner;
+using StudioTechBI.Application.DTOs.TemplateRefresh;
 using StudioTechBI.Application.Interfaces;
 using StudioTechBI.Application.Models;
 using StudioTechBI.Application.Utilities;
@@ -38,6 +40,10 @@ public class DashboardTemplateController : ControllerBase
     private static readonly string[] AllowedExtensions = { ".xlsx", ".xls" };
     private static readonly TimeSpan SasValidFor = TimeSpan.FromHours(1);
 
+    /// <summary>Same "instant refresh" threshold TemplateRefreshService already uses for the
+    /// standalone template-refresh flow — kept identical rather than inventing a second number.</summary>
+    private const double MatchConfidenceThreshold = 0.8;
+
     private readonly IReportDesignerClient _reportDesignerClient;
     private readonly IDataBlendService _blendService;
     private readonly IWorkbookWriter _workbookWriter;
@@ -49,7 +55,12 @@ public class DashboardTemplateController : ControllerBase
     private readonly IDashboardTemplateLogWriter _logWriter;
     private readonly IClientResolver _clientResolver;
     private readonly IAiGateway _aiGateway;
+    private readonly ITemplateMatchingService _templateMatching;
+    private readonly ITemplateService _templateService;
+    private readonly ITemplateRebindClient _templateRebindClient;
+    private readonly IAuditLogService _auditLog;
     private readonly DashboardTemplateOptions _options;
+    private readonly IOptionsMonitor<TemplateCatalogOptions> _catalogOptions;
     private readonly ILogger<DashboardTemplateController> _logger;
 
     public DashboardTemplateController(
@@ -64,7 +75,12 @@ public class DashboardTemplateController : ControllerBase
         IDashboardTemplateLogWriter logWriter,
         IClientResolver clientResolver,
         IAiGateway aiGateway,
+        ITemplateMatchingService templateMatching,
+        ITemplateService templateService,
+        ITemplateRebindClient templateRebindClient,
+        IAuditLogService auditLog,
         IOptions<DashboardTemplateOptions> options,
+        IOptionsMonitor<TemplateCatalogOptions> catalogOptions,
         ILogger<DashboardTemplateController> logger)
     {
         _reportDesignerClient = reportDesignerClient;
@@ -78,7 +94,12 @@ public class DashboardTemplateController : ControllerBase
         _logWriter = logWriter;
         _clientResolver = clientResolver;
         _aiGateway = aiGateway;
+        _templateMatching = templateMatching;
+        _templateService = templateService;
+        _templateRebindClient = templateRebindClient;
+        _auditLog = auditLog;
         _options = options.Value;
+        _catalogOptions = catalogOptions;
         _logger = logger;
     }
 
@@ -226,13 +247,16 @@ public class DashboardTemplateController : ControllerBase
         // having their own — naming is the only differentiator until that changes.
         var generatedAt = DateTime.UtcNow;
         var reportDisplayName = $"{client.ClientName} — {designLabel ?? "Dashboard Template"} — {generatedAt:yyyy-MM-dd HH:mm:ss} UTC";
-        var generation = _reportVisualGenerator.Generate(blueprintElement, blended.Tables, patchedFiles, reportDisplayName);
 
         var deployed = false;
         string? workspaceId = null;
         string? datasetId = null;
         string? reportId = null;
-        var visualLog = new List<string>(generation.Log);
+        var source = "GeneratedFromScratch";
+        Guid? matchedTemplateId = null;
+        string? matchedTemplateName = null;
+        double? matchConfidence = null;
+        var visualLog = new List<string>();
 
         if (!downloadUrl.HasSasScheme())
         {
@@ -240,59 +264,157 @@ public class DashboardTemplateController : ControllerBase
         }
         else
         {
+            // Check the real template catalog first — if a designer has already built and
+            // published a matching template, cloning it is cheaper and more reliable than
+            // generating a semantic model + visuals from scratch every time. Falls through to
+            // the existing generate-from-scratch path below on no match or any clone failure.
+            TemplateDto? matchedTemplate = null;
             try
             {
-                var slug = SanitizeSlug($"{client.ClientName}-{correlationId[..8]}");
-                var reportFolder = $"{slug}.Report";
-                var semanticModelFolder = $"{slug}.SemanticModel";
+                var flattenedColumns = blended.Tables
+                    .SelectMany(t => t.Columns)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
 
-                var pbipFiles = new List<PbipFileDto>();
-                pbipFiles.AddRange(patchedFiles.Select(f => new PbipFileDto(ToSemanticModelPath(slug, f.Path), f.Content)));
-                pbipFiles.Add(new PbipFileDto($"{reportFolder}/report.json", generation.ReportJson));
-                pbipFiles.Add(new PbipFileDto($"{reportFolder}/.platform", generation.PlatformManifestJson));
-                pbipFiles.Add(new PbipFileDto($"{reportFolder}/definition.pbir", PbipSkeletonBuilder.BuildReportDefinitionPbir(semanticModelFolder)));
-                pbipFiles.Add(new PbipFileDto($"{semanticModelFolder}/.platform", PbipSkeletonBuilder.BuildSemanticModelPlatformManifest(reportDisplayName)));
-                pbipFiles.Add(new PbipFileDto($"{semanticModelFolder}/definition.pbism", PbipSkeletonBuilder.BuildSemanticModelDefinitionPbism()));
-                pbipFiles.Add(new PbipFileDto($"{slug}.pbip", PbipSkeletonBuilder.BuildTopLevelProjectJson(reportFolder)));
+                var matchResponse = await _templateMatching.MatchFromColumnsAsync(
+                    client.ClientCode ?? client.Id.ToString(), useSelectedClient: true, flattenedColumns, useAiRefinement: true, cancellationToken);
 
-                var importRequest = new PbipImportRequest(
-                    ClientName: client.ClientName,
-                    ReportName: reportDisplayName,
-                    WorkspaceName: _options.WorkspaceName,
-                    Files: pbipFiles);
-
-                var importResult = await _pbipImportClient.ImportAsync(importRequest, correlationId, cancellationToken);
-                visualLog.AddRange(importResult.Steps);
-
-                await _powerBiAssetWriter.WriteAsync(
-                    clientId: client.Id,
-                    templateId: null,
-                    workspaceId: importResult.WorkspaceId,
-                    datasetId: importResult.DatasetId,
-                    reportId: importResult.ReportId,
-                    reportType: "dashboard-template-generated",
-                    cancellationToken: cancellationToken);
-
-                deployed = true;
-                workspaceId = importResult.WorkspaceId;
-                datasetId = importResult.DatasetId;
-                reportId = importResult.ReportId;
-
-                _logger.LogInformation(
-                    "DashboardTemplate.Deployed ClientId={ClientId} CorrelationId={CorrelationId} WorkspaceId={WorkspaceId} DatasetId={DatasetId} ReportId={ReportId}",
-                    client.Id, correlationId, workspaceId, datasetId, reportId);
+                foreach (var candidate in matchResponse.Templates.Where(c => c.Confidence >= MatchConfidenceThreshold))
+                {
+                    var candidateTemplate = await _templateService.GetByIdAsync(candidate.TemplateId, cancellationToken);
+                    if (candidateTemplate is { IsPublishReady: true })
+                    {
+                        matchedTemplate = candidateTemplate;
+                        matchConfidence = candidate.Confidence;
+                        break;
+                    }
+                }
             }
             catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException)
             {
-                _logger.LogWarning(ex, "DashboardTemplate.DeployFailed ClientId={ClientId} CorrelationId={CorrelationId}", client.Id, correlationId);
-                visualLog.Add($"Deploy to Power BI failed: {ex.Message}. The blended dataset and semantic model below are still available to download and fix manually.");
+                _logger.LogWarning(ex, "DashboardTemplate.MatchAttemptFailed ClientId={ClientId} CorrelationId={CorrelationId}", client.Id, correlationId);
+                visualLog.Add($"Template catalog match failed, falling back to generating from scratch: {ex.Message}");
+            }
+
+            if (matchedTemplate is not null)
+            {
+                try
+                {
+                    visualLog.Add(
+                        $"Matched existing published template '{matchedTemplate.TemplateName}' (confidence {matchConfidence:P0}) — cloning its dataset/report instead of generating from scratch.");
+
+                    var rebindRequest = new TemplateRebindRequest(
+                        ClientName: $"Client - {client.ClientName}",
+                        TemplateWorkspaceName: _catalogOptions.CurrentValue.MasterWorkspaceName,
+                        TemplateDatasetName: matchedTemplate.TemplateName,
+                        SourceFilePath: downloadUrl ?? blobPath);
+
+                    var rebindResult = await _templateRebindClient.RebindAsync(rebindRequest, correlationId, cancellationToken);
+                    visualLog.AddRange(rebindResult.Steps);
+
+                    deployed = true;
+                    workspaceId = rebindResult.WorkspaceId;
+                    datasetId = rebindResult.DatasetId;
+                    reportId = rebindResult.ReportId;
+                    source = "MatchedTemplate";
+                    matchedTemplateId = matchedTemplate.TemplateId;
+                    matchedTemplateName = matchedTemplate.TemplateName;
+
+                    visualLog.Add(
+                        "Not written to PowerBiAsset automatically for this path yet — map WorkspaceId/DatasetId/ReportId above into that table manually to make the report visible in the client's portal.");
+
+                    await _auditLog.WriteAsync(new AuditLogEntryDto
+                    {
+                        TenantId = null,
+                        Action = "DashboardTemplateMatchedAndCloned",
+                        EntityType = "Template",
+                        EntityId = matchedTemplate.TemplateId.ToString(),
+                        NewValue = JsonSerializer.Serialize(new
+                        {
+                            ClientId = client.Id,
+                            MatchConfidence = matchConfidence,
+                            rebindResult.WorkspaceId,
+                            rebindResult.DatasetId,
+                            rebindResult.ReportId,
+                            rebindResult.ReportCloned
+                        })
+                    }, cancellationToken);
+
+                    _logger.LogInformation(
+                        "DashboardTemplate.MatchedAndCloned ClientId={ClientId} CorrelationId={CorrelationId} TemplateId={TemplateId} WorkspaceId={WorkspaceId} DatasetId={DatasetId} ReportId={ReportId} ReportCloned={ReportCloned}",
+                        client.Id, correlationId, matchedTemplate.TemplateId, workspaceId, datasetId, reportId, rebindResult.ReportCloned);
+                }
+                catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException)
+                {
+                    _logger.LogWarning(ex, "DashboardTemplate.CloneFailed ClientId={ClientId} CorrelationId={CorrelationId} TemplateId={TemplateId}",
+                        client.Id, correlationId, matchedTemplate.TemplateId);
+                    visualLog.Add($"Cloning matched template '{matchedTemplate.TemplateName}' failed, falling back to generating from scratch: {ex.Message}");
+                }
+            }
+
+            if (!deployed)
+            {
+                var generation = _reportVisualGenerator.Generate(blueprintElement, blended.Tables, patchedFiles, reportDisplayName);
+                visualLog.AddRange(generation.Log);
+
+                try
+                {
+                    var slug = SanitizeSlug($"{client.ClientName}-{correlationId[..8]}");
+                    var reportFolder = $"{slug}.Report";
+                    var semanticModelFolder = $"{slug}.SemanticModel";
+
+                    var pbipFiles = new List<PbipFileDto>();
+                    pbipFiles.AddRange(patchedFiles.Select(f => new PbipFileDto(ToSemanticModelPath(slug, f.Path), f.Content)));
+                    pbipFiles.Add(new PbipFileDto($"{reportFolder}/report.json", generation.ReportJson));
+                    pbipFiles.Add(new PbipFileDto($"{reportFolder}/.platform", generation.PlatformManifestJson));
+                    pbipFiles.Add(new PbipFileDto($"{reportFolder}/definition.pbir", PbipSkeletonBuilder.BuildReportDefinitionPbir(semanticModelFolder)));
+                    pbipFiles.Add(new PbipFileDto($"{semanticModelFolder}/.platform", PbipSkeletonBuilder.BuildSemanticModelPlatformManifest(reportDisplayName)));
+                    pbipFiles.Add(new PbipFileDto($"{semanticModelFolder}/definition.pbism", PbipSkeletonBuilder.BuildSemanticModelDefinitionPbism()));
+                    pbipFiles.Add(new PbipFileDto($"{slug}.pbip", PbipSkeletonBuilder.BuildTopLevelProjectJson(reportFolder)));
+
+                    var importRequest = new PbipImportRequest(
+                        ClientName: client.ClientName,
+                        ReportName: reportDisplayName,
+                        WorkspaceName: _options.WorkspaceName,
+                        Files: pbipFiles);
+
+                    var importResult = await _pbipImportClient.ImportAsync(importRequest, correlationId, cancellationToken);
+                    visualLog.AddRange(importResult.Steps);
+
+                    await _powerBiAssetWriter.WriteAsync(
+                        clientId: client.Id,
+                        templateId: null,
+                        workspaceId: importResult.WorkspaceId,
+                        datasetId: importResult.DatasetId,
+                        reportId: importResult.ReportId,
+                        reportType: "dashboard-template-generated",
+                        cancellationToken: cancellationToken);
+
+                    deployed = true;
+                    workspaceId = importResult.WorkspaceId;
+                    datasetId = importResult.DatasetId;
+                    reportId = importResult.ReportId;
+
+                    _logger.LogInformation(
+                        "DashboardTemplate.Deployed ClientId={ClientId} CorrelationId={CorrelationId} WorkspaceId={WorkspaceId} DatasetId={DatasetId} ReportId={ReportId}",
+                        client.Id, correlationId, workspaceId, datasetId, reportId);
+                }
+                catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException)
+                {
+                    _logger.LogWarning(ex, "DashboardTemplate.DeployFailed ClientId={ClientId} CorrelationId={CorrelationId}", client.Id, correlationId);
+                    visualLog.Add($"Deploy to Power BI failed: {ex.Message}. The blended dataset and semantic model below are still available to download and fix manually.");
+                }
             }
         }
 
         var summary = $"{uploadedCount} of {blended.Provenance.Count} columns used from your file; " +
                       $"{mockedCount} column(s) mocked — see the provenance log for which ones." +
                       (tmdlPatched ? "" : " Note: the authored semantic model's data source could not be auto-patched; wire SourceFilePath manually.") +
-                      (deployed ? " A live Power BI report was generated with visuals." : " The Power BI report was not deployed — see the log for why.");
+                      (deployed
+                          ? source == "MatchedTemplate"
+                              ? " Matched an existing published template and cloned it — map the returned IDs into PowerBiAsset manually to make it visible."
+                              : " A live Power BI report was generated with visuals."
+                          : " The Power BI report was not deployed — see the log for why.");
 
         _logger.LogInformation(
             "DashboardTemplate.Generated ClientId={ClientId} CorrelationId={CorrelationId} Uploaded={Uploaded} Mocked={Mocked} TmdlPatched={TmdlPatched} Deployed={Deployed}",
@@ -316,7 +438,11 @@ public class DashboardTemplateController : ControllerBase
                 visualLog,
                 designTemplateId,
                 designTier,
-                designLabel),
+                designLabel,
+                source,
+                matchedTemplateId,
+                matchedTemplateName,
+                matchConfidence),
             "Dashboard template generated."));
     }
 

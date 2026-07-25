@@ -40,4 +40,9 @@ public record GenerateDashboardTemplateResponse(
     List<string> VisualGenerationLog,
     string? DesignBlueprintTemplateId,
     string? DesignBlueprintTier,
-    string? DesignBlueprintLabel);
+    string? DesignBlueprintLabel,
+    // "MatchedTemplate" when a real published template was found and cloned, "GeneratedFromScratch" otherwise.
+    string Source = "GeneratedFromScratch",
+    Guid? MatchedTemplateId = null,
+    string? MatchedTemplateName = null,
+    double? MatchConfidence = null);
