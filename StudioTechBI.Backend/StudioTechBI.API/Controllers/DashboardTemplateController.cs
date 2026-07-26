@@ -11,6 +11,7 @@ using StudioTechBI.Application.DTOs.TemplateRefresh;
 using StudioTechBI.Application.Interfaces;
 using StudioTechBI.Application.Models;
 using StudioTechBI.Application.Utilities;
+using StudioTechBI.Domain.Entities;
 
 namespace StudioTechBI.API.Controllers;
 
@@ -116,6 +117,153 @@ public class DashboardTemplateController : ControllerBase
         }
     }
 
+    /// <summary>Best-effort — a logging failure must never break the actual response.</summary>
+    private async Task LogBuildRequestAsync(Guid clientId, string clientName, string blobPath, IReadOnlyList<string> requestedColumns, string correlationId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _logWriter.LogBuildRequestAsync(clientId, clientName, blobPath, requestedColumns, correlationId, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "DashboardTemplate.LogBuildRequestFailed ClientId={ClientId}", clientId);
+        }
+    }
+
+    /// <summary>Best-effort — a logging failure must never break the actual response.</summary>
+    private async Task LogMatchCheckFailedAsync(Guid clientId, string clientName, string correlationId, Exception exception, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _logWriter.LogMatchCheckFailedAsync(clientId, clientName, correlationId, exception, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "DashboardTemplate.LogMatchCheckFailedFailed ClientId={ClientId}", clientId);
+        }
+    }
+
+    private sealed record GenerationContext(
+        Client Client,
+        string CorrelationId,
+        JsonElement Blueprint,
+        string? DesignTemplateId,
+        string? DesignTier,
+        string? DesignLabel);
+
+    private sealed record ContextResolution(GenerationContext? Context, IActionResult? Error);
+
+    /// <summary>Shared input validation, blueprintId resolution, blueprint JSON parsing, and
+    /// client lookup — identical for GenerateAsync and VerifyMatchAsync; only what happens with
+    /// the resolved context differs between the two actions.</summary>
+    private async Task<ContextResolution> ResolveGenerationContextAsync(
+        IFormFile file,
+        string clientId,
+        string? blueprint,
+        Guid? blueprintId,
+        CancellationToken cancellationToken)
+    {
+        if (file is null || file.Length == 0)
+            return new ContextResolution(null, BadRequest(ApiResponse<object>.ErrorResponse("No file uploaded.")));
+
+        if (file.Length > MaxFileSizeBytes)
+            return new ContextResolution(null, BadRequest(ApiResponse<object>.ErrorResponse("File exceeds the 50 MB limit.")));
+
+        var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+        if (!AllowedExtensions.Contains(ext))
+            return new ContextResolution(null, BadRequest(ApiResponse<object>.ErrorResponse(
+                $"Unsupported file type '{ext}'. Allowed: {string.Join(", ", AllowedExtensions)}")));
+
+        if (string.IsNullOrWhiteSpace(clientId))
+            return new ContextResolution(null, BadRequest(ApiResponse<object>.ErrorResponse("clientId is required.")));
+
+        if (string.IsNullOrWhiteSpace(blueprint) && blueprintId is null)
+            return new ContextResolution(null, BadRequest(ApiResponse<object>.ErrorResponse("Either blueprint or blueprintId is required.")));
+
+        if (!string.IsNullOrWhiteSpace(blueprint) && blueprintId is not null)
+            return new ContextResolution(null, BadRequest(ApiResponse<object>.ErrorResponse("Supply only one of blueprint or blueprintId, not both.")));
+
+        if (blueprintId is not null)
+        {
+            blueprint = await _aiGateway.GetBlueprintJsonAsync(blueprintId.Value, cancellationToken);
+            if (string.IsNullOrWhiteSpace(blueprint))
+                return new ContextResolution(null, NotFound(ApiResponse<object>.ErrorResponse(
+                    $"No generated JSON found for blueprint '{blueprintId}'. It may still be processing, or generation may have failed.")));
+        }
+
+        JsonElement blueprintElement;
+        try
+        {
+            using var blueprintDoc = JsonDocument.Parse(blueprint!);
+            // Cloned so the element outlives the using block above — JsonDocument's buffer is
+            // pooled/disposed at scope exit, and this element is read well past that point.
+            blueprintElement = blueprintDoc.RootElement.Clone();
+        }
+        catch (JsonException)
+        {
+            return new ContextResolution(null, BadRequest(ApiResponse<object>.ErrorResponse("blueprint is not valid JSON.")));
+        }
+
+        var client = await _clientResolver.ResolveAsync(clientId, cancellationToken);
+        if (client is null)
+            return new ContextResolution(null, NotFound(ApiResponse<object>.ErrorResponse($"Client '{clientId}' not found.")));
+
+        var isDesignBlueprint = BlueprintFormatDetector.IsDesignBlueprint(blueprintElement);
+        var context = new GenerationContext(
+            client,
+            Guid.NewGuid().ToString(),
+            blueprintElement,
+            isDesignBlueprint ? ReadStringProperty(blueprintElement, "templateId") : null,
+            isDesignBlueprint ? ReadStringProperty(blueprintElement, "tier") : null,
+            isDesignBlueprint ? ReadStringProperty(blueprintElement, "label") : null);
+
+        return new ContextResolution(context, null);
+    }
+
+    private sealed record MatchCheckResult(
+        TemplateDto? Matched,
+        double? Confidence,
+        List<TemplateCandidateSummaryDto> Candidates);
+
+    /// <summary>Checks the real template catalog for a match against this client's blended
+    /// columns. Shared by GenerateAsync (clone-instead-of-generate-from-scratch) and
+    /// VerifyMatchAsync (the cheap pre-check) so the exact same ranking/qualification logic
+    /// backs both. A "qualifying" match is the first ranked candidate that is both
+    /// IsPublishReady and at/above MatchConfidenceThreshold; every ranked candidate (qualifying
+    /// or not) is also returned in full so callers can show the client what was considered.</summary>
+    private async Task<MatchCheckResult> FindQualifyingMatchAsync(Client client, BlendResult blended, CancellationToken cancellationToken)
+    {
+        var flattenedColumns = blended.Tables
+            .SelectMany(t => t.Columns)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var matchResponse = await _templateMatching.MatchFromColumnsAsync(
+            client.ClientCode ?? client.Id.ToString(), useSelectedClient: true, flattenedColumns, useAiRefinement: true, cancellationToken);
+
+        TemplateDto? matched = null;
+        double? matchConfidence = null;
+        var candidates = new List<TemplateCandidateSummaryDto>();
+
+        foreach (var candidate in matchResponse.Templates)
+        {
+            var candidateTemplate = await _templateService.GetByIdAsync(candidate.TemplateId, cancellationToken);
+            if (candidateTemplate is null)
+                continue;
+
+            candidates.Add(new TemplateCandidateSummaryDto(
+                candidateTemplate.TemplateId, candidateTemplate.TemplateName, candidate.Confidence, candidateTemplate.IsPublishReady));
+
+            if (matched is null && candidate.Confidence >= MatchConfidenceThreshold && candidateTemplate.IsPublishReady)
+            {
+                matched = candidateTemplate;
+                matchConfidence = candidate.Confidence;
+            }
+        }
+
+        return new MatchCheckResult(matched, matchConfidence, candidates);
+    }
+
     /// <summary>
     /// POST /api/dashboard-template/generate
     /// Multipart form: file (the client's Excel upload), clientId, and either blueprint (raw
@@ -135,56 +283,16 @@ public class DashboardTemplateController : ControllerBase
         [FromForm] Guid? blueprintId,
         CancellationToken cancellationToken)
     {
-        if (file is null || file.Length == 0)
-            return BadRequest(ApiResponse<object>.ErrorResponse("No file uploaded."));
-
-        if (file.Length > MaxFileSizeBytes)
-            return BadRequest(ApiResponse<object>.ErrorResponse("File exceeds the 50 MB limit."));
-
-        var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
-        if (!AllowedExtensions.Contains(ext))
-            return BadRequest(ApiResponse<object>.ErrorResponse(
-                $"Unsupported file type '{ext}'. Allowed: {string.Join(", ", AllowedExtensions)}"));
-
-        if (string.IsNullOrWhiteSpace(clientId))
-            return BadRequest(ApiResponse<object>.ErrorResponse("clientId is required."));
-
-        if (string.IsNullOrWhiteSpace(blueprint) && blueprintId is null)
-            return BadRequest(ApiResponse<object>.ErrorResponse("Either blueprint or blueprintId is required."));
-
-        if (!string.IsNullOrWhiteSpace(blueprint) && blueprintId is not null)
-            return BadRequest(ApiResponse<object>.ErrorResponse("Supply only one of blueprint or blueprintId, not both."));
-
-        if (blueprintId is not null)
-        {
-            blueprint = await _aiGateway.GetBlueprintJsonAsync(blueprintId.Value, cancellationToken);
-            if (string.IsNullOrWhiteSpace(blueprint))
-                return NotFound(ApiResponse<object>.ErrorResponse(
-                    $"No generated JSON found for blueprint '{blueprintId}'. It may still be processing, or generation may have failed."));
-        }
-
-        JsonDocument blueprintDoc;
-        try
-        {
-            blueprintDoc = JsonDocument.Parse(blueprint!);
-        }
-        catch (JsonException)
-        {
-            return BadRequest(ApiResponse<object>.ErrorResponse("blueprint is not valid JSON."));
-        }
-
-        using var _ = blueprintDoc;
-
-        var client = await _clientResolver.ResolveAsync(clientId, cancellationToken);
-        if (client is null)
-            return NotFound(ApiResponse<object>.ErrorResponse($"Client '{clientId}' not found."));
-
-        var correlationId = Guid.NewGuid().ToString();
-        var blueprintElement = blueprintDoc.RootElement;
-        var isDesignBlueprint = BlueprintFormatDetector.IsDesignBlueprint(blueprintElement);
-        var designTemplateId = isDesignBlueprint ? ReadStringProperty(blueprintElement, "templateId") : null;
-        var designTier = isDesignBlueprint ? ReadStringProperty(blueprintElement, "tier") : null;
-        var designLabel = isDesignBlueprint ? ReadStringProperty(blueprintElement, "label") : null;
+        var resolved = await ResolveGenerationContextAsync(file, clientId, blueprint, blueprintId, cancellationToken);
+        if (resolved.Error is not null)
+            return resolved.Error;
+        var ctx = resolved.Context!;
+        var client = ctx.Client;
+        var correlationId = ctx.CorrelationId;
+        var blueprintElement = ctx.Blueprint;
+        var designTemplateId = ctx.DesignTemplateId;
+        var designTier = ctx.DesignTier;
+        var designLabel = ctx.DesignLabel;
 
         AuthorTmdlResponse authored;
         try
@@ -240,19 +348,16 @@ public class DashboardTemplateController : ControllerBase
         var uploadedCount = blended.Provenance.Count(p => p.Source == ProvenanceSource.Uploaded);
         var mockedCount = blended.Provenance.Count(p => p.Source == ProvenanceSource.Mocked);
 
-        // Timestamped so repeat generations for the same client get genuinely new Power BI
-        // artifacts (new datasetId/reportId) instead of colliding with — and Overwrite-ing — a
-        // prior generation's dataset. Necessary because, for now, every client's generations
-        // share the one configured workspace (see DashboardTemplateOptions) rather than each
-        // having their own — naming is the only differentiator until that changes.
-        var generatedAt = DateTime.UtcNow;
-        var reportDisplayName = $"{client.ClientName} — {designLabel ?? "Dashboard Template"} — {generatedAt:yyyy-MM-dd HH:mm:ss} UTC";
-
         var deployed = false;
         string? workspaceId = null;
         string? datasetId = null;
         string? reportId = null;
-        var source = "GeneratedFromScratch";
+        // "PendingTemplateBuild" (no qualifying catalog match — a build request was filed) or
+        // "MatchCheckFailed" (the match check or the clone itself failed technically) unless a
+        // qualifying match is found and cloned below, in which case source becomes "MatchedTemplate".
+        // No longer falls through to generating a report from scratch below the match threshold —
+        // ReportVisualGenerator/IPbipImportClient stay wired up but are unreachable from this path.
+        var source = "PendingTemplateBuild";
         Guid? matchedTemplateId = null;
         string? matchedTemplateName = null;
         double? matchConfidence = null;
@@ -264,40 +369,23 @@ public class DashboardTemplateController : ControllerBase
         }
         else
         {
-            // Check the real template catalog first — if a designer has already built and
-            // published a matching template, cloning it is cheaper and more reliable than
-            // generating a semantic model + visuals from scratch every time. Falls through to
-            // the existing generate-from-scratch path below on no match or any clone failure.
-            TemplateDto? matchedTemplate = null;
+            MatchCheckResult? matchCheck = null;
             try
             {
-                var flattenedColumns = blended.Tables
-                    .SelectMany(t => t.Columns)
-                    .Distinct(StringComparer.OrdinalIgnoreCase)
-                    .ToList();
-
-                var matchResponse = await _templateMatching.MatchFromColumnsAsync(
-                    client.ClientCode ?? client.Id.ToString(), useSelectedClient: true, flattenedColumns, useAiRefinement: true, cancellationToken);
-
-                foreach (var candidate in matchResponse.Templates.Where(c => c.Confidence >= MatchConfidenceThreshold))
-                {
-                    var candidateTemplate = await _templateService.GetByIdAsync(candidate.TemplateId, cancellationToken);
-                    if (candidateTemplate is { IsPublishReady: true })
-                    {
-                        matchedTemplate = candidateTemplate;
-                        matchConfidence = candidate.Confidence;
-                        break;
-                    }
-                }
+                matchCheck = await FindQualifyingMatchAsync(client, blended, cancellationToken);
             }
             catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException)
             {
                 _logger.LogWarning(ex, "DashboardTemplate.MatchAttemptFailed ClientId={ClientId} CorrelationId={CorrelationId}", client.Id, correlationId);
-                visualLog.Add($"Template catalog match failed, falling back to generating from scratch: {ex.Message}");
+                visualLog.Add("Template catalog match check failed. Please contact our support team for assistance.");
+                await LogMatchCheckFailedAsync(client.Id, client.ClientName, correlationId, ex, cancellationToken);
+                source = "MatchCheckFailed";
             }
 
-            if (matchedTemplate is not null)
+            if (matchCheck?.Matched is not null)
             {
+                var matchedTemplate = matchCheck.Matched;
+                matchConfidence = matchCheck.Confidence;
                 try
                 {
                     visualLog.Add(
@@ -348,62 +436,18 @@ public class DashboardTemplateController : ControllerBase
                 {
                     _logger.LogWarning(ex, "DashboardTemplate.CloneFailed ClientId={ClientId} CorrelationId={CorrelationId} TemplateId={TemplateId}",
                         client.Id, correlationId, matchedTemplate.TemplateId);
-                    visualLog.Add($"Cloning matched template '{matchedTemplate.TemplateName}' failed, falling back to generating from scratch: {ex.Message}");
+                    visualLog.Add("Cloning the matched template failed. Please contact our support team for assistance.");
+                    source = "MatchCheckFailed";
+                    await LogMatchCheckFailedAsync(client.Id, client.ClientName, correlationId, ex, cancellationToken);
                 }
             }
-
-            if (!deployed)
+            else if (source != "MatchCheckFailed")
             {
-                var generation = _reportVisualGenerator.Generate(blueprintElement, blended.Tables, patchedFiles, reportDisplayName);
-                visualLog.AddRange(generation.Log);
-
-                try
-                {
-                    var slug = SanitizeSlug($"{client.ClientName}-{correlationId[..8]}");
-                    var reportFolder = $"{slug}.Report";
-                    var semanticModelFolder = $"{slug}.SemanticModel";
-
-                    var pbipFiles = new List<PbipFileDto>();
-                    pbipFiles.AddRange(patchedFiles.Select(f => new PbipFileDto(ToSemanticModelPath(slug, f.Path), f.Content)));
-                    pbipFiles.Add(new PbipFileDto($"{reportFolder}/report.json", generation.ReportJson));
-                    pbipFiles.Add(new PbipFileDto($"{reportFolder}/.platform", generation.PlatformManifestJson));
-                    pbipFiles.Add(new PbipFileDto($"{reportFolder}/definition.pbir", PbipSkeletonBuilder.BuildReportDefinitionPbir(semanticModelFolder)));
-                    pbipFiles.Add(new PbipFileDto($"{semanticModelFolder}/.platform", PbipSkeletonBuilder.BuildSemanticModelPlatformManifest(reportDisplayName)));
-                    pbipFiles.Add(new PbipFileDto($"{semanticModelFolder}/definition.pbism", PbipSkeletonBuilder.BuildSemanticModelDefinitionPbism()));
-                    pbipFiles.Add(new PbipFileDto($"{slug}.pbip", PbipSkeletonBuilder.BuildTopLevelProjectJson(reportFolder)));
-
-                    var importRequest = new PbipImportRequest(
-                        ClientName: client.ClientName,
-                        ReportName: reportDisplayName,
-                        WorkspaceName: _options.WorkspaceName,
-                        Files: pbipFiles);
-
-                    var importResult = await _pbipImportClient.ImportAsync(importRequest, correlationId, cancellationToken);
-                    visualLog.AddRange(importResult.Steps);
-
-                    await _powerBiAssetWriter.WriteAsync(
-                        clientId: client.Id,
-                        templateId: null,
-                        workspaceId: importResult.WorkspaceId,
-                        datasetId: importResult.DatasetId,
-                        reportId: importResult.ReportId,
-                        reportType: "dashboard-template-generated",
-                        cancellationToken: cancellationToken);
-
-                    deployed = true;
-                    workspaceId = importResult.WorkspaceId;
-                    datasetId = importResult.DatasetId;
-                    reportId = importResult.ReportId;
-
-                    _logger.LogInformation(
-                        "DashboardTemplate.Deployed ClientId={ClientId} CorrelationId={CorrelationId} WorkspaceId={WorkspaceId} DatasetId={DatasetId} ReportId={ReportId}",
-                        client.Id, correlationId, workspaceId, datasetId, reportId);
-                }
-                catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException)
-                {
-                    _logger.LogWarning(ex, "DashboardTemplate.DeployFailed ClientId={ClientId} CorrelationId={CorrelationId}", client.Id, correlationId);
-                    visualLog.Add($"Deploy to Power BI failed: {ex.Message}. The blended dataset and semantic model below are still available to download and fix manually.");
-                }
+                // No qualifying match found, and the check itself ran cleanly — file a build
+                // request instead of generating a report from scratch.
+                visualLog.Add("No confident match found in the template catalog. Your template will be ready soon — our team has been notified to build one.");
+                var requestedColumns = blended.Tables.SelectMany(t => t.Columns).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+                await LogBuildRequestAsync(client.Id, client.ClientName, blobPath, requestedColumns, correlationId, cancellationToken);
             }
         }
 
@@ -444,6 +488,118 @@ public class DashboardTemplateController : ControllerBase
                 matchedTemplateName,
                 matchConfidence),
             "Dashboard template generated."));
+    }
+
+    /// <summary>
+    /// POST /api/dashboard-template/verify-match
+    /// Cheap pre-check for the "Generate Dashboard Template" button: blends the client's file
+    /// with the blueprint and checks the real template catalog for a qualifying match — skips
+    /// TMDL authoring and every Power BI call entirely (those only matter for the deploy step),
+    /// so this comes back fast. Same multipart contract as /generate (file, clientId,
+    /// blueprint|blueprintId). A "Pending" result files a build request for staff; an "Error"
+    /// result means the match check itself failed technically — logged for staff, generic
+    /// "contact support" message to the caller.
+    /// </summary>
+    [HttpPost("verify-match")]
+    [RequestSizeLimit(MaxFileSizeBytes)]
+    public async Task<IActionResult> VerifyMatchAsync(
+        IFormFile file,
+        [FromForm] string clientId,
+        [FromForm] string? blueprint,
+        [FromForm] Guid? blueprintId,
+        CancellationToken cancellationToken)
+    {
+        var resolved = await ResolveGenerationContextAsync(file, clientId, blueprint, blueprintId, cancellationToken);
+        if (resolved.Error is not null)
+            return resolved.Error;
+        var ctx = resolved.Context!;
+
+        BlendResult blended;
+        await using (var uploadStream = file.OpenReadStream())
+        {
+            try
+            {
+                blended = await _blendService.BlendAsync(uploadStream, ctx.Blueprint, cancellationToken);
+            }
+            catch (InvalidOperationException ex)
+            {
+                _logger.LogWarning(ex, "DashboardTemplate.VerifyMatch.BlendFailed ClientId={ClientId} CorrelationId={CorrelationId}", ctx.Client.Id, ctx.CorrelationId);
+                return UnprocessableEntity(ApiResponse<object>.ErrorResponse(
+                    "Could not read the uploaded file to blend with the generated model.", new List<string> { ex.Message }));
+            }
+        }
+
+        if (blended.Tables.Count == 0)
+            return UnprocessableEntity(ApiResponse<object>.ErrorResponse(
+                "The generated blueprint has no tables to check for a template match."));
+
+        await using var workbookStream = await _workbookWriter.WriteAsync(blended.Tables, cancellationToken);
+        var blobPath = $"{ctx.Client.Id}/dashboard-templates/{ctx.CorrelationId}/blended-data.xlsx";
+        await _blobStorage.UploadClientBlobAsync(
+            blobPath,
+            workbookStream,
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            cancellationToken);
+
+        var downloadUrl = await _sasUriProvider.GetReadSasUriAsync(blobPath, SasValidFor, cancellationToken);
+
+        MatchCheckResult matchCheck;
+        try
+        {
+            matchCheck = await FindQualifyingMatchAsync(ctx.Client, blended, cancellationToken);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException)
+        {
+            _logger.LogWarning(ex, "DashboardTemplate.VerifyMatch.MatchCheckFailed ClientId={ClientId} CorrelationId={CorrelationId}", ctx.Client.Id, ctx.CorrelationId);
+            await LogMatchCheckFailedAsync(ctx.Client.Id, ctx.Client.ClientName, ctx.CorrelationId, ex, cancellationToken);
+
+            return Ok(ApiResponse<VerifyTemplateMatchResponse>.SuccessResponse(
+                new VerifyTemplateMatchResponse(
+                    ctx.CorrelationId,
+                    "Error",
+                    "Please contact our support team for assistance.",
+                    blended.Provenance,
+                    blobPath,
+                    downloadUrl,
+                    null,
+                    null,
+                    null,
+                    new List<TemplateCandidateSummaryDto>()),
+                "Template match check failed."));
+        }
+
+        string status;
+        string message;
+        if (matchCheck.Matched is not null)
+        {
+            status = "Matched";
+            message = $"Matched an existing published template '{matchCheck.Matched.TemplateName}' (confidence {matchCheck.Confidence:P0}).";
+        }
+        else
+        {
+            status = "Pending";
+            message = "Your template will be ready soon.";
+            var requestedColumns = blended.Tables.SelectMany(t => t.Columns).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            await LogBuildRequestAsync(ctx.Client.Id, ctx.Client.ClientName, blobPath, requestedColumns, ctx.CorrelationId, cancellationToken);
+        }
+
+        _logger.LogInformation(
+            "DashboardTemplate.VerifyMatch ClientId={ClientId} CorrelationId={CorrelationId} Status={Status} MatchedTemplateId={MatchedTemplateId}",
+            ctx.Client.Id, ctx.CorrelationId, status, matchCheck.Matched?.TemplateId);
+
+        return Ok(ApiResponse<VerifyTemplateMatchResponse>.SuccessResponse(
+            new VerifyTemplateMatchResponse(
+                ctx.CorrelationId,
+                status,
+                message,
+                blended.Provenance,
+                blobPath,
+                downloadUrl,
+                matchCheck.Matched?.TemplateId,
+                matchCheck.Matched?.TemplateName,
+                matchCheck.Confidence,
+                matchCheck.Candidates),
+            message));
     }
 
     private static string? ReadStringProperty(JsonElement element, string propertyName) =>
