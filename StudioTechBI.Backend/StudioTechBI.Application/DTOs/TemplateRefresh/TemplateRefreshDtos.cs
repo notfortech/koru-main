@@ -32,7 +32,10 @@ public sealed record TemplateRefreshRebindResponse(
     string DatasetId,
     string DatasetName,
     bool RefreshTriggered,
-    IReadOnlyList<string> Steps);
+    IReadOnlyList<string> Steps,
+    string? ReportId = null,
+    string? ReportName = null,
+    bool ReportCloned = false);
 
 /// <summary>Mirrors stbi-bind-deploy's RebindTemplateRequest — the payload ITemplateRebindClient sends.</summary>
 public sealed record TemplateRebindRequest(
@@ -40,7 +43,8 @@ public sealed record TemplateRebindRequest(
     string TemplateWorkspaceName,
     string TemplateDatasetName,
     string SourceFilePath,
-    string? CapacityId = null);
+    string? CapacityId = null,
+    string? TemplateReportName = null);
 
 /// <summary>Mirrors stbi-bind-deploy's RebindTemplateResult.</summary>
 public sealed record TemplateRebindResult(
@@ -49,4 +53,7 @@ public sealed record TemplateRebindResult(
     string DatasetId,
     string DatasetName,
     bool RefreshTriggered,
-    List<string> Steps);
+    List<string> Steps,
+    string? ReportId = null,
+    string? ReportName = null,
+    bool ReportCloned = false);

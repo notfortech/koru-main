@@ -14,6 +14,12 @@ public class Client : BaseEntity
     /// Set/cleared via AdminClientsController's logo upload/delete endpoints.</summary>
     public string? LogoBlobPath { get; set; }
 
+    /// <summary>Admin-declared entitlement: white-label branding only renders for this client's
+    /// users when this is true AND LogoBlobPath is set (see AuthService.MapUserToDtoAsync). Not
+    /// derived from the live subscription/credit system — an admin sets this explicitly when they
+    /// upgrade a client to a plan that includes white-labeling.</summary>
+    public bool IsPremiumSubscriber { get; set; } = false;
+
     public bool IsActive { get; set; } = true;
     public DateTime CreatedDate { get; set; } = DateTime.UtcNow;
 

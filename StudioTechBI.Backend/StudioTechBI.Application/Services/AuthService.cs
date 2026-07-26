@@ -430,8 +430,11 @@ public class AuthService : BaseService, IAuthService
 
     private async Task<UserDto> MapUserToDtoAsync(User user, List<string> roles, Client? client)
     {
+        // Branding is a premium entitlement: only actually surfaced when the client is both
+        // admin-declared premium AND has a logo uploaded. A non-premium client with a logo on
+        // file (e.g. uploaded before a downgrade) still gets default StudioTechBI branding.
         string? logoUrl = null;
-        if (!string.IsNullOrEmpty(client?.LogoBlobPath))
+        if (client?.IsPremiumSubscriber == true && !string.IsNullOrEmpty(client.LogoBlobPath))
             logoUrl = await _sasUriProvider.GetReadSasUriAsync(client.LogoBlobPath, LogoSasValidFor);
 
         return new UserDto
@@ -444,8 +447,9 @@ public class AuthService : BaseService, IAuthService
             IsActive = user.IsActive,
             ClientId = client?.Id ?? user.ClientId,
             ClientCode = client?.ClientCode ?? client?.BlobFolderPath,
-            // Both null when no logo is configured -- useClientBranding() falls back to default
-            // StudioTechBI branding with no special-casing needed downstream.
+            // Both null when no logo is configured or the client isn't premium --
+            // useClientBranding() falls back to default StudioTechBI branding with no
+            // special-casing needed downstream.
             CompanyName = logoUrl != null ? client?.ClientName : null,
             LogoUrl = logoUrl,
             Roles = roles

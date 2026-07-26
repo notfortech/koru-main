@@ -40,4 +40,36 @@ public record GenerateDashboardTemplateResponse(
     List<string> VisualGenerationLog,
     string? DesignBlueprintTemplateId,
     string? DesignBlueprintTier,
-    string? DesignBlueprintLabel);
+    string? DesignBlueprintLabel,
+    // "MatchedTemplate" when a real published template was found and cloned; "PendingTemplateBuild"
+    // when no qualifying match was found (a build request was filed); "MatchCheckFailed" when the
+    // match check or the clone itself failed technically. Never falls through to generating a
+    // report from scratch below the match threshold — see DashboardTemplateController.GenerateAsync.
+    string Source = "PendingTemplateBuild",
+    Guid? MatchedTemplateId = null,
+    string? MatchedTemplateName = null,
+    double? MatchConfidence = null);
+
+// ── Verify Template Match (cheap pre-check, no TMDL authoring / Power BI deploy) ─────────────
+// Lets the client find out — before committing to a full generate — whether the template
+// catalog already has something worth cloning. Blend + catalog match only.
+
+/// <summary>One ranked catalog candidate returned by the match check, regardless of whether it
+/// cleared the publish-ready + confidence bar.</summary>
+public record TemplateCandidateSummaryDto(Guid TemplateId, string TemplateName, double Confidence, bool IsPublishReady);
+
+public record VerifyTemplateMatchResponse(
+    string CorrelationId,
+    // "Matched": a qualifying (IsPublishReady, confidence >= threshold) template was found.
+    // "Pending": blend + match check both ran cleanly, nothing cleared the bar — a build
+    // request was filed for the team. "Error": the match check itself failed technically —
+    // client is told to contact support, real detail is logged for staff.
+    string Status,
+    string Message,
+    List<ProvenanceEntryDto> Provenance,
+    string? BlendedDatasetBlobPath,
+    string? BlendedDatasetDownloadUrl,
+    Guid? MatchedTemplateId,
+    string? MatchedTemplateName,
+    double? MatchConfidence,
+    List<TemplateCandidateSummaryDto> Candidates);
