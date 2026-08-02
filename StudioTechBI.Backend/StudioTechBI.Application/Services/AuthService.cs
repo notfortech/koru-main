@@ -452,6 +452,7 @@ public class AuthService : BaseService, IAuthService
             // special-casing needed downstream.
             CompanyName = logoUrl != null ? client?.ClientName : null,
             LogoUrl = logoUrl,
+            HasReportValidationAddOn = client?.HasReportValidationAddOn ?? false,
             Roles = roles
         };
     }

@@ -307,6 +307,7 @@ builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddAgentHostIntegration();
 builder.Services.AddReportDesignerIntegration();
 builder.Services.AddReportGeneratorIntegration();
+builder.Services.AddReportValidationIntegration();
 builder.Services.AddBindDeployIntegration();
 builder.Services.AddTemplateRebindIntegration();
 builder.Services.AddPbipImportIntegration();

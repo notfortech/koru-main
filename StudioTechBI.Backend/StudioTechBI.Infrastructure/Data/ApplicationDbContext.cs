@@ -55,6 +55,10 @@ public class ApplicationDbContext : DbContext
     public DbSet<BlueprintVersion> BlueprintVersions => Set<BlueprintVersion>();
     public DbSet<BlueprintGeneration> BlueprintGenerations => Set<BlueprintGeneration>();
 
+    // Report Validation module
+    public DbSet<ReportValidationRun> ReportValidationRuns => Set<ReportValidationRun>();
+    public DbSet<ReportValidationCheck> ReportValidationChecks => Set<ReportValidationCheck>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
