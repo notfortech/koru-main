@@ -31,6 +31,11 @@ public class UserDto
     /// none is configured. Refreshed on every login/token refresh.</summary>
     [JsonPropertyName("logoUrl")]
     public string? LogoUrl { get; set; }
+    /// <summary>Admin-declared entitlement for the paid Report Validation add-on (Client.
+    /// HasReportValidationAddOn), a separate subscription line item from branding. Frontend gates
+    /// the "Validate Report" button/screen on this plain boolean.</summary>
+    [JsonPropertyName("hasReportValidationAddOn")]
+    public bool HasReportValidationAddOn { get; set; }
     [JsonPropertyName("roles")]
     public List<string> Roles { get; set; } = new();
 }

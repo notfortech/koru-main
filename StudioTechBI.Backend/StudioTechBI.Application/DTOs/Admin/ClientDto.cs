@@ -18,6 +18,10 @@ public class ClientDto
     /// users when this is true AND a logo is set.</summary>
     public bool IsPremiumSubscriber { get; set; }
 
+    /// <summary>Admin-declared entitlement for the paid Report Validation add-on — a separate
+    /// subscription line item from IsPremiumSubscriber.</summary>
+    public bool HasReportValidationAddOn { get; set; }
+
     public bool IsActive { get; set; }
     public DateTime CreatedDate { get; set; }
     public string? PowerBIWorkspaceId { get; set; }

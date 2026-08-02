@@ -20,6 +20,12 @@ public class Client : BaseEntity
     /// upgrade a client to a plan that includes white-labeling.</summary>
     public bool IsPremiumSubscriber { get; set; } = false;
 
+    /// <summary>Admin-declared entitlement for the paid Report Validation add-on — a separate
+    /// subscription line item from IsPremiumSubscriber (branding). Projected onto
+    /// UserDto.HasReportValidationAddOn at login/refresh (see AuthService.MapUserToDtoAsync) so
+    /// the frontend can gate the "Validate Report" button/screen with a plain boolean.</summary>
+    public bool HasReportValidationAddOn { get; set; } = false;
+
     public bool IsActive { get; set; } = true;
     public DateTime CreatedDate { get; set; } = DateTime.UtcNow;
 
