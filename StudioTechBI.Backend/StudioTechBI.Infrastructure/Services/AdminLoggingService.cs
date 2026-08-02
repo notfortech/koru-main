@@ -54,7 +54,10 @@ public class AdminLoggingService : IAdminLoggingService
     public async Task<IReadOnlyList<FunctionalLogDto>> GetDashboardTemplateLogsAsync(int? limit, Guid? clientId, CancellationToken cancellationToken = default)
     {
         IQueryable<Domain.Entities.FunctionalLog> query = _db.FunctionalLogs.AsNoTracking()
-            .Where(l => l.EventType == "DashboardTemplateGenerated" || l.EventType == "DashboardTemplateGenerationFailed");
+            .Where(l => l.EventType == "DashboardTemplateGenerated"
+                || l.EventType == "DashboardTemplateGenerationFailed"
+                || l.EventType == "DashboardTemplateBuildRequested"
+                || l.EventType == "DashboardTemplateMatchCheckFailed");
         if (clientId.HasValue)
             query = query.Where(l => l.ClientId == clientId.Value);
         query = query.OrderByDescending(l => l.Timestamp);

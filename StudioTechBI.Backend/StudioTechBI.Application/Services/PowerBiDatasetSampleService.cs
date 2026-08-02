@@ -318,7 +318,7 @@ public sealed class PowerBiDatasetSampleService : IPowerBiDatasetSampleService
                 foreach (var cell in row.EnumerateArray())
                 {
                     var colKey = i < columns.Count ? columns[i] : $"col{i}";
-                    dict[colKey] = CellToString(cell);
+                    dict[colKey] = CellToString(colKey, cell);
                     i++;
                 }
             }
@@ -328,14 +328,18 @@ public sealed class PowerBiDatasetSampleService : IPowerBiDatasetSampleService
                 var j = 0;
                 foreach (var cell in row.EnumerateArray())
                 {
-                    dict[$"col{j}"] = CellToString(cell);
+                    var colKey = $"col{j}";
+                    dict[colKey] = CellToString(colKey, cell);
                     j++;
                 }
             }
             else if (row.ValueKind == JsonValueKind.Object)
             {
                 foreach (var p in row.EnumerateObject())
-                    dict[StripBracketName(p.Name)] = PropToString(p.Value);
+                {
+                    var colKey = StripBracketName(p.Name);
+                    dict[colKey] = PropToString(colKey, p.Value);
+                }
             }
 
             if (dict.Count > 0)
@@ -356,37 +360,71 @@ public sealed class PowerBiDatasetSampleService : IPowerBiDatasetSampleService
         return rowsOut.Count == 0 ? null : new DatasetQueryTableSample { Source = sourceLabel, Columns = columns, Rows = rowsOut };
     }
 
-    private static string CellToString(JsonElement cell)
+    private static string CellToString(string columnName, JsonElement cell)
     {
         if (cell.ValueKind == JsonValueKind.Array && cell.GetArrayLength() > 0)
-            return PropToString(cell[0]);
-        return PropToString(cell);
+            return PropToString(columnName, cell[0]);
+        return PropToString(columnName, cell);
     }
 
-    private static string PropToString(JsonElement cell)
+    private static string PropToString(string columnName, JsonElement cell)
     {
         if (cell.ValueKind == JsonValueKind.Object)
         {
             // Often { "[Col]": { "prop": ... } or value shape
             if (cell.TryGetProperty("value", out var inner))
-                return inner.ToString();
+                return ElementToString(columnName, inner);
 
             foreach (var p in cell.EnumerateObject())
             {
                 var v = p.Value;
                 if (v.ValueKind == JsonValueKind.Object && v.TryGetProperty("value", out var vv))
-                    return vv.ToString();
+                    return ElementToString(columnName, vv);
                 if (v.ValueKind == JsonValueKind.String || v.ValueKind == JsonValueKind.Number || v.ValueKind == JsonValueKind.True || v.ValueKind == JsonValueKind.False)
-                    return v.ToString();
+                    return ElementToString(columnName, v);
             }
 
             return cell.ToString();
         }
 
+        return ElementToString(columnName, cell);
+    }
+
+    // Plausible OLE Automation date serial range: 1 (1899-12-31) to 60000 (~2064-06-03).
+    private const double MinExcelSerialDate = 1d;
+    private const double MaxExcelSerialDate = 60000d;
+
+    private static bool LooksLikeDateColumn(string columnName) =>
+        columnName.Contains("date", StringComparison.OrdinalIgnoreCase) ||
+        columnName.Contains("time", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Power BI's executeQueries can return date/datetime columns as raw OLE Automation
+    /// serial numbers rather than ISO strings. Detect that by column name + a plausible serial
+    /// range and format as a real date, instead of letting the bare serial leak into
+    /// AI-generated insights (which cites every DatasetSamples number as fact).</summary>
+    private static string ElementToString(string columnName, JsonElement cell)
+    {
         if (cell.ValueKind == JsonValueKind.String && cell.GetString() is { } s)
             return s;
         if (cell.ValueKind == JsonValueKind.Null || cell.ValueKind == JsonValueKind.Undefined)
             return "";
+
+        if (cell.ValueKind == JsonValueKind.Number
+            && LooksLikeDateColumn(columnName)
+            && cell.TryGetDouble(out var num)
+            && num >= MinExcelSerialDate && num <= MaxExcelSerialDate)
+        {
+            try
+            {
+                var dt = DateTime.FromOADate(num);
+                return dt.TimeOfDay == TimeSpan.Zero ? dt.ToString("yyyy-MM-dd") : dt.ToString("yyyy-MM-dd HH:mm:ss");
+            }
+            catch (ArgumentException)
+            {
+                // Not actually a valid OADate serial; fall through to the raw number below.
+            }
+        }
+
         return cell.ToString();
     }
 
