@@ -64,6 +64,24 @@ public class DashboardTemplateLogWriter : IDashboardTemplateLogWriter
         await AddLogAsync("DashboardTemplateMatchCheckFailed", clientId, description, cancellationToken);
     }
 
+    public async Task LogHtmlTemplateGapAsync(
+        Guid? clientId,
+        string clientName,
+        string correlationId,
+        IReadOnlyList<string> columnNames,
+        string matchPath,
+        double? bestConfidence,
+        CancellationToken cancellationToken = default)
+    {
+        var confidencePart = bestConfidence.HasValue
+            ? $", best candidate confidence {bestConfidence:P0} (below 85% threshold)"
+            : ", zero candidates returned";
+        var description = $"[{clientName}] No HTML template match ({matchPath} path, " +
+            $"CorrelationId={correlationId}){confidencePart}. Columns: {string.Join(", ", columnNames)}";
+
+        await AddLogAsync("HtmlTemplateBuildRequested", clientId, description, cancellationToken);
+    }
+
     private async Task AddLogAsync(string eventType, Guid? clientId, string description, CancellationToken cancellationToken)
     {
         if (description.Length > MaxDescriptionLength)

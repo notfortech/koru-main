@@ -59,6 +59,11 @@ public class ApplicationDbContext : DbContext
     public DbSet<ReportValidationRun> ReportValidationRuns => Set<ReportValidationRun>();
     public DbSet<ReportValidationCheck> ReportValidationChecks => Set<ReportValidationCheck>();
 
+    // Saved Reports + custom Power BI report requests
+    public DbSet<SavedReport> SavedReports => Set<SavedReport>();
+    public DbSet<SavedReportVersion> SavedReportVersions => Set<SavedReportVersion>();
+    public DbSet<CustomReportRequest> CustomReportRequests => Set<CustomReportRequest>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);

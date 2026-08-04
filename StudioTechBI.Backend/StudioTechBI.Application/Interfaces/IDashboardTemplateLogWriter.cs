@@ -36,4 +36,16 @@ public interface IDashboardTemplateLogWriter
         string correlationId,
         Exception exception,
         CancellationToken cancellationToken = default);
+
+    /// <summary>No HTML template matched this client's dataset (deterministic zero-candidate
+    /// case, or AI-assisted below the 0.85 confidence gate) — files a "build a template for this
+    /// schema shape" backlog entry for staff (EventType "HtmlTemplateBuildRequested").</summary>
+    Task LogHtmlTemplateGapAsync(
+        Guid? clientId,
+        string clientName,
+        string correlationId,
+        IReadOnlyList<string> columnNames,
+        string matchPath,
+        double? bestConfidence,
+        CancellationToken cancellationToken = default);
 }
