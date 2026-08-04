@@ -61,7 +61,8 @@ public static class DependencyInjection
         services.AddScoped<IWorkbookWriter, WorkbookWriter>();
         services.AddScoped<IBlobSasUriProvider, BlobSasUriProvider>();
         services.AddScoped<IDashboardTemplateLogWriter, DashboardTemplateLogWriter>();
-        services.AddScoped<IReportGeneratorPdfService, ReportGeneratorPdfService>();
+        services.AddScoped<IHtmlReportAssemblyService, HtmlReportAssemblyService>();
+        services.AddHostedService<HtmlTemplateRegistrySyncService>();
 
         services.Configure<InsightEngineOptions>(configuration.GetSection(InsightEngineOptions.SectionName));
         services.AddHttpClient<InsightEngineClient>()

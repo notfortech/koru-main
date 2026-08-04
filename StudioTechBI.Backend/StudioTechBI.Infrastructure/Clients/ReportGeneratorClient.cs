@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Headers;
+using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using StudioTechBI.Application.DTOs.ReportGenerator;
@@ -60,6 +61,7 @@ public class ReportGeneratorClient : IReportGeneratorClient
         string fileName,
         string? templateId,
         string? filtersJson,
+        string? htmlTemplateId,
         string correlationId,
         CancellationToken cancellationToken = default)
     {
@@ -82,6 +84,8 @@ public class ReportGeneratorClient : IReportGeneratorClient
             content.Add(new StringContent(templateId), "templateId");
         if (!string.IsNullOrWhiteSpace(filtersJson))
             content.Add(new StringContent(filtersJson), "filters");
+        if (!string.IsNullOrWhiteSpace(htmlTemplateId))
+            content.Add(new StringContent(htmlTemplateId), "htmlTemplateId");
 
         var request = new HttpRequestMessage(HttpMethod.Post, "api/reports/generate") { Content = content };
         request.Headers.Add("X-Correlation-Id", correlationId);
@@ -137,6 +141,81 @@ public class ReportGeneratorClient : IReportGeneratorClient
             return result;
         }
     }
+
+    public async Task<List<HtmlTemplateCandidateDto>> MatchHtmlTemplateAsync(
+        Stream fileStream,
+        string fileName,
+        string correlationId,
+        CancellationToken cancellationToken = default)
+    {
+        RequireBaseAddress();
+
+        _logger.LogInformation(
+            "ReportGenerator.HtmlMatchFileSentToEngine CorrelationId={CorrelationId} FileName={FileName}",
+            correlationId, fileName);
+
+        using var content = new MultipartFormDataContent();
+        using var streamContent = new StreamContent(fileStream);
+        streamContent.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
+        content.Add(streamContent, "file", fileName);
+
+        var request = new HttpRequestMessage(HttpMethod.Post, "api/reports/match-html-template") { Content = content };
+        request.Headers.Add("X-Correlation-Id", correlationId);
+
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger.LogWarning(
+                "ReportGenerator.HtmlMatchFailed StatusCode={StatusCode} CorrelationId={CorrelationId}",
+                (int)response.StatusCode, correlationId);
+            throw new HttpRequestException(
+                MapStatusCode(response.StatusCode, body), inner: null, statusCode: response.StatusCode);
+        }
+
+        HtmlTemplateMatchWireResult? wire;
+        try
+        {
+            wire = JsonSerializer.Deserialize<HtmlTemplateMatchWireResult>(body, JsonOptions);
+        }
+        catch (JsonException ex)
+        {
+            _logger.LogError(ex,
+                "ReportGenerator.HtmlMatchParseError CorrelationId={CorrelationId} Body={Body}",
+                correlationId, Truncate(body, 1000));
+            throw new InvalidOperationException("HTML template match response could not be parsed.", ex);
+        }
+
+        return wire?.Candidates ?? [];
+    }
+
+    public async Task PushHtmlTemplateRegistryAsync(
+        List<HtmlTemplateManifestPushDto> manifests,
+        string correlationId,
+        CancellationToken cancellationToken = default)
+    {
+        RequireBaseAddress();
+
+        var request = new HttpRequestMessage(HttpMethod.Post, "api/html-templates/registry")
+        {
+            Content = JsonContent.Create(manifests, options: JsonOptions)
+        };
+        request.Headers.Add("X-Correlation-Id", correlationId);
+
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            _logger.LogWarning(
+                "ReportGenerator.HtmlRegistryPushFailed StatusCode={StatusCode} CorrelationId={CorrelationId}",
+                (int)response.StatusCode, correlationId);
+            throw new HttpRequestException(
+                MapStatusCode(response.StatusCode, body), inner: null, statusCode: response.StatusCode);
+        }
+    }
+
+    private sealed record HtmlTemplateMatchWireResult(List<HtmlTemplateCandidateDto> Candidates);
 
     private void RequireBaseAddress()
     {

@@ -1,0 +1,55 @@
+{
+  "id": "healthcare-fpna-multi-tab",
+  "name": "Healthcare FP&A (Executive / Expenditure / Funding)",
+  "industry": "healthcare",
+  "requires": {
+    "minNumeric": 2,
+    "minDate": 1,
+    "minCategorical": 3
+  },
+  "requiredColumns": [
+    "Month",
+    "Program Category",
+    "State",
+    "Division",
+    "Budget Expenditure",
+    "Actual Expenditure"
+  ],
+  "optionalColumns": [
+    "Quarter",
+    "Program Code",
+    "Program Name",
+    "Funding Model",
+    "Cost Centre Code",
+    "Cost Centre Name",
+    "Is Direct Care",
+    "FTE",
+    "Invoices"
+  ],
+  "dataContract": {
+    "rowFields": [
+      { "column": "Month", "alias": "month", "role": "date" },
+      { "column": "Quarter", "alias": "quarter", "role": "text" },
+      { "column": "Program Code", "alias": "progCode", "role": "text" },
+      { "column": "Program Name", "alias": "progName", "role": "text" },
+      { "column": "Program Category", "alias": "category", "role": "text" },
+      { "column": "Funding Model", "alias": "fundingModel", "role": "text" },
+      { "column": "Cost Centre Code", "alias": "ccCode", "role": "text" },
+      { "column": "Cost Centre Name", "alias": "ccName", "role": "text" },
+      { "column": "Division", "alias": "division", "role": "text" },
+      { "column": "State", "alias": "state", "role": "text" },
+      { "column": "Is Direct Care", "alias": "isDirectCare", "role": "text" },
+      { "column": "Actual Expenditure", "alias": "aExp", "role": "numeric" },
+      { "column": "Budget Expenditure", "alias": "bExp", "role": "numeric" },
+      { "column": "FTE", "alias": "fte", "role": "numeric" },
+      { "column": "Invoices", "alias": "invoices", "role": "numeric" }
+    ],
+    "maxRows": 5000
+  },
+  "testIds": {
+    "resultsLoaded": "dashboard-ready",
+    "kpiPrefix": "kpi-tile-",
+    "chartPrefix": "chart-"
+  },
+  "notes": "Executive Summary and Expenditure Detail tabs are driven by real client data. The Funding & Sustainability tab needs a second, differently-shaped row table (funding by channel/funder) that the current single-table row export pipeline doesn't produce yet, so it renders with no data until that's added -- closest-match, not fully interactive, per the template library's own coverage policy."
+}
