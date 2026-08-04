@@ -109,6 +109,55 @@ actually apply. Four more industry themes with no template folder yet
 `templates/_themes-reference/` so the color/font work isn't lost if those
 industries get scaffolded later.
 
+## HTML report templates (`templates/html/`)
+
+A second, sibling prefix inside this same tree holds interactive HTML/CSS/JS report templates —
+the primary output format for the Report Generator (deterministic and AI-assisted paths), matched
+against a client's uploaded data the same way Power BI templates are matched, just against this
+separate library. Read-only to every service at all times; a client's own copy is only ever made
+when they explicitly click "Save Report" (see `HtmlReportAssemblyService`/`SavedReportsController`
+in the backend), and that copy lands in `{clientId}/saved-reports/...`, never back into this tree.
+
+```
+templates/html/index.json                  <- flat array of template ids (author-maintained;
+                                                IBlobStorageService has no "list blobs by prefix"
+                                                capability, so discovery reuses this registration-
+                                                file convention instead)
+templates/html/<template-id>/
+    manifest.json    <- { id, name, industry, requires: {minNumeric,minDate,minCategorical},
+                           requiredColumns, optionalColumns,
+                           dataContract: { rowFields: [{column,alias,role}], maxRows },
+                           testIds: { resultsLoaded, kpiPrefix, chartPrefix } }
+    chrome.html      <- self-contained HTML/CSS/JS; reads its data via
+                         JSON.parse(document.getElementById('stbi-report-data').textContent) —
+                         koru-main injects that <script type="application/json"> block by
+                         substituting the <!--STBI_REPORT_DATA--> marker comment at generation
+                         time. Never assumes outbound network access.
+    preview.jpg      <- optional
+```
+
+`testIds` is mandatory — a manifest missing it is excluded from matching at registry-load time
+(fail closed), since it's what keeps the Report Validation Playwright runner able to assert
+against the rendered template.
+
+Adding a template needs no redeploy of any repo: upload `manifest.json` + `chrome.html` to
+`templates/html/<template-id>/` in the same blob container/path family every Power BI template
+lives in, add its id to `templates/html/index.json`, and it's matchable within ~5 minutes (see
+`HtmlTemplateRegistrySyncService` in the backend).
+
+Two templates currently exist:
+- `retail-single-page` — single-page retail commercial performance dashboard (chip filters,
+  budget-line bars, monthly trend, category × channel matrix). Fully data-driven — filter chips,
+  month range, and category/channel lists are all derived from whatever rows the matched dataset
+  actually contains, not a fixed hardcoded set.
+- `healthcare-fpna-multi-tab` — multi-tab healthcare FP&A dashboard (Executive Summary /
+  Expenditure Detail / Funding & Sustainability). Executive Summary and Expenditure Detail are
+  driven by real client data; Funding & Sustainability needs a second, differently-shaped row
+  table (funding by channel/funder) that the current single-table row export pipeline doesn't
+  produce yet, so that one tab renders with no data until multi-table export exists — closest-
+  match, not fully interactive, per this library's own coverage policy for templates added ahead
+  of full data-contract support.
+
 ## Security notes
 
 - Sensitivity labels and PII columns are recorded per template in `metadata.json` — NDIS,

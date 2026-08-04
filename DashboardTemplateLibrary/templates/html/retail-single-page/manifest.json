@@ -1,0 +1,42 @@
+{
+  "id": "retail-single-page",
+  "name": "Retail Commercial Performance (single page)",
+  "industry": "retail",
+  "requires": {
+    "minNumeric": 3,
+    "minDate": 1,
+    "minCategorical": 2
+  },
+  "requiredColumns": [
+    "Month",
+    "Category",
+    "Channel",
+    "Budget Revenue",
+    "Actual Revenue"
+  ],
+  "optionalColumns": [
+    "Budget COGS",
+    "Actual COGS",
+    "Budget Units",
+    "Actual Units"
+  ],
+  "dataContract": {
+    "rowFields": [
+      { "column": "Month", "alias": "m", "role": "date" },
+      { "column": "Category", "alias": "cat", "role": "text" },
+      { "column": "Channel", "alias": "ch", "role": "text" },
+      { "column": "Budget Revenue", "alias": "bRev", "role": "numeric" },
+      { "column": "Actual Revenue", "alias": "aRev", "role": "numeric" },
+      { "column": "Budget COGS", "alias": "bCOGS", "role": "numeric" },
+      { "column": "Actual COGS", "alias": "aCOGS", "role": "numeric" },
+      { "column": "Budget Units", "alias": "bU", "role": "numeric" },
+      { "column": "Actual Units", "alias": "aU", "role": "numeric" }
+    ],
+    "maxRows": 5000
+  },
+  "testIds": {
+    "resultsLoaded": "dashboard-ready",
+    "kpiPrefix": "kpi-tile-",
+    "chartPrefix": "chart-"
+  }
+}

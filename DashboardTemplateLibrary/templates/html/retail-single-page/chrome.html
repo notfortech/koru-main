@@ -1,0 +1,345 @@
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--brand:#EA580C;--brand2:#1C1917;--brand3:#16A34A;--brand4:#DC2626;--surface:#fff;--bg:#f8f7f5}
+body{font-family:var(--font-sans,-apple-system,sans-serif);font-size:13px;background:var(--bg);color:var(--text-primary,#1a1a1a)}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}
+.dash-header{background:var(--brand);color:#fff;padding:10px 16px;display:flex;align-items:center;justify-content:space-between;border-radius:10px 10px 0 0}
+.dash-title{font-size:14px;font-weight:500}
+.dash-sub{font-size:11px;opacity:.8;margin-top:1px}
+.active-label{font-size:11px;background:rgba(255,255,255,.2);padding:2px 8px;border-radius:10px}
+.body{padding:12px;background:var(--surface,#fff);border:0.5px solid var(--border,#e5e5e5);border-top:none;border-radius:0 0 10px 10px}
+.filter-row{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;align-items:center}
+.chip{padding:4px 10px;border-radius:14px;border:0.5px solid var(--border,#e5e5e5);font-size:11px;cursor:pointer;background:var(--surface,#fff);color:var(--text-secondary,#666);transition:all .12s;user-select:none;font-family:inherit}
+.chip.active{background:var(--brand);color:#fff;border-color:var(--brand)}
+.chip.cat.active{background:var(--brand3);border-color:var(--brand3)}
+.reset-btn{margin-left:auto;padding:4px 10px;border-radius:6px;border:0.5px solid var(--brand);font-size:11px;cursor:pointer;background:transparent;color:var(--brand);font-family:inherit}
+.reset-btn:hover{background:var(--brand);color:#fff}
+.kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:10px}
+.kpi{background:var(--bg,#f8f7f5);border-radius:8px;padding:10px 12px}
+.kpi-label{font-size:10px;color:var(--text-secondary,#666);margin-bottom:3px}
+.kpi-val{font-size:20px;font-weight:500}
+.kpi-delta{font-size:10px;margin-top:2px}
+.pos{color:#16A34A}.neg{color:#DC2626}.neu{color:#D97706}
+.chart-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px}
+.chart-box{background:var(--bg,#f8f7f5);border-radius:8px;padding:10px 12px;position:relative}
+.chart-title{font-size:10px;font-weight:500;color:var(--text-secondary,#666);margin-bottom:8px;letter-spacing:.03em;text-transform:uppercase}
+.bar-group{display:flex;flex-direction:column;gap:5px}
+.bar-row{display:flex;align-items:center;gap:6px;cursor:pointer;border-radius:4px;padding:2px 4px;transition:background .1s}
+.bar-row:hover,.bar-row.selected{background:rgba(234,88,12,.08)}
+.bar-row.dimmed{opacity:.35}
+.bar-label{font-size:11px;min-width:90px;color:var(--text-primary,#1a1a1a)}
+.bar-track{flex:1;height:16px;background:rgba(0,0,0,.07);border-radius:4px;overflow:hidden;position:relative}
+.bar-actual{height:100%;border-radius:4px;transition:width .3s ease}
+.bar-budget-line{position:absolute;top:0;bottom:0;width:2px;background:rgba(0,0,0,.25);border-radius:1px}
+.bar-val{font-size:10px;min-width:40px;text-align:right;color:var(--text-primary,#1a1a1a);font-weight:500}
+.bar-var{font-size:10px;min-width:36px;text-align:right}
+.month-chart{display:flex;align-items:flex-end;gap:3px;height:80px;margin-bottom:4px}
+.m-col{flex:1;display:flex;flex-direction:column;align-items:center;gap:1px;cursor:pointer}
+.m-col:hover .m-actual,.m-col.selected .m-actual{opacity:1}
+.m-col.dimmed .m-actual{opacity:.25}
+.m-actual{border-radius:2px 2px 0 0;transition:height .3s ease,opacity .2s}
+.m-budget{border-radius:2px 2px 0 0;opacity:.25;transition:height .3s ease}
+.m-label{font-size:8px;color:var(--text-secondary,#666);margin-top:2px}
+.tooltip{position:absolute;background:var(--surface,#fff);border:0.5px solid var(--border,#e5e5e5);border-radius:8px;padding:8px 10px;font-size:11px;pointer-events:none;z-index:10;min-width:130px;box-shadow:0 4px 12px rgba(0,0,0,.1)}
+.tt-title{font-weight:500;margin-bottom:4px;color:var(--brand)}
+.tt-row{display:flex;justify-content:space-between;gap:12px;margin-bottom:2px;color:var(--text-primary,#1a1a1a)}
+.tt-label{color:var(--text-secondary,#666)}
+.legend{display:flex;gap:10px;margin-top:4px}
+.leg-item{display:flex;align-items:center;gap:4px;font-size:10px;color:var(--text-secondary,#666)}
+.leg-dot{width:8px;height:8px;border-radius:2px}
+.matrix-table{width:100%;border-collapse:collapse;font-size:11px;margin-top:2px}
+.matrix-table th{padding:5px 6px;text-align:left;color:var(--text-secondary,#666);font-weight:500;border-bottom:0.5px solid var(--border,#e5e5e5);font-size:10px}
+.matrix-table td{padding:5px 6px;border-bottom:0.5px solid rgba(0,0,0,.05)}
+.matrix-table tr.row-selected td{background:rgba(234,88,12,.06)}
+.matrix-table tr.row-dimmed td{opacity:.3}
+.matrix-table tr:hover td{background:rgba(234,88,12,.04);cursor:pointer}
+.pill{font-size:9px;padding:1px 5px;border-radius:8px;font-weight:500}
+.pill-g{background:#dcfce7;color:#166534}.pill-r{background:#fee2e2;color:#991b1b}.pill-a{background:#fef3c7;color:#92400e}
+.empty-state{padding:24px;text-align:center;color:var(--text-secondary,#666);font-size:12px}
+</style>
+<h2 class="sr-only">Interactive retail FP&amp;A dashboard with cross-filtering. Click any bar, chip, or month column to filter all visuals simultaneously.</h2>
+
+<div class="dash-header">
+  <div><div class="dash-title">FP&amp;A Retail — Commercial performance dashboard</div><div class="dash-sub" id="dash-sub">Click any visual to cross-filter</div></div>
+  <div id="active-label" class="active-label">All data</div>
+</div>
+<div class="body" data-testid="dashboard-ready">
+  <div class="filter-row" id="channel-filter-row">
+    <span style="font-size:10px;color:var(--text-secondary,#666);font-weight:500">Channel:</span>
+    <div class="chip active" data-val="all" onclick="toggleChannel(this,'all')">All</div>
+  </div>
+  <div class="filter-row" id="cat-filter-row">
+    <span style="font-size:10px;color:var(--text-secondary,#666);font-weight:500">Category:</span>
+    <div class="chip cat active" data-val="all" onclick="toggleCat(this,'all')">All</div>
+  </div>
+  <div class="filter-row">
+    <button class="reset-btn" onclick="resetAll()">Reset all filters</button>
+  </div>
+
+  <div class="kpi-row">
+    <div class="kpi" data-testid="kpi-tile-revenue"><div class="kpi-label">Actual revenue</div><div class="kpi-val" id="kpi-rev" style="color:var(--brand)">—</div><div class="kpi-delta" id="kpi-rev-d">—</div></div>
+    <div class="kpi" data-testid="kpi-tile-budget"><div class="kpi-label">Budget revenue</div><div class="kpi-val" id="kpi-bud">—</div><div class="kpi-delta" id="kpi-var">—</div></div>
+    <div class="kpi" data-testid="kpi-tile-margin"><div class="kpi-label">Gross margin</div><div class="kpi-val" id="kpi-gm">—</div><div class="kpi-delta" id="kpi-gm-d">—</div></div>
+    <div class="kpi" data-testid="kpi-tile-units"><div class="kpi-label">Units sold</div><div class="kpi-val" id="kpi-units">—</div><div class="kpi-delta" id="kpi-units-d">—</div></div>
+  </div>
+
+  <div class="chart-grid">
+    <div class="chart-box" data-testid="chart-category-revenue">
+      <div class="chart-title">Revenue by category <span style="font-weight:400;opacity:.6">— click to filter</span></div>
+      <div class="bar-group" id="cat-bars"></div>
+      <div class="legend"><div class="leg-item"><div class="leg-dot" style="background:var(--brand)"></div>Actual</div><div class="leg-item"><div class="leg-dot" style="background:rgba(0,0,0,.2)"></div>Budget line</div></div>
+    </div>
+    <div class="chart-box" data-testid="chart-channel-revenue">
+      <div class="chart-title">Revenue by channel <span style="font-weight:400;opacity:.6">— click to filter</span></div>
+      <div class="bar-group" id="ch-bars"></div>
+      <div class="legend" style="margin-top:8px"><div class="leg-item"><div class="leg-dot" style="background:var(--brand2)"></div>Actual</div><div class="leg-item"><div class="leg-dot" style="background:rgba(0,0,0,.2)"></div>Budget line</div></div>
+    </div>
+  </div>
+
+  <div class="chart-box" style="margin-bottom:8px" data-testid="chart-monthly-trend">
+    <div class="chart-title">Monthly revenue trend <span style="font-weight:400;opacity:.6">— click month to isolate</span></div>
+    <div class="month-chart" id="month-chart"></div>
+    <div id="month-labels" style="display:flex;gap:3px"></div>
+    <div class="legend"><div class="leg-item"><div class="leg-dot" style="background:var(--brand)"></div>Actual</div><div class="leg-item"><div class="leg-dot" style="background:var(--brand);opacity:.25"></div>Budget</div></div>
+  </div>
+
+  <div class="chart-box" data-testid="chart-category-channel-matrix">
+    <div class="chart-title">Category × channel matrix <span style="font-weight:400;opacity:.6">— click row to drill</span></div>
+    <table class="matrix-table" id="matrix"></table>
+  </div>
+</div>
+
+<!--STBI_REPORT_DATA-->
+<script>
+// Row-level records exported by the matched deterministic engine, per this template's
+// manifest.dataContract.rowFields (see manifest.json) — aliased to m/cat/ch/bRev/aRev/bCOGS/
+// aCOGS/bU/aU. `m` arrives as an ISO "YYYY-MM-DD" string (row_export.py's date role); this
+// template groups by calendar month, so each row is normalized to a "YYYY-MM" key + a derived
+// short label ("Jul-24") once at load time rather than assuming a fixed hardcoded month list —
+// that's what lets this same chrome work against however many months of real client data show up,
+// not just the 5-month demo range the layout was originally built against.
+function monthKeyOf(iso){ return iso ? String(iso).slice(0,7) : ""; }
+function monthLabelOf(key){
+  if(!key) return "";
+  const parts=key.split("-"); const y=parts[0], m=parts[1];
+  const d=new Date(Number(y), Number(m)-1, 1);
+  return d.toLocaleString("default",{month:"short"})+"-"+String(y).slice(2);
+}
+
+const __dataEl = document.getElementById('stbi-report-data');
+const RAW_SOURCE = __dataEl ? JSON.parse(__dataEl.textContent || "[]") : [];
+const RAW = RAW_SOURCE.map(r=>{
+  const mk = monthKeyOf(r.m);
+  return Object.assign({}, r, { m: mk });
+});
+const MONTH_LABELS = {};
+RAW.forEach(r=>{ if(r.m && !MONTH_LABELS[r.m]) MONTH_LABELS[r.m] = monthLabelOf(r.m); });
+
+const MONTHS = Array.from(new Set(RAW.map(r=>r.m))).filter(Boolean).sort();
+const CATS = Array.from(new Set(RAW.map(r=>r.cat))).filter(Boolean).sort();
+const CHANNELS = Array.from(new Set(RAW.map(r=>r.ch))).filter(Boolean).sort();
+
+if (MONTHS.length) {
+  document.getElementById("dash-sub").textContent =
+    (MONTH_LABELS[MONTHS[0]] || MONTHS[0]) + "–" + (MONTH_LABELS[MONTHS[MONTHS.length-1]] || MONTHS[MONTHS.length-1]) +
+    " · Click any visual to cross-filter";
+}
+
+// Filter chips are built dynamically from the real data's distinct channels/categories, rather
+// than the fixed 4-channel/4-category set the original demo hardcoded.
+(function buildChips(){
+  const chRow = document.getElementById("channel-filter-row");
+  CHANNELS.forEach(ch=>{
+    const chip=document.createElement("div");
+    chip.className="chip"; chip.dataset.val=ch; chip.textContent=ch;
+    chip.onclick=()=>toggleChannel(chip,ch);
+    chRow.appendChild(chip);
+  });
+  const catRow = document.getElementById("cat-filter-row");
+  CATS.forEach(cat=>{
+    const chip=document.createElement("div");
+    chip.className="chip cat"; chip.dataset.val=cat; chip.textContent=cat;
+    chip.onclick=()=>toggleCat(chip,cat);
+    catRow.appendChild(chip);
+  });
+})();
+
+let selChan="all", selCat="all", selMonth=null, selCatBar=null;
+
+function fmt(v){return v>=1e6?"$"+(v/1e6).toFixed(1)+"M":v>=1e3?"$"+(v/1e3).toFixed(0)+"K":"$"+v.toFixed(0)}
+function fmtN(v){return v>=1e6?(v/1e6).toFixed(1)+"M":v>=1e3?(v/1e3).toFixed(0)+"K":v.toFixed(0)}
+
+function filtered(){
+  return RAW.filter(r=>
+    (selChan==="all"||r.ch===selChan)&&
+    (selCat==="all"||r.cat===selCat)&&
+    (!selMonth||r.m===selMonth)&&
+    (!selCatBar||r.cat===selCatBar)
+  );
+}
+
+function agg(rows,key,fields){
+  const m={};
+  rows.forEach(r=>{
+    const k=r[key];
+    if(!m[k]){m[k]={};fields.forEach(f=>m[k][f]=0);}
+    fields.forEach(f=>m[k][f]+=(r[f]||0));
+  });
+  return m;
+}
+
+function render(){
+  if (!RAW.length) {
+    document.querySelector(".body").innerHTML = '<div class="empty-state">No data available for this report.</div>';
+    return;
+  }
+
+  const rows=filtered();
+  const totAR=rows.reduce((s,r)=>s+(r.aRev||0),0);
+  const totBR=rows.reduce((s,r)=>s+(r.bRev||0),0);
+  const totAC=rows.reduce((s,r)=>s+(r.aCOGS||0),0);
+  const totAU=rows.reduce((s,r)=>s+(r.aU||0),0);
+  const totBU=rows.reduce((s,r)=>s+(r.bU||0),0);
+  const gm=totAR?(totAR-totAC)/totAR*100:0;
+  const varP=totBR?(totAR-totBR)/totBR*100:0;
+
+  document.getElementById("kpi-rev").textContent=fmt(totAR);
+  document.getElementById("kpi-bud").textContent=fmt(totBR);
+  const vd=document.getElementById("kpi-var");
+  const vv=(varP>0?"+":"")+varP.toFixed(1)+"% vs budget";
+  vd.textContent=vv; vd.className="kpi-delta "+(varP>0?"pos":"neg");
+  document.getElementById("kpi-gm").textContent=gm.toFixed(1)+"%";
+  const uv=totBU?(totAU-totBU)/totBU*100:0;
+  document.getElementById("kpi-units").textContent=fmtN(totAU);
+  const ud=document.getElementById("kpi-units-d");
+  ud.textContent=(uv>0?"+":"")+uv.toFixed(1)+"% vs budget";
+  ud.className="kpi-delta "+(uv>0?"pos":"neg");
+  const rv=document.getElementById("kpi-rev-d");
+  rv.textContent=fmt(totAR)+" actual"; rv.className="kpi-delta neu";
+
+  const label=[];
+  if(selChan!=="all")label.push(selChan);
+  if(selCat!=="all")label.push(selCat);
+  if(selCatBar)label.push(selCatBar);
+  if(selMonth)label.push(MONTH_LABELS[selMonth]||selMonth);
+  document.getElementById("active-label").textContent=label.length?label.join(" · "):"All data";
+
+  renderCatBars(rows);
+  renderChBars(rows);
+  renderMonths();
+  renderMatrix(rows);
+}
+
+function renderCatBars(rows){
+  const byCat=agg(rows,"cat",["aRev","bRev","aU"]);
+  const maxR=Math.max(...CATS.map(c=>byCat[c]?(byCat[c].aRev||0):0),1);
+  const el=document.getElementById("cat-bars"); el.innerHTML="";
+  CATS.forEach(cat=>{
+    const d=byCat[cat]||{aRev:0,bRev:0};
+    const pA=Math.round(d.aRev/maxR*100);
+    const pB=Math.round(d.bRev/maxR*100);
+    const v=d.bRev?(d.aRev-d.bRev)/d.bRev*100:0;
+    const isDim=selCatBar&&selCatBar!==cat;
+    const isSel=selCatBar===cat;
+    const div=document.createElement("div");
+    div.className="bar-row"+(isDim?" dimmed":"")+(isSel?" selected":"");
+    div.innerHTML=`<span class="bar-label">${cat}</span><div class="bar-track"><div class="bar-actual" style="width:${pA}%;background:var(--brand)"></div><div class="bar-budget-line" style="left:${pB}%"></div></div><span class="bar-val">${fmt(d.aRev)}</span><span class="bar-var ${v>0?"pos":"neg"}">${v>0?"+":""}${v.toFixed(1)}%</span>`;
+    div.onclick=()=>{selCatBar=selCatBar===cat?null:cat;render();};
+    el.appendChild(div);
+  });
+}
+
+function renderChBars(rows){
+  const byCh=agg(rows,"ch",["aRev","bRev"]);
+  const maxR=Math.max(...CHANNELS.map(c=>byCh[c]?(byCh[c].aRev||0):0),1);
+  const el=document.getElementById("ch-bars"); el.innerHTML="";
+  CHANNELS.forEach(ch=>{
+    const d=byCh[ch]||{aRev:0,bRev:0};
+    if(!d.aRev&&!d.bRev)return;
+    const pA=Math.round(d.aRev/maxR*100);
+    const pB=Math.round(d.bRev/maxR*100);
+    const v=d.bRev?(d.aRev-d.bRev)/d.bRev*100:0;
+    const isDim=selChan!=="all"&&selChan!==ch;
+    const isSel=selChan===ch;
+    const div=document.createElement("div");
+    div.className="bar-row"+(isDim?" dimmed":"")+(isSel?" selected":"");
+    div.innerHTML=`<span class="bar-label">${ch}</span><div class="bar-track"><div class="bar-actual" style="width:${pA}%;background:var(--brand2)"></div><div class="bar-budget-line" style="left:${pB}%"></div></div><span class="bar-val">${fmt(d.aRev)}</span><span class="bar-var ${v>0?"pos":"neg"}">${v>0?"+":""}${v.toFixed(1)}%</span>`;
+    div.onclick=()=>{
+      const target = selChan===ch ? "all" : ch;
+      selChan = target;
+      document.querySelectorAll("#channel-filter-row .chip").forEach(c=>{c.classList.toggle("active", c.dataset.val===target)});
+      render();
+    };
+    el.appendChild(div);
+  });
+}
+
+function renderMonths(){
+  const scoped = RAW.filter(r=>(selChan==="all"||r.ch===selChan)&&(selCat==="all"||r.cat===selCat)&&(!selCatBar||r.cat===selCatBar));
+  const byM=agg(scoped,"m",["aRev","bRev"]);
+  const maxR=Math.max(...MONTHS.map(m=>byM[m]?byM[m].aRev:0),1);
+  const mc=document.getElementById("month-chart"); mc.innerHTML="";
+  const ml=document.getElementById("month-labels"); ml.innerHTML="";
+  MONTHS.forEach(m=>{
+    const d=byM[m]||{aRev:0,bRev:0};
+    const hA=Math.round(d.aRev/maxR*76);
+    const hB=Math.round(d.bRev/maxR*76);
+    const isDim=selMonth&&selMonth!==m;
+    const isSel=selMonth===m;
+    const col=document.createElement("div");
+    col.className="m-col"+(isDim?" dimmed":"")+(isSel?" selected":"");
+    col.innerHTML=`<div class="m-budget" style="height:${hB}px;width:100%;background:var(--brand)"></div><div class="m-actual" style="height:${hA}px;width:100%;background:var(--brand);${isSel?"opacity:1":""}"></div>`;
+    col.title=(MONTH_LABELS[m]||m)+": "+fmt(d.aRev);
+    col.onclick=()=>{selMonth=selMonth===m?null:m;render();};
+    mc.appendChild(col);
+    const lb=document.createElement("div");
+    lb.style.cssText="flex:1;font-size:8px;color:var(--text-secondary,#666);text-align:center";
+    lb.textContent=MONTH_LABELS[m]||m;
+    ml.appendChild(lb);
+  });
+}
+
+function renderMatrix(rows){
+  const byCatCh={}; CATS.forEach(c=>{byCatCh[c]={};CHANNELS.forEach(ch=>byCatCh[c][ch]={aRev:0,bRev:0});});
+  rows.forEach(r=>{if(byCatCh[r.cat]&&byCatCh[r.cat][r.ch]){byCatCh[r.cat][r.ch].aRev+=(r.aRev||0);byCatCh[r.cat][r.ch].bRev+=(r.bRev||0);}});
+  const el=document.getElementById("matrix");
+  const chCols = CHANNELS.slice(0,3);
+  el.innerHTML=`<thead><tr><th>Category</th>${chCols.map(ch=>`<th>${ch}</th>`).join("")}<th>Total</th><th>Var%</th></tr></thead>`;
+  const tb=document.createElement("tbody");
+  CATS.forEach(cat=>{
+    const d=byCatCh[cat];
+    const tot=Object.values(d).reduce((s,v)=>s+v.aRev,0);
+    const totB=Object.values(d).reduce((s,v)=>s+v.bRev,0);
+    const isDim=selCatBar&&selCatBar!==cat;
+    const isSel=selCatBar===cat;
+    const tr=document.createElement("tr");
+    tr.className=(isDim?"row-dimmed":"")+(isSel?" row-selected":"");
+    const scopedD = selChan==="all" ? {aRev:tot,bRev:totB} : (d[selChan]||{aRev:0,bRev:0});
+    const vp2 = scopedD.bRev ? (scopedD.aRev-scopedD.bRev)/scopedD.bRev*100 : 0;
+    tr.innerHTML=`<td style="font-weight:500">${cat}</td>${chCols.map(ch=>`<td>${fmt((d[ch]&&d[ch].aRev)||0)}</td>`).join("")}<td style="font-weight:500">${fmt(tot)}</td><td><span class="pill ${vp2>0?"pill-g":"pill-r"}">${vp2>0?"+":""}${vp2.toFixed(1)}%</span></td>`;
+    tr.onclick=()=>{selCatBar=selCatBar===cat?null:cat;render();};
+    tb.appendChild(tr);
+  });
+  el.appendChild(tb);
+}
+
+function toggleChannel(el,ch){
+  selChan=ch;
+  document.querySelectorAll("#channel-filter-row .chip").forEach(c=>c.classList.remove("active"));
+  el.classList.add("active");
+  render();
+}
+function toggleCat(el,cat){
+  selCat=cat;
+  document.querySelectorAll("#cat-filter-row .chip").forEach(c=>c.classList.remove("active"));
+  el.classList.add("active");
+  render();
+}
+function resetAll(){
+  selChan="all";selCat="all";selMonth=null;selCatBar=null;
+  document.querySelectorAll("#channel-filter-row .chip").forEach(c=>c.classList.toggle("active", c.dataset.val==="all"));
+  document.querySelectorAll("#cat-filter-row .chip").forEach(c=>c.classList.toggle("active", c.dataset.val==="all"));
+  render();
+}
+render();
+</script>
