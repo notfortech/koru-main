@@ -80,14 +80,15 @@ public class HtmlReportAssemblyService : IHtmlReportAssemblyService
             chromeHtml = await reader.ReadToEndAsync(cancellationToken);
         }
 
-        var dataPayload = new
-        {
-            kpis = report.Kpis,
-            charts = report.Charts,
-            rowData = report.RowData,
-            appliedFilters = report.AppliedFilters,
-            templateName = report.HtmlTemplateName,
-        };
+        // The chrome's own JS parses this script block's content as the bare row array itself
+        // (`RAW_SOURCE = JSON.parse(...); RAW = RAW_SOURCE.map(...)` — confirmed against both
+        // onboarded chrome.html files, neither of which reads kpis/appliedFilters/templateName
+        // from this payload at all; every KPI/chart/filter is computed client-side from the row
+        // data). Injecting a {kpis,charts,rowData,...} wrapper object here instead of the bare
+        // array throws immediately on that first .map() call (a plain object has no .map), which
+        // silently aborts the rest of the inline script — the exact "chrome renders, nothing
+        // populates" symptom this replaced.
+        var rowData = report.RowData ?? new List<Dictionary<string, object?>>();
 
         // <script type="application/json"> is never executed by the browser, so a </script>
         // substring inside a value can't itself break out into active markup — but the HTML
@@ -96,7 +97,7 @@ public class HtmlReportAssemblyService : IHtmlReportAssemblyService
         // escaping. HTML-entity-encoding the whole payload would be wrong here (and is
         // deliberately NOT done): script-element text content isn't entity-decoded by the
         // browser, so JSON.parse(el.textContent) on entity-encoded JSON would fail/corrupt data.
-        var json = JsonSerializer.Serialize(dataPayload, JsonOptions);
+        var json = JsonSerializer.Serialize(rowData, JsonOptions);
         var scriptSafeJson = json.Replace("</", "<\\/", StringComparison.Ordinal);
         var scriptBlock = $"<script type=\"application/json\" id=\"stbi-report-data\">{scriptSafeJson}</script>";
 
