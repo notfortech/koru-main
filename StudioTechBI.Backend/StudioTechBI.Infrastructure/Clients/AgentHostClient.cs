@@ -252,6 +252,94 @@ public class AgentHostClient : IAgentHostClient
         }
     }
 
+    public async Task<CreditGrantResult?> GrantCreditsAsync(
+        Guid tenantId, int credits, string reason, string? referenceId,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(_opts.AdminApiKey))
+        {
+            _logger.LogWarning(
+                "AgentHost.GrantCredits skipped — AgentHost:AdminApiKey is not configured.");
+            return null;
+        }
+
+        try
+        {
+            var payload = JsonSerializer.Serialize(new { credits, reason, referenceId }, JsonOptions);
+
+            var httpRequest = new HttpRequestMessage(
+                HttpMethod.Post, $"api/admin/subscriptions/{tenantId}/grant-credits");
+            httpRequest.Headers.Add("X-Admin-Key", _opts.AdminApiKey);
+            httpRequest.Content = new StringContent(payload, System.Text.Encoding.UTF8, "application/json");
+
+            using var response = await _httpClient.SendAsync(httpRequest, cancellationToken);
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning(
+                    "AgentHost.GrantCredits failed — {StatusCode} for tenant {TenantId}, {Credits} credits.",
+                    (int)response.StatusCode, tenantId, credits);
+                return null;
+            }
+
+            var dto = JsonSerializer.Deserialize<CreditGrantResponseDto>(body, JsonOptions);
+            if (dto is null) return null;
+
+            return new CreditGrantResult(
+                dto.CreditsGranted, dto.CreditsRemaining, dto.IsUnlimited, dto.Plan, dto.ResetDate);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(ex,
+                "AgentHost.GrantCredits could not reach AgentHost for tenant {TenantId}, {Credits} credits.",
+                tenantId, credits);
+            return null;
+        }
+    }
+
+    public async Task<CreditUsageSummary> GetUsageSummaryAsync(
+        Guid tenantId, string feature, CancellationToken cancellationToken = default)
+    {
+        var empty = new CreditUsageSummary(feature, 0, 0);
+
+        try
+        {
+            var httpRequest = new HttpRequestMessage(
+                HttpMethod.Get, $"api/credits/usage-summary?feature={Uri.EscapeDataString(feature)}");
+            httpRequest.Headers.Add("X-Tenant-Id", tenantId.ToString());
+
+            using var response = await _httpClient.SendAsync(httpRequest, cancellationToken);
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning(
+                    "AgentHost.UsageSummary failed — {StatusCode} for tenant {TenantId}, feature {Feature}.",
+                    (int)response.StatusCode, tenantId, feature);
+                return empty;
+            }
+
+            var dto = JsonSerializer.Deserialize<CreditUsageSummaryResponseDto>(body, JsonOptions);
+            return dto is null
+                ? empty
+                : new CreditUsageSummary(dto.Feature, dto.RequestCount, dto.TotalCreditsConsumed);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(ex,
+                "AgentHost.UsageSummary could not reach AgentHost for tenant {TenantId}, feature {Feature}.",
+                tenantId, feature);
+            return empty;
+        }
+    }
+
+    private sealed record CreditGrantResponseDto(
+        int CreditsGranted, int? CreditsRemaining, bool IsUnlimited, string? Plan, DateTimeOffset? ResetDate);
+
+    private sealed record CreditUsageSummaryResponseDto(
+        string Feature, int RequestCount, int TotalCreditsConsumed);
+
     private sealed record CreditCheckResponseDto(
         string? Plan, int? CreditsRemaining, bool IsUnlimited, DateTimeOffset? NextResetDate, string? Detail);
 

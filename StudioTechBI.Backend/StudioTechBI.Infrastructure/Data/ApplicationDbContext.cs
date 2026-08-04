@@ -64,6 +64,10 @@ public class ApplicationDbContext : DbContext
     public DbSet<SavedReportVersion> SavedReportVersions => Set<SavedReportVersion>();
     public DbSet<CustomReportRequest> CustomReportRequests => Set<CustomReportRequest>();
 
+    // Report Stats + AI credit purchase requests
+    public DbSet<ReportGenerationEvent> ReportGenerationEvents => Set<ReportGenerationEvent>();
+    public DbSet<CreditPurchaseRequest> CreditPurchaseRequests => Set<CreditPurchaseRequest>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
