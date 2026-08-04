@@ -49,4 +49,29 @@ public interface IAgentHostClient
         string? requestId,
         long executionTimeMs,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Grants additional credits to a tenant via AgentHost's admin surface — used to fulfil an
+    /// admin-approved credit purchase. Requires AgentHostOptions.AdminApiKey. Returns null on any
+    /// failure (network, bad admin key, tenant not found) — implementations must not throw;
+    /// callers should treat a null result as "the grant did not happen" and surface that clearly,
+    /// since unlike ConsumeCreditAsync this is not a fire-and-forget side effect of an already-
+    /// successful action.
+    /// </summary>
+    Task<CreditGrantResult?> GrantCreditsAsync(
+        Guid tenantId,
+        int credits,
+        string reason,
+        string? referenceId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Sums a tenant's credits consumed for one feature (e.g. "report-model-generation"), for
+    /// surfacing on the client's Report Stats. Returns a zeroed summary (never null/throws) on any
+    /// failure, since a stats widget failing to load a sub-figure shouldn't block the rest of it.
+    /// </summary>
+    Task<CreditUsageSummary> GetUsageSummaryAsync(
+        Guid tenantId,
+        string feature,
+        CancellationToken cancellationToken = default);
 }

@@ -8,6 +8,8 @@ using StudioTechBI.Application.DTOs.InsightsEngine;
 using StudioTechBI.Application.DTOs.ReportGenerator;
 using StudioTechBI.Application.Interfaces;
 using StudioTechBI.Application.Models;
+using StudioTechBI.Domain.Entities;
+using StudioTechBI.Infrastructure.Data;
 
 namespace StudioTechBI.API.Controllers;
 
@@ -44,6 +46,7 @@ public class ReportGeneratorController : ControllerBase
     private readonly IHtmlReportAssemblyService _htmlAssembly;
     private readonly IDashboardTemplateLogWriter _templateLogWriter;
     private readonly IClientService _clientService;
+    private readonly ApplicationDbContext _db;
     private readonly ILogger<ReportGeneratorController> _logger;
 
     public ReportGeneratorController(
@@ -53,6 +56,7 @@ public class ReportGeneratorController : ControllerBase
         IHtmlReportAssemblyService htmlAssembly,
         IDashboardTemplateLogWriter templateLogWriter,
         IClientService clientService,
+        ApplicationDbContext db,
         ILogger<ReportGeneratorController> logger)
     {
         _reportGeneratorClient = reportGeneratorClient;
@@ -61,6 +65,7 @@ public class ReportGeneratorController : ControllerBase
         _htmlAssembly = htmlAssembly;
         _templateLogWriter = templateLogWriter;
         _clientService = clientService;
+        _db = db;
         _logger = logger;
     }
 
@@ -112,6 +117,8 @@ public class ReportGeneratorController : ControllerBase
         [FromForm] string? templateId,
         [FromForm] string? filters,
         [FromForm] string? htmlTemplateId,
+        [FromForm] string? mode,
+        [FromForm] bool isRefinement,
         CancellationToken cancellationToken)
     {
         if (file is null || file.Length == 0)
@@ -138,6 +145,7 @@ public class ReportGeneratorController : ControllerBase
 
             result = await _htmlAssembly.AssembleAsync(result, cancellationToken);
 
+            ClientDto? client = null;
             if (result.HtmlTemplateId is null)
             {
                 // No HTML template matched at all -- log the gap so staff can author one against
@@ -145,7 +153,7 @@ public class ReportGeneratorController : ControllerBase
                 // for the Power BI catalog). Never blocks the response: the caller already has a
                 // perfectly good report (the existing MUI/recharts fallback renders it), this is
                 // purely a backlog entry.
-                var client = await ResolveClientAsync(cancellationToken);
+                client = await ResolveClientAsync(cancellationToken);
                 var columnNames = result.Kpis.Select(k => k.Column)
                     .Concat(result.Charts.SelectMany(c => c.Series.Select(s => s.Name)))
                     .Distinct()
@@ -153,6 +161,38 @@ public class ReportGeneratorController : ControllerBase
                 await _templateLogWriter.LogHtmlTemplateGapAsync(
                     client?.ClientId, client?.ClientName ?? "Unknown", correlationId, columnNames,
                     matchPath: "Deterministic", bestConfidence: null, cancellationToken);
+            }
+
+            // Only a genuinely new report counts toward Report Stats -- a filter re-apply re-POSTs
+            // this same endpoint (see ReportGeneratorPage.tsx's refetchWithFilters), so isRefinement
+            // is how the frontend tells us not to double-count. Best-effort: a logging failure here
+            // must never fail a report the caller already successfully generated.
+            if (!isRefinement)
+            {
+                try
+                {
+                    client ??= await ResolveClientAsync(cancellationToken);
+                    if (client is not null)
+                    {
+                        _db.ReportGenerationEvents.Add(new ReportGenerationEvent
+                        {
+                            Id = Guid.NewGuid(),
+                            ClientId = client.ClientId,
+                            Mode = string.Equals(mode, "ai", StringComparison.OrdinalIgnoreCase)
+                                ? ReportGenerationModes.AiAssisted
+                                : ReportGenerationModes.Deterministic,
+                            TemplateId = result.TemplateId,
+                            TemplateName = result.TemplateName,
+                            HtmlTemplateId = result.HtmlTemplateId,
+                            HtmlTemplateName = result.HtmlTemplateName,
+                        });
+                        await _db.SaveChangesAsync(cancellationToken);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to log ReportGenerationEvent for correlation {CorrelationId}.", correlationId);
+                }
             }
 
             return Ok(ApiResponse<GeneratedReportDto>.SuccessResponse(result, "Report generated successfully."));

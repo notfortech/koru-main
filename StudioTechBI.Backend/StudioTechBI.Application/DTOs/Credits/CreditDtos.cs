@@ -20,3 +20,18 @@ public sealed record CreditConsumeResult(
     bool IsUnlimited,
     string? Plan,
     DateTimeOffset? ResetDate);
+
+/// <summary>Result of an admin-fulfilled credit grant against AgentHost's ledger.</summary>
+public sealed record CreditGrantResult(
+    int CreditsGranted,
+    int? CreditsRemaining,
+    bool IsUnlimited,
+    string? Plan,
+    DateTimeOffset? ResetDate);
+
+/// <summary>Aggregated usage for one tenant/feature — how Report Stats knows how many credits
+/// were spent generating AI-assisted reports specifically.</summary>
+public sealed record CreditUsageSummary(
+    string Feature,
+    int RequestCount,
+    int TotalCreditsConsumed);
