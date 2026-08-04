@@ -41,11 +41,32 @@ public class HtmlReportAssemblyService : IHtmlReportAssemblyService
         if (string.IsNullOrWhiteSpace(report.HtmlTemplateId))
             return report;
 
-        var chromePath = $"{TemplatesBasePath}/{report.HtmlTemplateId}/{ChromeFileName}";
+        // A seed-catalog template's chrome.html ships as an embedded resource with this assembly
+        // (see HtmlTemplateSeedCatalog) rather than living under this service's default
+        // "clients"/templates/html/<id>/ blob convention below.
+        var seed = HtmlTemplateSeedCatalog.Find(report.HtmlTemplateId);
 
         string chromeHtml;
-        await using (var chromeStream = await _blobStorage.DownloadBlobAsync(chromePath, cancellationToken))
+        if (seed is not null)
         {
+            await using var seedStream = HtmlTemplateSeedCatalog.OpenChromeHtml(seed);
+            if (seedStream is null)
+            {
+                _logger.LogWarning(
+                    "HtmlReportAssembly.SeedResourceMissing TemplateId={TemplateId} Resource={Resource} " +
+                    "— falling back to the existing KPI/chart rendering for this report.",
+                    report.HtmlTemplateId, seed.ChromeResourceName);
+                return report;
+            }
+
+            using var seedReader = new StreamReader(seedStream, Encoding.UTF8);
+            chromeHtml = await seedReader.ReadToEndAsync(cancellationToken);
+        }
+        else
+        {
+            var chromePath = $"{TemplatesBasePath}/{report.HtmlTemplateId}/{ChromeFileName}";
+
+            await using var chromeStream = await _blobStorage.DownloadBlobAsync(chromePath, cancellationToken);
             if (chromeStream is null)
             {
                 _logger.LogWarning(

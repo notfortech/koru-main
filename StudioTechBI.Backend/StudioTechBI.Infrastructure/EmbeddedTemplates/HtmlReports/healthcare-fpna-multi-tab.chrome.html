@@ -1,0 +1,964 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Healthcare FP&A Dashboard — FY2024-25</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --brand:#1E3A5F;--brand-light:#EFF6FF;--brand-mid:#2563EB;--brand-dim:#1e3a5f99;
+  --pos:#10B981;--neg:#EF4444;--neu:#F59E0B;--warn:#F97316;
+  --dark:#0F172A;--mid:#475569;--muted:#94A3B8;
+  --bg:#F0F9FF;--card:#FFFFFF;--border:#CBD5E1;
+  --font:'Inter',system-ui,sans-serif;
+}
+body{font-family:var(--font);background:var(--bg);color:var(--dark);font-size:13px;}
+
+.page{max-width:1440px;margin:0 auto;padding:0 0 48px;}
+.topbar{background:var(--dark);color:#fff;padding:12px 24px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;}
+.topbar-title{font-size:15px;font-weight:700;letter-spacing:-.01em;}
+.topbar-sub{font-size:11px;color:#94A3B8;margin-top:1px;}
+.ctrl-hint{font-size:10px;color:#64748B;white-space:nowrap;}
+.clear-btn{background:transparent;border:0.5px solid #334155;color:#94A3B8;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:11px;font-family:inherit;transition:.15s;}
+.clear-btn:hover{background:#1E293B;color:#fff;}
+
+/* tabs */
+.tabs{display:flex;gap:0;background:#1E293B;padding:0 24px;}
+.tab{padding:10px 18px;font-size:12px;font-weight:600;color:#64748B;cursor:pointer;border-bottom:2px solid transparent;transition:.15s;letter-spacing:.02em;}
+.tab:hover{color:#CBD5E1;}
+.tab.active{color:#60A5FA;border-bottom-color:#60A5FA;}
+
+/* state bar */
+.state-bar{display:flex;gap:6px;padding:8px 24px;background:#fff;border-bottom:1px solid var(--border);align-items:center;flex-wrap:wrap;min-height:38px;}
+.state-dim{font-size:10px;color:var(--muted);}
+.bc-empty{font-size:11px;color:#94A3B8;}
+.bc-tag{background:var(--brand);color:#fff;font-size:10px;font-weight:600;padding:3px 8px;border-radius:12px;display:flex;align-items:center;gap:4px;}
+.bc-tag .x{cursor:pointer;opacity:.7;font-size:12px;line-height:1;}
+.bc-tag .x:hover{opacity:1;}
+.state-total{margin-left:auto;font-size:11px;font-weight:700;color:var(--dark);}
+
+/* kpi strip */
+.kpi-strip{display:grid;grid-template-columns:repeat(6,1fr);gap:1px;background:var(--border);border-bottom:1px solid var(--border);}
+.kpi{background:var(--card);padding:16px 20px;}
+.kpi-label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:6px;}
+.kpi-val{font-size:22px;font-weight:700;letter-spacing:-.02em;}
+.kpi-delta{font-size:11px;margin-top:4px;display:flex;align-items:center;gap:4px;}
+.pos{color:var(--pos);} .neg{color:var(--neg);} .neu{color:var(--neu);}
+
+/* charts grid */
+.charts-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:1px;background:var(--border);border-bottom:1px solid var(--border);}
+.chart-full{grid-column:1/-1;}
+.chart-half{grid-column:span 2;}
+.chart-box{background:var(--card);padding:18px 20px;position:relative;}
+.chart-header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:14px;}
+.chart-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--mid);}
+.chart-hint{font-size:10px;color:var(--muted);margin-top:2px;}
+
+/* bar chart */
+.bar-list{display:flex;flex-direction:column;gap:2px;}
+.bar-item{display:flex;align-items:center;gap:8px;padding:4px 6px;border-radius:5px;cursor:pointer;transition:background .1s;border:1px solid transparent;user-select:none;}
+.bar-item:hover{background:var(--brand-light);}
+.bar-item.selected{background:var(--brand-light);border-color:#BFDBFE;}
+.bar-item.multi-selected{background:#DBEAFE;border-color:var(--brand-mid);}
+.bar-item.dimmed{opacity:.25;}
+.bar-lbl{font-size:11px;font-weight:500;min-width:110px;color:var(--dark);}
+.bar-track{flex:1;height:18px;background:#F1F5F9;border-radius:3px;overflow:visible;position:relative;}
+.bar-fill{height:100%;border-radius:3px;transition:width .3s ease;}
+.bar-budget-tick{position:absolute;top:-2px;bottom:-2px;width:2px;background:var(--dark);opacity:.3;border-radius:1px;}
+.bar-vals{display:flex;gap:6px;align-items:center;min-width:90px;justify-content:flex-end;}
+.bar-actual{font-size:11px;font-weight:600;}
+.bar-var{font-size:10px;padding:1px 5px;border-radius:3px;font-weight:600;}
+.pill-pos{background:#D1FAE5;color:#065F46;}
+.pill-neg{background:#FEE2E2;color:#991B1B;}
+.pill-neu{background:#FEF3C7;color:#92400E;}
+.pill-warn{background:#FED7AA;color:#9A3412;}
+
+/* month chart */
+.month-cols{display:flex;align-items:flex-end;gap:4px;height:120px;}
+.m-col{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:1px;cursor:pointer;border-radius:4px;padding:2px;transition:.1s;border:1px solid transparent;user-select:none;}
+.m-col:hover{background:var(--brand-light);}
+.m-col.selected{background:var(--brand-light);border-color:#BFDBFE;}
+.m-col.multi-selected{background:#DBEAFE;border-color:var(--brand-mid);}
+.m-col.dimmed{opacity:.22;}
+.m-budget{border-radius:2px 2px 0 0;opacity:.28;transition:height .3s ease;}
+.m-actual{border-radius:2px 2px 0 0;transition:height .3s ease;}
+.m-lbl{font-size:8px;color:var(--muted);margin-top:3px;white-space:nowrap;}
+
+/* donut / list rows */
+.donut-wrap{display:flex;align-items:center;gap:16px;}
+.dl-row{display:flex;align-items:center;gap:8px;padding:5px 6px;border-radius:5px;cursor:pointer;border:1px solid transparent;transition:.1s;user-select:none;}
+.dl-row:hover{background:var(--brand-light);}
+.dl-row.selected,.dl-row.multi-selected{background:var(--brand-light);border-color:var(--brand-mid);}
+.dl-row.dimmed{opacity:.25;}
+.dl-dot{width:10px;height:10px;border-radius:2px;flex-shrink:0;}
+.dl-name{font-size:11px;font-weight:500;flex:1;}
+.dl-val{font-size:11px;font-weight:600;min-width:55px;text-align:right;}
+.dl-pct{font-size:10px;color:var(--muted);min-width:36px;text-align:right;}
+
+/* matrix */
+.matrix-wrap{overflow-x:auto;}
+.matrix{width:100%;border-collapse:collapse;font-size:11px;}
+.matrix th{padding:7px 10px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);border-bottom:1.5px solid var(--border);background:var(--card);position:sticky;top:0;}
+.matrix td{padding:6px 10px;border-bottom:0.5px solid var(--border);color:var(--dark);vertical-align:middle;}
+.matrix tbody tr{cursor:pointer;transition:.1s;border-left:3px solid transparent;}
+.matrix tbody tr:hover{background:var(--brand-light);}
+.matrix tbody tr.selected{background:var(--brand-light);border-left-color:var(--brand-mid);}
+.matrix tbody tr.multi-selected{background:#DBEAFE;border-left-color:var(--brand);}
+.matrix tbody tr.dimmed{opacity:.22;}
+.matrix tbody tr.subtotal{background:#F8FAFC;font-weight:600;}
+.matrix tbody tr.subtotal td{border-top:1.5px solid var(--border);}
+.muted-val{color:var(--muted);font-size:10px;}
+
+/* legend */
+.legend{display:flex;gap:12px;margin-top:8px;}
+.leg{display:flex;align-items:center;gap:4px;font-size:10px;color:var(--muted);}
+.leg-sq{width:10px;height:10px;border-radius:2px;}
+
+/* page visibility */
+.dash-page{display:none;}
+.dash-page.active{display:block;}
+
+/* tooltip */
+.tt{position:fixed;background:#0F172A;color:#fff;border-radius:8px;padding:10px 14px;font-size:11px;pointer-events:none;z-index:9999;min-width:190px;opacity:0;transition:opacity .15s;box-shadow:0 8px 24px rgba(0,0,0,.4);}
+.tt.show{opacity:1;}
+.tt-title{font-weight:700;font-size:12px;margin-bottom:6px;color:#93C5FD;}
+.tt-row{display:flex;justify-content:space-between;gap:16px;margin-bottom:3px;}
+.tt-label{color:#94A3B8;}
+.tt-val{font-weight:600;}
+
+/* surplus/deficit indicator */
+.deficit-bar{height:4px;background:#FEE2E2;border-radius:2px;margin-top:6px;overflow:hidden;}
+.deficit-fill{height:100%;background:var(--neg);border-radius:2px;}
+.surplus-fill{height:100%;background:var(--pos);border-radius:2px;}
+</style>
+</head>
+<body>
+<div id="tt" class="tt"></div>
+<div class="page" data-testid="dashboard-ready">
+
+<!-- Top bar -->
+<div class="topbar">
+  <div>
+    <div class="topbar-title">Healthcare FP&amp;A Dashboard</div>
+    <div class="topbar-sub">FY2024-25 · Jul 2024 – Jun 2025 · All programs · All states</div>
+  </div>
+  <div style="display:flex;align-items:center;gap:12px;">
+    <div class="ctrl-hint"><kbd style="background:#1E293B;padding:1px 5px;border-radius:3px;font-family:inherit;">Ctrl</kbd> + click for multi-select · <kbd style="background:#1E293B;padding:1px 5px;border-radius:3px;font-family:inherit;">Esc</kbd> to clear</div>
+    <button class="clear-btn" id="clear-all">Clear all filters</button>
+  </div>
+</div>
+
+<!-- Tab nav -->
+<div class="tabs">
+  <div class="tab active" data-page="executive">Executive Summary</div>
+  <div class="tab" data-page="expenditure">Expenditure Detail</div>
+  <div class="tab" data-page="funding">Funding &amp; Sustainability</div>
+</div>
+
+<!-- Active filters -->
+<div class="state-bar" id="state-bar">
+  <span class="state-dim">Active filters:</span>
+  <span class="bc-empty" id="bc-empty">None — showing all data</span>
+  <div id="bc-tags" style="display:flex;gap:6px;flex-wrap:wrap;"></div>
+  <div class="state-total" id="state-total"></div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- PAGE: Executive Summary                                     -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div class="dash-page active" id="page-executive">
+
+<div class="kpi-strip">
+  <div class="kpi" data-testid="kpi-tile-total-expenditure"><div class="kpi-label">Total Expenditure</div><div class="kpi-val" id="kpi-exp" style="color:var(--brand)">—</div><div class="kpi-delta" id="kpi-exp-d"></div></div>
+  <div class="kpi" data-testid="kpi-tile-budget-expenditure"><div class="kpi-label">Budget Expenditure</div><div class="kpi-val" id="kpi-bud">—</div><div class="kpi-delta" id="kpi-var-d"></div></div>
+  <div class="kpi" data-testid="kpi-tile-budget-utilisation"><div class="kpi-label">Budget Utilisation</div><div class="kpi-val" id="kpi-util">—</div><div class="kpi-delta" id="kpi-util-d"></div></div>
+  <div class="kpi" data-testid="kpi-tile-total-funding"><div class="kpi-label">Total Funding</div><div class="kpi-val" id="kpi-fund" style="color:var(--pos)">—</div><div class="kpi-delta" id="kpi-fund-d"></div></div>
+  <div class="kpi" data-testid="kpi-tile-funding-gap"><div class="kpi-label">Funding Gap</div><div class="kpi-val" id="kpi-gap" style="color:var(--neg)">—</div><div class="kpi-delta" id="kpi-gap-d"></div></div>
+  <div class="kpi" data-testid="kpi-tile-cost-per-fte"><div class="kpi-label">Cost per FTE</div><div class="kpi-val" id="kpi-cfte">—</div><div class="kpi-delta" id="kpi-cfte-d"></div></div>
+</div>
+
+<div class="charts-grid">
+  <div class="chart-box" data-testid="chart-expenditure-by-category">
+    <div class="chart-header">
+      <div><div class="chart-title">Expenditure by Program Category</div><div class="chart-hint">Click or Ctrl+click to filter</div></div>
+    </div>
+    <div class="bar-list" id="cat-bars"></div>
+    <div class="legend" style="margin-top:10px;">
+      <div class="leg"><div class="leg-sq" style="background:var(--brand)"></div>Actual</div>
+      <div class="leg"><div class="leg-sq" style="background:var(--dark);opacity:.3"></div>Budget mark</div>
+    </div>
+  </div>
+
+  <div class="chart-box" data-testid="chart-expenditure-by-state">
+    <div class="chart-header">
+      <div><div class="chart-title">Expenditure by State</div><div class="chart-hint">Click or Ctrl+click to filter</div></div>
+    </div>
+    <div class="bar-list" id="state-bars"></div>
+  </div>
+
+  <div class="chart-box" data-testid="chart-expenditure-by-division">
+    <div class="chart-header">
+      <div><div class="chart-title">Expenditure by Division</div><div class="chart-hint">Click or Ctrl+click to filter</div></div>
+    </div>
+    <div class="bar-list" id="div-bars"></div>
+  </div>
+</div>
+
+<div class="charts-grid">
+  <div class="chart-box chart-full" data-testid="chart-monthly-expenditure-trend">
+    <div class="chart-header">
+      <div><div class="chart-title">Monthly Expenditure vs Budget — FY2024-25</div><div class="chart-hint">Click or Ctrl+click a month to isolate</div></div>
+      <div style="display:flex;gap:12px;">
+        <div class="leg"><div class="leg-sq" style="background:var(--brand)"></div>Actual</div>
+        <div class="leg"><div class="leg-sq" style="background:var(--brand);opacity:.28"></div>Budget</div>
+      </div>
+    </div>
+    <div class="month-cols" id="month-cols-exec"></div>
+    <div style="display:flex;gap:4px;margin-top:4px;" id="month-labels-exec"></div>
+  </div>
+</div>
+
+<div class="charts-grid" style="grid-template-columns:300px 1fr;">
+  <div class="chart-box">
+    <div class="chart-header">
+      <div><div class="chart-title">Expenditure by Quarter</div><div class="chart-hint">Ctrl+click multi-select</div></div>
+    </div>
+    <div id="qtr-list" style="display:flex;flex-direction:column;gap:4px;"></div>
+  </div>
+
+  <div class="chart-box">
+    <div class="chart-header">
+      <div><div class="chart-title">Category × State Expenditure Matrix</div><div class="chart-hint">Click row to filter · variance vs budget shown</div></div>
+    </div>
+    <div class="matrix-wrap">
+      <table class="matrix" id="matrix-exec">
+        <thead><tr>
+          <th>Program Category</th><th>VIC</th><th>NSW</th><th>QLD</th><th>SA</th>
+          <th style="text-align:right">Total</th><th style="text-align:right">vs Budget</th><th style="text-align:right">Util%</th>
+        </tr></thead>
+        <tbody id="matrix-body-exec"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+</div><!-- #page-executive -->
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- PAGE: Expenditure Detail                                    -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div class="dash-page" id="page-expenditure">
+
+<div class="kpi-strip" style="grid-template-columns:repeat(5,1fr)">
+  <div class="kpi"><div class="kpi-label">Actual Expenditure</div><div class="kpi-val" id="kpi-exp2" style="color:var(--brand)">—</div><div class="kpi-delta" id="kpi-exp2-d"></div></div>
+  <div class="kpi"><div class="kpi-label">Budget Expenditure</div><div class="kpi-val" id="kpi-bud2">—</div><div class="kpi-delta" id="kpi-bud2-d"></div></div>
+  <div class="kpi"><div class="kpi-label">Variance $</div><div class="kpi-val" id="kpi-varamt">—</div><div class="kpi-delta" id="kpi-varamt-d"></div></div>
+  <div class="kpi"><div class="kpi-label">Budget Utilisation</div><div class="kpi-val" id="kpi-util2">—</div><div class="kpi-delta" id="kpi-util2-d"></div></div>
+  <div class="kpi"><div class="kpi-label">Total FTE</div><div class="kpi-val" id="kpi-fte">—</div><div class="kpi-delta" id="kpi-fte-d"></div></div>
+</div>
+
+<div class="charts-grid">
+  <div class="chart-box">
+    <div class="chart-header">
+      <div><div class="chart-title">Expenditure by Program</div><div class="chart-hint">Click or Ctrl+click to filter</div></div>
+    </div>
+    <div class="bar-list" id="prog-bars"></div>
+  </div>
+  <div class="chart-box">
+    <div class="chart-header">
+      <div><div class="chart-title">Expenditure by Cost Centre</div><div class="chart-hint">Click or Ctrl+click to filter</div></div>
+    </div>
+    <div class="bar-list" id="cc-bars"></div>
+  </div>
+  <div class="chart-box">
+    <div class="chart-header">
+      <div><div class="chart-title">Expenditure by State</div><div class="chart-hint">Click or Ctrl+click to filter</div></div>
+    </div>
+    <div class="bar-list" id="state-bars2"></div>
+  </div>
+</div>
+
+<div class="charts-grid">
+  <div class="chart-box chart-full">
+    <div class="chart-header">
+      <div><div class="chart-title">Monthly Actual vs Budget Trend</div><div class="chart-hint">Click month to isolate</div></div>
+    </div>
+    <div class="month-cols" id="month-cols-exp"></div>
+    <div style="display:flex;gap:4px;margin-top:4px;" id="month-labels-exp"></div>
+  </div>
+</div>
+
+<div class="charts-grid" style="grid-template-columns:300px 1fr;">
+  <div class="chart-box">
+    <div class="chart-header">
+      <div><div class="chart-title">By Quarter</div></div>
+    </div>
+    <div id="qtr-list2" style="display:flex;flex-direction:column;gap:4px;"></div>
+  </div>
+  <div class="chart-box">
+    <div class="chart-header">
+      <div><div class="chart-title">Program × State Expenditure Matrix</div><div class="chart-hint">Click row · variance to budget</div></div>
+    </div>
+    <div class="matrix-wrap">
+      <table class="matrix">
+        <thead><tr>
+          <th>Program</th><th>VIC</th><th>NSW</th><th>QLD</th><th>SA</th>
+          <th style="text-align:right">Total</th><th style="text-align:right">vs Budget</th><th style="text-align:right">FTE</th>
+        </tr></thead>
+        <tbody id="matrix-body-exp"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+</div><!-- #page-expenditure -->
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- PAGE: Funding & Sustainability                              -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div class="dash-page" id="page-funding">
+
+<div class="kpi-strip" style="grid-template-columns:repeat(5,1fr)">
+  <div class="kpi"><div class="kpi-label">Total Funding Received</div><div class="kpi-val" id="kpi-fund2" style="color:var(--pos)">—</div><div class="kpi-delta" id="kpi-fund2-d"></div></div>
+  <div class="kpi"><div class="kpi-label">Total Expenditure</div><div class="kpi-val" id="kpi-exp3" style="color:var(--brand)">—</div><div class="kpi-delta" id="kpi-exp3-d"></div></div>
+  <div class="kpi"><div class="kpi-label">Funding Gap</div><div class="kpi-val" id="kpi-gap2" style="color:var(--neg)">—</div><div class="kpi-delta" id="kpi-gap2-d"></div></div>
+  <div class="kpi"><div class="kpi-label">Coverage Ratio</div><div class="kpi-val" id="kpi-cov">—</div><div class="kpi-delta" id="kpi-cov-d"></div></div>
+  <div class="kpi"><div class="kpi-label">Committed Funding</div><div class="kpi-val" id="kpi-commit">—</div><div class="kpi-delta" id="kpi-commit-d"></div></div>
+</div>
+
+<div class="charts-grid">
+  <div class="chart-box">
+    <div class="chart-header">
+      <div><div class="chart-title">Funding by Channel</div><div class="chart-hint">Click or Ctrl+click to filter</div></div>
+    </div>
+    <div class="bar-list" id="channel-bars"></div>
+  </div>
+  <div class="chart-box">
+    <div class="chart-header">
+      <div><div class="chart-title">Funding by Funder Type</div><div class="chart-hint">Click or Ctrl+click to filter</div></div>
+    </div>
+    <div class="bar-list" id="ftype-bars"></div>
+  </div>
+  <div class="chart-box">
+    <div class="chart-header">
+      <div><div class="chart-title">Funding by Program</div><div class="chart-hint">Click or Ctrl+click to filter</div></div>
+    </div>
+    <div class="bar-list" id="fprog-bars"></div>
+  </div>
+</div>
+
+<div class="charts-grid">
+  <div class="chart-box chart-full">
+    <div class="chart-header">
+      <div><div class="chart-title">Monthly Funding vs Expenditure Trend</div><div class="chart-hint">Click month to isolate · gap highlights sustainability risk</div></div>
+      <div style="display:flex;gap:12px;">
+        <div class="leg"><div class="leg-sq" style="background:var(--pos)"></div>Funding</div>
+        <div class="leg"><div class="leg-sq" style="background:var(--brand)"></div>Expenditure</div>
+      </div>
+    </div>
+    <div class="month-cols" id="month-cols-fund"></div>
+    <div style="display:flex;gap:4px;margin-top:4px;" id="month-labels-fund"></div>
+  </div>
+</div>
+
+<div class="charts-grid" style="grid-template-columns:1fr 1fr;">
+  <div class="chart-box">
+    <div class="chart-header">
+      <div><div class="chart-title">Funding Gap by Program</div><div class="chart-hint">Positive = deficit; click to filter</div></div>
+    </div>
+    <div class="bar-list" id="gap-bars"></div>
+  </div>
+  <div class="chart-box">
+    <div class="chart-header">
+      <div><div class="chart-title">Funding Source × Program Matrix</div><div class="chart-hint">Funding received vs expenditure</div></div>
+    </div>
+    <div class="matrix-wrap">
+      <table class="matrix">
+        <thead><tr>
+          <th>Program</th><th>Dept. of Health</th><th>NDIS</th><th>Philanthropy</th><th>Patient Fees</th>
+          <th style="text-align:right">Total Funding</th><th style="text-align:right">Gap $</th><th style="text-align:right">Coverage</th>
+        </tr></thead>
+        <tbody id="matrix-body-fund"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+</div><!-- #page-funding -->
+
+</div><!-- .page -->
+
+<!--STBI_REPORT_DATA-->
+<script>
+// ─── DATA ────────────────────────────────────────────────────────
+// Row-level records exported by the matched deterministic engine, per this template's
+// manifest.dataContract.rowFields (see manifest.json) -- aliased to the same field names this
+// dashboard's original demo data used (month, quarter, category, state, division, aExp, bExp,
+// fte, ...). The pipeline currently exports one flat row table per report (see row_export.py),
+// so the Funding & Sustainability tab -- which needs a second, differently-shaped table -- has
+// no real per-row source yet; FUND_DATA is intentionally empty until multi-table row export
+// exists, rather than fabricating funding figures. Everything on the Executive Summary and
+// Expenditure Detail tabs is driven by real client data.
+const __dataEl = document.getElementById('stbi-report-data');
+const EXP_DATA = __dataEl ? JSON.parse(__dataEl.textContent || "[]") : [];
+const FUND_DATA = [];
+
+const MONTHS = ["Jul-24","Aug-24","Sep-24","Oct-24","Nov-24","Dec-24","Jan-25","Feb-25","Mar-25","Apr-25","May-25","Jun-25"];
+const QUARTERS = ["Q1","Q2","Q3","Q4"];
+const CATEGORIES = ["Primary Care","Allied Health","Mental Health","Aged Care","Dental","Admin"];
+const STATES = ["VIC","NSW","QLD","SA"];
+const DIVISIONS = ["Clinical","Corporate"];
+const CHANNELS = ["Dept. of Health","NDIS","Philanthropy","Patient Fees"];
+const FTYPES = ["Government","Statutory","Private","Self"];
+const PROGRAMS = ["Primary Care","Allied Health","Mental Health","Aged Care","Dental","Admin"];
+const CCS = ["North Community Clinic","South Community Clinic","East Mental Health Centre","West Aged Care Hub","City Dental Clinic","Regional Allied Health Outreach","Corporate Finance & HR","Quality, Safety & Compliance"];
+
+const COLORS = {
+  cat: {"Primary Care":"#1E3A5F","Allied Health":"#10B981","Mental Health":"#8B5CF6","Aged Care":"#F59E0B","Dental":"#EF4444","Admin":"#14B8A6"},
+  state: {VIC:"#1E3A5F",NSW:"#10B981",QLD:"#F59E0B",SA:"#EF4444"},
+  div: {Clinical:"#1E3A5F",Corporate:"#94A3B8"},
+  channel: {"Dept. of Health":"#1E3A5F","NDIS":"#2563EB","Philanthropy":"#10B981","Patient Fees":"#F59E0B"},
+  ftype: {Government:"#1E3A5F",Statutory:"#2563EB",Private:"#10B981",Self:"#F59E0B"},
+  qtr: {Q1:"#1E3A5F",Q2:"#2563EB",Q3:"#8B5CF6",Q4:"#10B981"},
+};
+
+// ─── FILTER STATE ────────────────────────────────────────────────
+const FS = {
+  cat: new Set(), state: new Set(), div: new Set(),
+  month: new Set(), quarter: new Set(),
+  cc: new Set(), channel: new Set(), ftype: new Set(), fprog: new Set(),
+  matrixRow: new Set(),
+};
+
+const DIM_LABELS = {cat:'Category',state:'State',div:'Division',month:'Month',quarter:'Quarter',cc:'Cost Centre',channel:'Channel',ftype:'Funder Type',fprog:'Program'};
+
+function isActive(dim){ return FS[dim].size>0; }
+
+// Map filter dims to EXP_DATA fields
+function filteredExp(){
+  return EXP_DATA.filter(r=>
+    (!isActive('cat')   || FS.cat.has(r.category)) &&
+    (!isActive('state') || FS.state.has(r.state)) &&
+    (!isActive('div')   || FS.div.has(r.division)) &&
+    (!isActive('month') || FS.month.has(r.month)) &&
+    (!isActive('quarter')|| FS.quarter.has(r.quarter)) &&
+    (!isActive('cc')    || FS.cc.has(r.ccName)) &&
+    (!isActive('matrixRow')|| FS.matrixRow.has(r.category))
+  );
+}
+
+function filteredFund(){
+  return FUND_DATA.filter(r=>
+    (!isActive('cat')    || FS.cat.has(r.category)) &&
+    (!isActive('channel')|| FS.channel.has(r.channel)) &&
+    (!isActive('ftype')  || FS.ftype.has(r.funderType)) &&
+    (!isActive('fprog')  || FS.fprog.has(r.category)) &&
+    (!isActive('month')  || FS.month.has(r.month)) &&
+    (!isActive('quarter')|| FS.quarter.has(r.quarter))
+  );
+}
+
+function toggle(dim, val, ctrl){
+  const s=FS[dim];
+  if(ctrl){if(s.has(val))s.delete(val);else s.add(val);}
+  else{if(s.size===1&&s.has(val))s.clear();else{s.clear();s.add(val);}}
+  if(dim==='cat') FS.matrixRow=new Set(FS.cat);
+  if(dim==='matrixRow') FS.cat=new Set(FS.matrixRow);
+  if(dim==='fprog') FS.cat=new Set(FS.fprog);
+  render();
+}
+
+function clearAll(){ Object.keys(FS).forEach(k=>FS[k].clear()); render(); }
+
+// ─── HELPERS ─────────────────────────────────────────────────────
+const fmt=v=>v>=1e9?'$'+(v/1e9).toFixed(2)+'B':v>=1e6?'$'+(v/1e6).toFixed(1)+'M':v>=1e3?'$'+(v/1e3).toFixed(0)+'K':'$'+Math.round(v);
+const fmtN=v=>v>=1e3?(v/1e3).toFixed(1)+'K':Math.round(v);
+const sign=v=>v>=0?'+':'';
+const pctSign=(a,b)=>{ if(!b) return '—'; const p=(a-b)/b*100; return (p>=0?'+':'')+p.toFixed(1)+'%'; };
+
+function aggBy(rows,key,vals,valField,budField){
+  const out={};
+  vals.forEach(v=>out[v]={aVal:0,bVal:0,fte:0,cnt:0});
+  rows.forEach(r=>{
+    const k=r[key];
+    if(out[k]!==undefined){
+      out[k].aVal+=r[valField]||0;
+      if(budField) out[k].bVal+=r[budField]||0;
+      if(r.fte) out[k].fte+=r.fte;
+      out[k].cnt++;
+    }
+  });
+  return out;
+}
+
+// ─── TOOLTIP ─────────────────────────────────────────────────────
+const ttEl=document.getElementById('tt');
+function showTT(e,title,rows){
+  ttEl.innerHTML='<div class="tt-title">'+title+'</div>'+
+    rows.map(([l,v])=>`<div class="tt-row"><span class="tt-label">${l}</span><span class="tt-val">${v}</span></div>`).join('');
+  ttEl.classList.add('show'); moveTT(e);
+}
+function moveTT(e){
+  const x=e.clientX+14,y=e.clientY-10;
+  ttEl.style.left=Math.min(x,window.innerWidth-210)+'px';
+  ttEl.style.top=Math.min(y,window.innerHeight-130)+'px';
+}
+function hideTT(){ttEl.classList.remove('show');}
+document.addEventListener('mousemove',e=>{if(ttEl.classList.contains('show'))moveTT(e);});
+
+// ─── RENDER HELPERS ───────────────────────────────────────────────
+function renderBarChart(containerId, dim, vals, colors, agg, allAgg, ttExtra){
+  const maxVal=Math.max(...vals.map(v=>allAgg[v]?.aVal||0),1);
+  const el=document.getElementById(containerId);
+  el.innerHTML='';
+  vals.forEach(val=>{
+    const d=agg[val]||{aVal:0,bVal:0};
+    const dAll=allAgg[val]||{aVal:0,bVal:0};
+    const pA=Math.round(d.aVal/maxVal*100);
+    const pB=Math.round(dAll.bVal/maxVal*100);
+    const hasFilter=isActive(dim);
+    const isSel=FS[dim].has(val);
+    const cls=hasFilter?(isSel?'selected':'dimmed'):'';
+    const vp=d.bVal?(d.aVal-d.bVal)/d.bVal*100:0;
+    const vpCls=vp>=0?'pill-neg':'pill-pos'; // for expenditure: over budget=bad
+    const color=colors[val]||'#1E3A5F';
+    const row=document.createElement('div');
+    row.className='bar-item '+cls;
+    row.innerHTML=`
+      <div class="bar-lbl">${val}</div>
+      <div class="bar-track">
+        <div class="bar-fill" style="width:${pA}%;background:${color}"></div>
+        ${d.bVal?`<div class="bar-budget-tick" style="left:${pB}%"></div>`:''}
+      </div>
+      <div class="bar-vals">
+        <div class="bar-actual">${fmt(d.aVal)}</div>
+        ${d.bVal?`<div class="bar-var ${d.aVal?vpCls:''}">${d.aVal?(sign(vp)+vp.toFixed(1)+'%'):'—'}</div>`:''}
+      </div>
+    `;
+    row.addEventListener('click',e=>toggle(dim,val,e.ctrlKey||e.metaKey));
+    const ttRows=[['Actual',fmt(d.aVal)]];
+    if(d.bVal) ttRows.push(['Budget',fmt(d.bVal)],['Variance',pctSign(d.aVal,d.bVal)]);
+    if(ttExtra) ttRows.push(...(ttExtra(d,val)||[]));
+    row.addEventListener('mouseenter',e=>showTT(e,val,ttRows));
+    row.addEventListener('mouseleave',hideTT);
+    el.appendChild(row);
+  });
+}
+
+function renderFundingBar(containerId, dim, vals, colors, agg, allAgg){
+  const maxVal=Math.max(...vals.map(v=>allAgg[v]?.aVal||0),1);
+  const el=document.getElementById(containerId);
+  el.innerHTML='';
+  const totFund=vals.reduce((s,v)=>s+(agg[v]?.aVal||0),0)||1;
+  vals.forEach(val=>{
+    const d=agg[val]||{aVal:0};
+    const dAll=allAgg[val]||{aVal:0};
+    const pA=Math.round(d.aVal/maxVal*100);
+    const hasFilter=isActive(dim);
+    const isSel=FS[dim].has(val);
+    const cls=hasFilter?(isSel?'selected':'dimmed'):'';
+    const color=colors[val]||'#10B981';
+    const pct=(d.aVal/totFund*100).toFixed(0);
+    const row=document.createElement('div');
+    row.className='bar-item '+cls;
+    row.innerHTML=`
+      <div class="bar-lbl">${val}</div>
+      <div class="bar-track">
+        <div class="bar-fill" style="width:${pA}%;background:${color}"></div>
+      </div>
+      <div class="bar-vals">
+        <div class="bar-actual">${fmt(d.aVal)}</div>
+        <div class="bar-var pill-neu">${pct}%</div>
+      </div>
+    `;
+    row.addEventListener('click',e=>toggle(dim,val,e.ctrlKey||e.metaKey));
+    row.addEventListener('mouseenter',e=>showTT(e,val,[['Funding',fmt(d.aVal)],['Share',pct+'%']]));
+    row.addEventListener('mouseleave',hideTT);
+    el.appendChild(row);
+  });
+}
+
+function renderMonthChart(colsId, lblsId, rows, fundRows, mode){
+  // mode: 'exp' shows actual vs budget; 'fund' shows funding vs expenditure
+  const byM={}; const allByM={};
+  MONTHS.forEach(m=>{byM[m]={aExp:0,bExp:0,aFund:0}; allByM[m]={aExp:0,bExp:0,aFund:0};});
+  EXP_DATA.forEach(r=>{ allByM[r.month].aExp+=r.aExp; allByM[r.month].bExp+=r.bExp; });
+  rows.forEach(r=>{ byM[r.month].aExp+=r.aExp; byM[r.month].bExp+=r.bExp; });
+  if(fundRows){
+    FUND_DATA.forEach(r=>{if(allByM[r.month])allByM[r.month].aFund+=r.aFunding;});
+    fundRows.forEach(r=>{if(byM[r.month])byM[r.month].aFund+=r.aFunding;});
+  }
+  const maxVal=Math.max(...MONTHS.map(m=>mode==='fund'?Math.max(allByM[m].aExp,allByM[m].aFund):Math.max(allByM[m].aExp,allByM[m].bExp)),1);
+  const cols=document.getElementById(colsId);
+  const lbls=document.getElementById(lblsId);
+  cols.innerHTML=''; lbls.innerHTML='';
+  MONTHS.forEach(m=>{
+    const d=byM[m]; const dAll=allByM[m];
+    const isSel=FS.month.has(m); const hasFilter=isActive('month');
+    const cls=hasFilter?(isSel?'multi-selected':'dimmed'):'';
+    const h1=Math.round(d.aExp/maxVal*114);
+    const h2=Math.round((mode==='fund'?dAll.aFund:dAll.bExp)/maxVal*114);
+    const col=document.createElement('div');
+    col.className='m-col '+cls;
+    col.innerHTML=`
+      <div class="m-budget" style="height:${h2}px;width:100%;background:${mode==='fund'?'var(--pos)':'var(--brand)'}"></div>
+      <div class="m-actual" style="height:${h1}px;width:100%;background:${mode==='fund'?'var(--brand)':'var(--brand)'}"></div>
+    `;
+    const ttRows=[['Actual Exp',fmt(d.aExp)],['Budget',fmt(d.bExp)],['Variance',pctSign(d.aExp,d.bExp)]];
+    if(mode==='fund') ttRows.push(['Funding',fmt(d.aFund)],['Gap',fmt(d.aExp-d.aFund)]);
+    col.addEventListener('click',e=>toggle('month',m,e.ctrlKey||e.metaKey));
+    col.addEventListener('mouseenter',e=>showTT(e,m,ttRows));
+    col.addEventListener('mouseleave',hideTT);
+    cols.appendChild(col);
+    const lbl=document.createElement('div');
+    lbl.style.cssText='flex:1;font-size:8px;color:var(--muted);text-align:center;';
+    lbl.textContent=m.split('-')[0];
+    lbls.appendChild(lbl);
+  });
+}
+
+function renderQtrList(elId, rows){
+  const byQ=aggBy(rows,'quarter',QUARTERS,'aExp','bExp');
+  const tot=rows.reduce((s,r)=>s+r.aExp,0)||1;
+  const el=document.getElementById(elId);
+  el.innerHTML='';
+  QUARTERS.forEach(q=>{
+    const d=byQ[q]||{aVal:0,bVal:0};
+    const pct=(d.aVal/tot*100).toFixed(0);
+    const vp=d.bVal?(d.aVal-d.bVal)/d.bVal*100:0;
+    const isSel=FS.quarter.has(q); const hasFilter=isActive('quarter');
+    const cls=hasFilter?(isSel?'selected':'dimmed'):'';
+    const row=document.createElement('div');
+    row.className='dl-row '+cls;
+    row.innerHTML=`
+      <div class="dl-dot" style="background:${COLORS.qtr[q]}"></div>
+      <div class="dl-name">${q}</div>
+      <div class="dl-val">${fmt(d.aVal)}</div>
+      <div class="dl-pct">${pct}%</div>
+      <div class="bar-var ${vp>=0?'pill-neg':'pill-pos'}" style="font-size:10px;padding:1px 5px;border-radius:3px;font-weight:600;">${sign(vp)+vp.toFixed(1)+'%'}</div>
+    `;
+    row.addEventListener('click',e=>toggle('quarter',q,e.ctrlKey||e.metaKey));
+    row.addEventListener('mouseenter',e=>showTT(e,q,[['Actual',fmt(d.aVal)],['Budget',fmt(d.bVal)],['Variance',pctSign(d.aVal,d.bVal)],['Share',pct+'%']]));
+    row.addEventListener('mouseleave',hideTT);
+    el.appendChild(row);
+  });
+}
+
+// ─── RENDER FUNCTIONS ─────────────────────────────────────────────
+
+function renderExecutivePage(expRows, fundRows){
+  // KPIs
+  const aExp=expRows.reduce((s,r)=>s+r.aExp,0);
+  const bExp=expRows.reduce((s,r)=>s+r.bExp,0);
+  const aFund=fundRows.reduce((s,r)=>s+r.aFunding,0);
+  const totFTE=expRows.reduce((s,r)=>s+r.fte,0);
+  const util=bExp?aExp/bExp*100:0;
+  const gap=aExp-aFund;
+  const cfte=totFTE?aExp/totFTE:0;
+  const vp=bExp?(aExp-bExp)/bExp*100:0;
+  const covRatio=aExp?aFund/aExp:0;
+
+  document.getElementById('kpi-exp').textContent=fmt(aExp);
+  document.getElementById('kpi-exp-d').innerHTML=`<span class="${vp>=0?'neg':'pos'}">${sign(vp)}${vp.toFixed(1)}% vs budget</span>`;
+  document.getElementById('kpi-bud').textContent=fmt(bExp);
+  document.getElementById('kpi-var-d').innerHTML=`<span class="${vp>=0?'neg':'neu'}">Variance ${fmt(Math.abs(aExp-bExp))}</span>`;
+  document.getElementById('kpi-util').textContent=util.toFixed(1)+'%';
+  document.getElementById('kpi-util-d').innerHTML=`<span class="${util>100?'neg':util>95?'neu':'pos'}">of budget consumed</span>`;
+  document.getElementById('kpi-fund').textContent=fmt(aFund);
+  document.getElementById('kpi-fund-d').innerHTML=`<span class="neu">${(covRatio*100).toFixed(1)}% coverage ratio</span>`;
+  document.getElementById('kpi-gap').textContent=fmt(gap);
+  document.getElementById('kpi-gap-d').innerHTML=`<span class="${gap>0?'neg':'pos'}">${gap>0?'Underfunded':'Surplus'} position</span>`;
+  document.getElementById('kpi-cfte').textContent=fmt(cfte);
+  document.getElementById('kpi-cfte-d').innerHTML=`<span class="neu">${fmtN(totFTE)} total FTE</span>`;
+
+  // Bar charts
+  const catAgg=aggBy(expRows,'category',CATEGORIES,'aExp','bExp');
+  const catAll=aggBy(EXP_DATA,'category',CATEGORIES,'aExp','bExp');
+  renderBarChart('cat-bars','cat',CATEGORIES,COLORS.cat,catAgg,catAll,
+    (d,v)=>[['FTE',fmtN(d.fte||0)],['Util %',d.bVal?(d.aVal/d.bVal*100).toFixed(1)+'%':'—']]);
+
+  const stAgg=aggBy(expRows,'state',STATES,'aExp','bExp');
+  const stAll=aggBy(EXP_DATA,'state',STATES,'aExp','bExp');
+  renderBarChart('state-bars','state',STATES,COLORS.state,stAgg,stAll);
+
+  const dvAgg=aggBy(expRows,'division',DIVISIONS,'aExp','bExp');
+  const dvAll=aggBy(EXP_DATA,'division',DIVISIONS,'aExp','bExp');
+  renderBarChart('div-bars','div',DIVISIONS,COLORS.div,dvAgg,dvAll);
+
+  // Month chart
+  renderMonthChart('month-cols-exec','month-labels-exec',expRows,null,'exp');
+
+  // Quarter
+  renderQtrList('qtr-list',expRows);
+
+  // Matrix: category × state
+  const byCatState={};
+  CATEGORIES.forEach(c=>{byCatState[c]={};STATES.forEach(s=>byCatState[c][s]={aExp:0,bExp:0});});
+  expRows.forEach(r=>{if(byCatState[r.category]&&byCatState[r.category][r.state]){byCatState[r.category][r.state].aExp+=r.aExp;byCatState[r.category][r.state].bExp+=r.bExp;}});
+  const tbody=document.getElementById('matrix-body-exec');
+  tbody.innerHTML='';
+  const tots={aExp:0,bExp:0}; STATES.forEach(s=>tots[s]={aExp:0,bExp:0});
+  CATEGORIES.forEach(cat=>{
+    const isSel=FS.matrixRow.has(cat)||FS.cat.has(cat);
+    const hasFilter=isActive('matrixRow')||isActive('cat');
+    const cls=hasFilter?(isSel?'selected':'dimmed'):'';
+    const catTot=STATES.reduce((s,st)=>s+(byCatState[cat][st]?.aExp||0),0);
+    const catBud=STATES.reduce((s,st)=>s+(byCatState[cat][st]?.bExp||0),0);
+    const vp2=catBud?(catTot-catBud)/catBud*100:0;
+    const util2=catBud?catTot/catBud*100:0;
+    tots.aExp+=catTot; tots.bExp+=catBud;
+    STATES.forEach(s=>{tots[s].aExp+=(byCatState[cat][s]?.aExp||0);tots[s].bExp+=(byCatState[cat][s]?.bExp||0);});
+    const tr=document.createElement('tr');
+    tr.className=cls;
+    tr.innerHTML=`
+      <td style="font-weight:600;color:${COLORS.cat[cat]||'#1E3A5F'}">${cat}</td>
+      ${STATES.map(s=>{const d=byCatState[cat][s];const vv=d.bExp?(d.aExp-d.bExp)/d.bExp*100:0;return `<td>${fmt(d.aExp)} <span class="muted-val">(${d.bExp?(sign(vv)+vv.toFixed(0)+'%'):'—'})</span></td>`;}).join('')}
+      <td style="text-align:right;font-weight:700;">${fmt(catTot)}</td>
+      <td style="text-align:right"><span class="bar-var ${vp2>=0?'pill-neg':'pill-pos'}">${sign(vp2)}${vp2.toFixed(1)}%</span></td>
+      <td style="text-align:right">${util2.toFixed(1)}%</td>
+    `;
+    tr.addEventListener('click',e=>toggle('matrixRow',cat,e.ctrlKey||e.metaKey));
+    tr.addEventListener('mouseenter',e=>showTT(e,cat,[['Actual',fmt(catTot)],['Budget',fmt(catBud)],['Variance',pctSign(catTot,catBud)],['Utilisation',util2.toFixed(1)+'%']]));
+    tr.addEventListener('mouseleave',hideTT);
+    tbody.appendChild(tr);
+  });
+  const totVp=tots.bExp?(tots.aExp-tots.bExp)/tots.bExp*100:0;
+  const totUtil=tots.bExp?tots.aExp/tots.bExp*100:0;
+  const totTr=document.createElement('tr');
+  totTr.className='subtotal'; totTr.style.pointerEvents='none';
+  totTr.innerHTML=`<td>Total</td>${STATES.map(s=>`<td style="font-weight:700">${fmt(tots[s].aExp)}</td>`).join('')}<td style="text-align:right;font-weight:700;">${fmt(tots.aExp)}</td><td style="text-align:right"><span class="bar-var ${totVp>=0?'pill-neg':'pill-pos'}">${sign(totVp)}${totVp.toFixed(1)}%</span></td><td style="text-align:right">${totUtil.toFixed(1)}%</td>`;
+  tbody.appendChild(totTr);
+}
+
+function renderExpenditurePage(expRows){
+  const aExp=expRows.reduce((s,r)=>s+r.aExp,0);
+  const bExp=expRows.reduce((s,r)=>s+r.bExp,0);
+  const totFTE=expRows.reduce((s,r)=>s+r.fte,0);
+  const util=bExp?aExp/bExp*100:0;
+  const vp=bExp?(aExp-bExp)/bExp*100:0;
+
+  document.getElementById('kpi-exp2').textContent=fmt(aExp);
+  document.getElementById('kpi-exp2-d').innerHTML=`<span class="${vp>=0?'neg':'pos'}">${sign(vp)}${vp.toFixed(1)}% vs budget</span>`;
+  document.getElementById('kpi-bud2').textContent=fmt(bExp);
+  document.getElementById('kpi-bud2-d').innerHTML=`<span class="neu">approved budget</span>`;
+  document.getElementById('kpi-varamt').textContent=(aExp>=bExp?'+':'')+fmt(aExp-bExp);
+  document.getElementById('kpi-varamt').style.color=aExp>bExp?'var(--neg)':'var(--pos)';
+  document.getElementById('kpi-varamt-d').innerHTML=`<span class="${vp>=0?'neg':'pos'}">${vp.toFixed(1)}%</span>`;
+  document.getElementById('kpi-util2').textContent=util.toFixed(1)+'%';
+  document.getElementById('kpi-util2-d').innerHTML=`<span class="${util>100?'neg':util>95?'neu':'pos'}">budget consumed</span>`;
+  document.getElementById('kpi-fte').textContent=fmtN(totFTE);
+  document.getElementById('kpi-fte-d').innerHTML=`<span class="neu">full-time equivalents</span>`;
+
+  const catAgg=aggBy(expRows,'category',CATEGORIES,'aExp','bExp');
+  const catAll=aggBy(EXP_DATA,'category',CATEGORIES,'aExp','bExp');
+  renderBarChart('prog-bars','cat',CATEGORIES,COLORS.cat,catAgg,catAll);
+
+  const CCS_LIST=["North Community Clinic","South Community Clinic","East Mental Health Centre","West Aged Care Hub","City Dental Clinic","Regional Allied Health Outreach","Corporate Finance & HR","Quality, Safety & Compliance"];
+  const CC_COLORS={"North Community Clinic":"#1E3A5F","South Community Clinic":"#2563EB","East Mental Health Centre":"#8B5CF6","West Aged Care Hub":"#F59E0B","City Dental Clinic":"#EF4444","Regional Allied Health Outreach":"#10B981","Corporate Finance & HR":"#94A3B8","Quality, Safety & Compliance":"#64748B"};
+  const ccAgg=aggBy(expRows,'ccName',CCS_LIST,'aExp','bExp');
+  const ccAll=aggBy(EXP_DATA,'ccName',CCS_LIST,'aExp','bExp');
+  renderBarChart('cc-bars','cc',CCS_LIST,CC_COLORS,ccAgg,ccAll);
+
+  const stAgg=aggBy(expRows,'state',STATES,'aExp','bExp');
+  const stAll=aggBy(EXP_DATA,'state',STATES,'aExp','bExp');
+  renderBarChart('state-bars2','state',STATES,COLORS.state,stAgg,stAll);
+
+  renderMonthChart('month-cols-exp','month-labels-exp',expRows,null,'exp');
+  renderQtrList('qtr-list2',expRows);
+
+  // Matrix: program × state
+  const byProgState={};
+  CATEGORIES.forEach(c=>{byProgState[c]={};STATES.forEach(s=>byProgState[c][s]={aExp:0,bExp:0,fte:0});});
+  expRows.forEach(r=>{if(byProgState[r.category]&&byProgState[r.category][r.state]){byProgState[r.category][r.state].aExp+=r.aExp;byProgState[r.category][r.state].bExp+=r.bExp;byProgState[r.category][r.state].fte+=r.fte;}});
+  const tbody=document.getElementById('matrix-body-exp');
+  tbody.innerHTML='';
+  const tots2={aExp:0,bExp:0,fte:0}; STATES.forEach(s=>tots2[s]={aExp:0,bExp:0});
+  CATEGORIES.forEach(cat=>{
+    const isSel=FS.cat.has(cat); const hasFilter=isActive('cat');
+    const cls=hasFilter?(isSel?'selected':'dimmed'):'';
+    const catTot=STATES.reduce((s,st)=>s+(byProgState[cat][st]?.aExp||0),0);
+    const catBud=STATES.reduce((s,st)=>s+(byProgState[cat][st]?.bExp||0),0);
+    const catFTE=STATES.reduce((s,st)=>s+(byProgState[cat][st]?.fte||0),0);
+    const vp2=catBud?(catTot-catBud)/catBud*100:0;
+    tots2.aExp+=catTot; tots2.bExp+=catBud; tots2.fte+=catFTE;
+    STATES.forEach(s=>{tots2[s].aExp+=(byProgState[cat][s]?.aExp||0);});
+    const tr=document.createElement('tr');
+    tr.className=cls;
+    tr.innerHTML=`
+      <td style="font-weight:600;color:${COLORS.cat[cat]||'#1E3A5F'}">${cat}</td>
+      ${STATES.map(s=>{ const d=byProgState[cat][s]; const vv=d.bExp?(d.aExp-d.bExp)/d.bExp*100:0; return `<td>${fmt(d.aExp)} <span class="muted-val">(${d.bExp?(sign(vv)+vv.toFixed(0)+'%'):'—'})</span></td>`; }).join('')}
+      <td style="text-align:right;font-weight:700;">${fmt(catTot)}</td>
+      <td style="text-align:right"><span class="bar-var ${vp2>=0?'pill-neg':'pill-pos'}">${sign(vp2)}${vp2.toFixed(1)}%</span></td>
+      <td style="text-align:right">${fmtN(catFTE)}</td>
+    `;
+    tr.addEventListener('click',e=>toggle('cat',cat,e.ctrlKey||e.metaKey));
+    tr.addEventListener('mouseenter',e=>showTT(e,cat,[['Actual',fmt(catTot)],['Budget',fmt(catBud)],['Variance',pctSign(catTot,catBud)],['FTE',fmtN(catFTE)]]));
+    tr.addEventListener('mouseleave',hideTT);
+    tbody.appendChild(tr);
+  });
+  const tVp=tots2.bExp?(tots2.aExp-tots2.bExp)/tots2.bExp*100:0;
+  const tTr=document.createElement('tr');
+  tTr.className='subtotal'; tTr.style.pointerEvents='none';
+  tTr.innerHTML=`<td>Total</td>${STATES.map(s=>`<td style="font-weight:700">${fmt(tots2[s].aExp)}</td>`).join('')}<td style="text-align:right;font-weight:700;">${fmt(tots2.aExp)}</td><td style="text-align:right"><span class="bar-var ${tVp>=0?'pill-neg':'pill-pos'}">${sign(tVp)}${tVp.toFixed(1)}%</span></td><td style="text-align:right">${fmtN(tots2.fte)}</td>`;
+  tbody.appendChild(tTr);
+}
+
+function renderFundingPage(expRows, fundRows){
+  const aExp=expRows.reduce((s,r)=>s+r.aExp,0);
+  const aFund=fundRows.reduce((s,r)=>s+r.aFunding,0);
+  const aCommit=fundRows.reduce((s,r)=>s+r.committed,0);
+  const gap=aExp-aFund;
+  const covRatio=aExp?aFund/aExp:0;
+
+  document.getElementById('kpi-fund2').textContent=fmt(aFund);
+  document.getElementById('kpi-fund2-d').innerHTML=`<span class="${covRatio>=1?'pos':'neg'}">${(covRatio*100).toFixed(1)}% of expenditure covered</span>`;
+  document.getElementById('kpi-exp3').textContent=fmt(aExp);
+  document.getElementById('kpi-exp3-d').innerHTML=`<span class="neu">total actual expenditure</span>`;
+  document.getElementById('kpi-gap2').textContent=fmt(gap);
+  document.getElementById('kpi-gap2-d').innerHTML=`<span class="${gap>0?'neg':'pos'}">${gap>0?'Funding shortfall':'Surplus'}</span>`;
+  document.getElementById('kpi-cov').textContent=(covRatio*100).toFixed(1)+'%';
+  document.getElementById('kpi-cov-d').innerHTML=`<span class="${covRatio>=1?'pos':covRatio>=0.8?'neu':'neg'}">coverage ratio</span>`;
+  document.getElementById('kpi-commit').textContent=fmt(aCommit);
+  document.getElementById('kpi-commit-d').innerHTML=`<span class="neu">committed funding</span>`;
+
+  const chAgg=aggBy(fundRows,'channel',CHANNELS,'aFunding',null);
+  const chAll=aggBy(FUND_DATA,'channel',CHANNELS,'aFunding',null);
+  renderFundingBar('channel-bars','channel',CHANNELS,COLORS.channel,chAgg,chAll);
+
+  const ftAgg=aggBy(fundRows,'funderType',FTYPES,'aFunding',null);
+  const ftAll=aggBy(FUND_DATA,'funderType',FTYPES,'aFunding',null);
+  renderFundingBar('ftype-bars','ftype',FTYPES,COLORS.ftype,ftAgg,ftAll);
+
+  const fpAgg=aggBy(fundRows,'category',CATEGORIES,'aFunding',null);
+  const fpAll=aggBy(FUND_DATA,'category',CATEGORIES,'aFunding',null);
+  renderFundingBar('fprog-bars','fprog',CATEGORIES,COLORS.cat,fpAgg,fpAll);
+
+  renderMonthChart('month-cols-fund','month-labels-fund',expRows,fundRows,'fund');
+
+  // Gap bars — funding gap by program
+  const expByCat=aggBy(expRows,'category',CATEGORIES,'aExp',null);
+  const fundByCat=aggBy(fundRows,'category',CATEGORIES,'aFunding',null);
+  const gapBars=document.getElementById('gap-bars');
+  gapBars.innerHTML='';
+  const maxGap=Math.max(...CATEGORIES.map(c=>Math.abs((expByCat[c]?.aVal||0)-(fundByCat[c]?.aVal||0))),1);
+  CATEGORIES.forEach(cat=>{
+    const exp=expByCat[cat]?.aVal||0;
+    const fund=fundByCat[cat]?.aVal||0;
+    const gapVal=exp-fund;
+    const pA=Math.round(Math.abs(gapVal)/maxGap*100);
+    const isSel=FS.cat.has(cat); const hasFilter=isActive('cat');
+    const cls=hasFilter?(isSel?'selected':'dimmed'):'';
+    const row=document.createElement('div');
+    row.className='bar-item '+cls;
+    row.innerHTML=`
+      <div class="bar-lbl">${cat}</div>
+      <div class="bar-track">
+        <div class="bar-fill" style="width:${pA}%;background:${gapVal>0?'var(--neg)':'var(--pos)'}"></div>
+      </div>
+      <div class="bar-vals">
+        <div class="bar-actual" style="color:${gapVal>0?'var(--neg)':'var(--pos)'}">${gapVal>0?'+':''}${fmt(gapVal)}</div>
+        <div class="bar-var ${gapVal>0?'pill-neg':'pill-pos'}">${gapVal>0?'deficit':'surplus'}</div>
+      </div>
+    `;
+    row.addEventListener('click',e=>toggle('cat',cat,e.ctrlKey||e.metaKey));
+    row.addEventListener('mouseenter',e=>showTT(e,cat,[['Expenditure',fmt(exp)],['Funding',fmt(fund)],['Gap',fmt(gapVal)],['Coverage',(exp?fund/exp*100:0).toFixed(1)+'%']]));
+    row.addEventListener('mouseleave',hideTT);
+    gapBars.appendChild(row);
+  });
+
+  // Matrix: program × channel
+  const byProgCh={};
+  CATEGORIES.forEach(c=>{byProgCh[c]={};CHANNELS.forEach(ch=>byProgCh[c][ch]={aFunding:0});});
+  fundRows.forEach(r=>{if(byProgCh[r.category]&&byProgCh[r.category][r.channel])byProgCh[r.category][r.channel].aFunding+=r.aFunding;});
+  const tbody=document.getElementById('matrix-body-fund');
+  tbody.innerHTML='';
+  const tots3={aFunding:0}; CHANNELS.forEach(ch=>tots3[ch]={aFunding:0});
+  CATEGORIES.forEach(cat=>{
+    const isSel=FS.cat.has(cat)||FS.fprog.has(cat); const hasFilter=isActive('cat')||isActive('fprog');
+    const cls=hasFilter?(isSel?'selected':'dimmed'):'';
+    const catFund=CHANNELS.reduce((s,ch)=>s+(byProgCh[cat][ch]?.aFunding||0),0);
+    const catExp=expByCat[cat]?.aVal||0;
+    const catGap=catExp-catFund;
+    const cov=catExp?catFund/catExp:0;
+    tots3.aFunding+=catFund; CHANNELS.forEach(ch=>tots3[ch].aFunding+=(byProgCh[cat][ch]?.aFunding||0));
+    const tr=document.createElement('tr');
+    tr.className=cls;
+    tr.innerHTML=`
+      <td style="font-weight:600;color:${COLORS.cat[cat]||'#1E3A5F'}">${cat}</td>
+      ${CHANNELS.map(ch=>`<td>${fmt(byProgCh[cat][ch]?.aFunding||0)}</td>`).join('')}
+      <td style="text-align:right;font-weight:700;">${fmt(catFund)}</td>
+      <td style="text-align:right;color:${catGap>0?'var(--neg)':'var(--pos)'};font-weight:600;">${catGap>0?'+':''}${fmt(catGap)}</td>
+      <td style="text-align:right"><span class="bar-var ${cov>=1?'pill-pos':'pill-neg'}">${(cov*100).toFixed(0)}%</span></td>
+    `;
+    tr.addEventListener('click',e=>toggle('cat',cat,e.ctrlKey||e.metaKey));
+    tr.addEventListener('mouseenter',e=>showTT(e,cat,[['Total Funding',fmt(catFund)],['Expenditure',fmt(catExp)],['Gap',fmt(catGap)],['Coverage',(cov*100).toFixed(1)+'%']]));
+    tr.addEventListener('mouseleave',hideTT);
+    tbody.appendChild(tr);
+  });
+  const totCov=tots3.aFunding/(aExp||1);
+  const totGap=aExp-tots3.aFunding;
+  const tTr=document.createElement('tr');
+  tTr.className='subtotal'; tTr.style.pointerEvents='none';
+  tTr.innerHTML=`<td>Total</td>${CHANNELS.map(ch=>`<td style="font-weight:700">${fmt(tots3[ch].aFunding)}</td>`).join('')}<td style="text-align:right;font-weight:700;">${fmt(tots3.aFunding)}</td><td style="text-align:right;color:${totGap>0?'var(--neg)':'var(--pos)'};font-weight:700;">${totGap>0?'+':''}${fmt(totGap)}</td><td style="text-align:right"><span class="bar-var ${totCov>=1?'pill-pos':'pill-neg'}">${(totCov*100).toFixed(0)}%</span></td>`;
+  tbody.appendChild(tTr);
+}
+
+// ─── BREADCRUMB ───────────────────────────────────────────────────
+function renderBreadcrumb(){
+  const tags=document.getElementById('bc-tags');
+  const empty=document.getElementById('bc-empty');
+  const items=[];
+  Object.keys(FS).filter(k=>k!=='matrixRow').forEach(dim=>{
+    FS[dim].forEach(val=>items.push({dim,val,label:(DIM_LABELS[dim]||dim)+': '+val}));
+  });
+  if(items.length===0){empty.style.display='';tags.innerHTML='';return;}
+  empty.style.display='none';
+  tags.innerHTML=items.map(it=>`<div class="bc-tag" data-dim="${it.dim}" data-val="${it.val}">${it.label}<span class="x" title="Remove">×</span></div>`).join('');
+  tags.querySelectorAll('.bc-tag').forEach(tag=>{
+    tag.querySelector('.x').addEventListener('click',e=>{
+      e.stopPropagation();
+      const dim=tag.dataset.dim,val=tag.dataset.val;
+      FS[dim].delete(val);
+      if(dim==='cat')FS.matrixRow.delete(val);
+      render();
+    });
+  });
+}
+
+// ─── MAIN RENDER ─────────────────────────────────────────────────
+let currentPage='executive';
+
+function render(){
+  const expRows=filteredExp();
+  const fundRows=filteredFund();
+
+  renderBreadcrumb();
+  const totExp=EXP_DATA.reduce((s,r)=>s+r.aExp,0);
+  const selExp=expRows.reduce((s,r)=>s+r.aExp,0);
+  document.getElementById('state-total').textContent=`Showing ${fmt(selExp)} of ${fmt(totExp)} expenditure`;
+
+  if(currentPage==='executive') renderExecutivePage(expRows,fundRows);
+  else if(currentPage==='expenditure') renderExpenditurePage(expRows);
+  else if(currentPage==='funding') renderFundingPage(expRows,fundRows);
+}
+
+// ─── PAGE TABS ────────────────────────────────────────────────────
+document.querySelectorAll('.tab').forEach(tab=>{
+  tab.addEventListener('click',()=>{
+    document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+    document.querySelectorAll('.dash-page').forEach(p=>p.classList.remove('active'));
+    tab.classList.add('active');
+    currentPage=tab.dataset.page;
+    document.getElementById('page-'+currentPage).classList.add('active');
+    render();
+  });
+});
+
+document.getElementById('clear-all').addEventListener('click',clearAll);
+document.addEventListener('keydown',e=>{if(e.key==='Escape')clearAll();});
+
+render();
+</script>
+</body>
+</html>
