@@ -67,46 +67,58 @@ public sealed class HtmlTemplateRegistrySyncService : BackgroundService
         var blobStorage = scope.ServiceProvider.GetRequiredService<IBlobStorageService>();
         var reportGeneratorClient = scope.ServiceProvider.GetRequiredService<IReportGeneratorClient>();
 
-        List<string>? templateIds;
+        // Keyed by id so a properly-uploaded "clients"/templates/html/<id>/manifest.json always
+        // wins over its built-in seed counterpart of the same id (HtmlTemplateSeedCatalog) — the
+        // seed exists purely so the 2 already-onboarded templates (currently living as flat .html
+        // files in the pre-existing "report-templates" container instead of the originally
+        // designed convention) still match, without requiring anyone to re-upload anything.
+        var manifestsById = new Dictionary<string, HtmlTemplateManifestPushDto>(StringComparer.OrdinalIgnoreCase);
+        foreach (var seed in HtmlTemplateSeedCatalog.Templates)
+            manifestsById[seed.Id] = new HtmlTemplateManifestPushDto(seed.Id, seed.ManifestJson);
+
+        List<string>? templateIds = null;
         await using (var indexStream = await blobStorage.DownloadBlobAsync(IndexBlobPath, cancellationToken))
         {
             if (indexStream is null)
             {
-                _logger.LogInformation("HtmlTemplateRegistrySync.NoIndex — {Path} not found yet, nothing to sync.", IndexBlobPath);
-                return;
+                _logger.LogInformation(
+                    "HtmlTemplateRegistrySync.NoIndex — {Path} not found yet; pushing {SeedCount} built-in seed manifest(s) only.",
+                    IndexBlobPath, manifestsById.Count);
             }
-
-            templateIds = await JsonSerializer.DeserializeAsync<List<string>>(indexStream, cancellationToken: cancellationToken);
-        }
-
-        if (templateIds is null || templateIds.Count == 0)
-            return;
-
-        var manifests = new List<HtmlTemplateManifestPushDto>();
-        foreach (var id in templateIds)
-        {
-            var manifestPath = $"templates/html/{id}/manifest.json";
-            await using var manifestStream = await blobStorage.DownloadBlobAsync(manifestPath, cancellationToken);
-            if (manifestStream is null)
+            else
             {
-                _logger.LogWarning(
-                    "HtmlTemplateRegistrySync.ManifestMissing TemplateId={TemplateId} Path={Path} — listed in " +
-                    "the index but no manifest.json found; skipped for this cycle.",
-                    id, manifestPath);
-                continue;
+                templateIds = await JsonSerializer.DeserializeAsync<List<string>>(indexStream, cancellationToken: cancellationToken);
             }
-
-            using var reader = new StreamReader(manifestStream, Encoding.UTF8);
-            var manifestJson = await reader.ReadToEndAsync(cancellationToken);
-            manifests.Add(new HtmlTemplateManifestPushDto(id, manifestJson));
         }
 
-        if (manifests.Count == 0)
+        if (templateIds is { Count: > 0 })
         {
-            _logger.LogWarning("HtmlTemplateRegistrySync.NoManifestsResolved — index listed {Count} id(s), none resolved.", templateIds.Count);
+            foreach (var id in templateIds)
+            {
+                var manifestPath = $"templates/html/{id}/manifest.json";
+                await using var manifestStream = await blobStorage.DownloadBlobAsync(manifestPath, cancellationToken);
+                if (manifestStream is null)
+                {
+                    _logger.LogWarning(
+                        "HtmlTemplateRegistrySync.ManifestMissing TemplateId={TemplateId} Path={Path} — listed in " +
+                        "the index but no manifest.json found; skipped for this cycle.",
+                        id, manifestPath);
+                    continue;
+                }
+
+                using var reader = new StreamReader(manifestStream, Encoding.UTF8);
+                var manifestJson = await reader.ReadToEndAsync(cancellationToken);
+                manifestsById[id] = new HtmlTemplateManifestPushDto(id, manifestJson);
+            }
+        }
+
+        if (manifestsById.Count == 0)
+        {
+            _logger.LogWarning("HtmlTemplateRegistrySync.NoManifestsResolved — nothing to push this cycle.");
             return;
         }
 
+        var manifests = manifestsById.Values.ToList();
         await reportGeneratorClient.PushHtmlTemplateRegistryAsync(
             manifests, correlationId: Guid.NewGuid().ToString("N"), cancellationToken);
 

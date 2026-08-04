@@ -11,6 +11,18 @@
     <ProjectReference Include="..\StudioTechBI.Application\StudioTechBI.Application.csproj" />
   </ItemGroup>
 
+  <!-- Built-in fallback chrome.html for the 2 onboarded HTML report templates — see
+       HtmlTemplateSeedCatalog. Shipped with the assembly so matching/assembly works regardless
+       of what's actually present in blob storage at runtime. -->
+  <ItemGroup>
+    <EmbeddedResource Include="EmbeddedTemplates\HtmlReports\retail-single-page.chrome.html">
+      <LogicalName>HtmlTemplates.retail-single-page.chrome.html</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="EmbeddedTemplates\HtmlReports\healthcare-fpna-multi-tab.chrome.html">
+      <LogicalName>HtmlTemplates.healthcare-fpna-multi-tab.chrome.html</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="8.0.0" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="8.0.0" />
