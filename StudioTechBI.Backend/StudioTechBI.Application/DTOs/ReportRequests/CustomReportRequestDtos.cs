@@ -1,0 +1,34 @@
+using StudioTechBI.Application.DTOs.ReportDesigner;
+
+namespace StudioTechBI.Application.DTOs.ReportRequests;
+
+/// <summary>Body for POST /api/report-requests. Schema is the client's already-extracted
+/// ExtractedSchemaDto (same shape ReportDesignerController's extract-schema/* endpoints return) —
+/// sent as-is rather than re-uploading the source file, since the schema snapshot is all a
+/// bespoke Power BI build needs to get started.</summary>
+public record CreateCustomReportRequestDto(ExtractedSchemaDto Schema, string? Notes);
+
+public record CreateCustomReportRequestResponse(Guid RequestId);
+
+public record CustomReportRequestSummaryDto(
+    Guid RequestId,
+    string Status,
+    string? RequestedByEmail,
+    string? SourceFileName,
+    DateTime CreatedAt,
+    DateTime? FulfilledAtUtc);
+
+public record CustomReportRequestDetailDto(
+    Guid RequestId,
+    Guid ClientId,
+    string Status,
+    string? RequestedByEmail,
+    string? Notes,
+    ExtractedSchemaDto? Schema,
+    string? SourceFileName,
+    DateTime CreatedAt,
+    Guid? FulfilledSavedReportId,
+    DateTime? FulfilledAtUtc,
+    string? FulfilledByEmail);
+
+public record FulfillCustomReportRequestDto(Guid PowerBiAssetId);

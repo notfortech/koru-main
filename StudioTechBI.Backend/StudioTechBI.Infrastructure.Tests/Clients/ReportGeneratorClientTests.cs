@@ -64,7 +64,7 @@ public class ReportGeneratorClientTests
         var client = CreateClient(handler);
 
         using var stream = new MemoryStream(Encoding.UTF8.GetBytes("OrderId,Amount\n1,120.5\n"));
-        var result = await client.GenerateReportAsync(stream, "sales.csv", templateId: null, filtersJson: null, correlationId: "corr-1");
+        var result = await client.GenerateReportAsync(stream, "sales.csv", templateId: null, filtersJson: null, htmlTemplateId: null, correlationId: "corr-1");
 
         Assert.Equal("generic-overview", result.TemplateId);
         Assert.Single(result.Kpis);
@@ -84,7 +84,7 @@ public class ReportGeneratorClientTests
         var client = CreateClient(handler);
 
         using var stream = new MemoryStream(Encoding.UTF8.GetBytes("OrderId,Amount\n1,120.5\n"));
-        await client.GenerateReportAsync(stream, "sales.csv", templateId: "generic-overview", filtersJson: null, correlationId: "corr-1");
+        await client.GenerateReportAsync(stream, "sales.csv", templateId: "generic-overview", filtersJson: null, htmlTemplateId: null, correlationId: "corr-1");
 
         Assert.NotNull(handler.LastRequestBody);
         Assert.Contains("sales.csv", handler.LastRequestBody);
@@ -100,7 +100,7 @@ public class ReportGeneratorClientTests
 
         using var stream = new MemoryStream(Encoding.UTF8.GetBytes("OrderId,Amount\n1,120.5\n"));
         await client.GenerateReportAsync(
-            stream, "sales.csv", templateId: null, filtersJson: """{"Region":"North"}""", correlationId: "corr-1");
+            stream, "sales.csv", templateId: null, filtersJson: """{"Region":"North"}""", htmlTemplateId: null, correlationId: "corr-1");
 
         Assert.NotNull(handler.LastRequestBody);
         Assert.Contains("name=\"filters\"", handler.LastRequestBody);
@@ -115,6 +115,6 @@ public class ReportGeneratorClientTests
 
         using var stream = new MemoryStream(Encoding.UTF8.GetBytes("OrderId,Amount\n1,120.5\n"));
         await Assert.ThrowsAsync<HttpRequestException>(
-            () => client.GenerateReportAsync(stream, "sales.csv", templateId: null, filtersJson: null, correlationId: "corr-1"));
+            () => client.GenerateReportAsync(stream, "sales.csv", templateId: null, filtersJson: null, htmlTemplateId: null, correlationId: "corr-1"));
     }
 }

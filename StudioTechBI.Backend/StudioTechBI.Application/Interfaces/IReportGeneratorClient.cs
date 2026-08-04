@@ -17,6 +17,24 @@ public interface IReportGeneratorClient
         string fileName,
         string? templateId,
         string? filtersJson,
+        string? htmlTemplateId,
+        string correlationId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>Full ranked HTML template candidate list (profiling + matching only, no KPI/chart
+    /// computation) — backs the AI-assisted "Verify Template Match" flow.</summary>
+    Task<List<HtmlTemplateCandidateDto>> MatchHtmlTemplateAsync(
+        Stream fileStream,
+        string fileName,
+        string correlationId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>Pushes the full, current set of HTML template manifests (synced from blob by
+    /// HtmlTemplateRegistrySyncService) to ReportAgent.Api's local matching cache — this process
+    /// has no outbound network access of its own, so its manifest registry is kept warm by push,
+    /// never pull.</summary>
+    Task PushHtmlTemplateRegistryAsync(
+        List<HtmlTemplateManifestPushDto> manifests,
         string correlationId,
         CancellationToken cancellationToken = default);
 }

@@ -1,6 +1,8 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
+using StudioTechBI.Application.DTOs.Admin;
 using StudioTechBI.Application.DTOs.Common;
 using StudioTechBI.Application.DTOs.InsightsEngine;
 using StudioTechBI.Application.DTOs.ReportGenerator;
@@ -15,6 +17,12 @@ namespace StudioTechBI.API.Controllers;
 /// real KPI/chart values. Unlike ReportDesignerController, this path
 /// intentionally forwards the actual file — the receiving service
 /// (DashboardAgents.ReportAgent.Api) has no AI/LLM call anywhere in it.
+///
+/// Also owns HTML template matching/assembly — the same engine now also picks (or is told) an
+/// interactive HTML report template and returns the fully-assembled HtmlReport string alongside
+/// the existing Kpis/Charts, per the "HTML is the primary report format" redesign. That output is
+/// always the assembled string only, in-memory — this controller never persists a copy of
+/// anything (see SavedReportsController for the one place an explicit "Save Report" click does).
 /// </summary>
 [ApiController]
 [Route("api/report-generator")]
@@ -24,24 +32,49 @@ public class ReportGeneratorController : ControllerBase
     private const long MaxFileSizeBytes = 50 * 1024 * 1024; // 50 MB
     private static readonly string[] AllowedExtensions = { ".xlsx", ".csv" };
 
+    // Below this, an HTML template candidate is never surfaced to the user — protects report
+    // accuracy/data integrity for the AI-assisted "Verify Template Match" picker. Mirrors
+    // DashboardTemplateController.MatchConfidenceThreshold's existing single-source-of-truth
+    // pattern for its own (unrelated, Power BI catalog) threshold.
+    private const double HtmlMatchConfidenceThreshold = 0.85;
+
     private readonly IReportGeneratorClient _reportGeneratorClient;
     private readonly IInsightsEngineReportInsightsClient _reportInsights;
     private readonly IOptionsMonitor<InsightsEngineOptions> _insightsEngineOptions;
-    private readonly IReportGeneratorPdfService _pdfService;
+    private readonly IHtmlReportAssemblyService _htmlAssembly;
+    private readonly IDashboardTemplateLogWriter _templateLogWriter;
+    private readonly IClientService _clientService;
     private readonly ILogger<ReportGeneratorController> _logger;
 
     public ReportGeneratorController(
         IReportGeneratorClient reportGeneratorClient,
         IInsightsEngineReportInsightsClient reportInsights,
         IOptionsMonitor<InsightsEngineOptions> insightsEngineOptions,
-        IReportGeneratorPdfService pdfService,
+        IHtmlReportAssemblyService htmlAssembly,
+        IDashboardTemplateLogWriter templateLogWriter,
+        IClientService clientService,
         ILogger<ReportGeneratorController> logger)
     {
         _reportGeneratorClient = reportGeneratorClient;
         _reportInsights = reportInsights;
         _insightsEngineOptions = insightsEngineOptions;
-        _pdfService = pdfService;
+        _htmlAssembly = htmlAssembly;
+        _templateLogWriter = templateLogWriter;
+        _clientService = clientService;
         _logger = logger;
+    }
+
+    /// <summary>Resolves the caller's own client from the client_code claim — same pattern as
+    /// ReportValidationController.ResolveClientAsync (this session) and DashboardController.
+    /// Best-effort: gap logging degrades to ClientId=null (still logged, just not attributable)
+    /// rather than failing the whole request when the claim can't be resolved.</summary>
+    private async Task<ClientDto?> ResolveClientAsync(CancellationToken ct)
+    {
+        var clientCode = User.FindFirstValue("client_code")?.Trim();
+        if (string.IsNullOrWhiteSpace(clientCode))
+            return null;
+
+        return await _clientService.GetByClientCodeOrIdAsync(clientCode, ct);
     }
 
     /// <summary>
@@ -78,6 +111,7 @@ public class ReportGeneratorController : ControllerBase
         IFormFile file,
         [FromForm] string? templateId,
         [FromForm] string? filters,
+        [FromForm] string? htmlTemplateId,
         CancellationToken cancellationToken)
     {
         if (file is null || file.Length == 0)
@@ -95,9 +129,31 @@ public class ReportGeneratorController : ControllerBase
 
         try
         {
-            await using var stream = file.OpenReadStream();
-            var result = await _reportGeneratorClient.GenerateReportAsync(
-                stream, file.FileName, templateId, filters, correlationId, cancellationToken);
+            GeneratedReportDto result;
+            await using (var stream = file.OpenReadStream())
+            {
+                result = await _reportGeneratorClient.GenerateReportAsync(
+                    stream, file.FileName, templateId, filters, htmlTemplateId, correlationId, cancellationToken);
+            }
+
+            result = await _htmlAssembly.AssembleAsync(result, cancellationToken);
+
+            if (result.HtmlTemplateId is null)
+            {
+                // No HTML template matched at all -- log the gap so staff can author one against
+                // this real, observed schema shape (mirrors LogBuildRequestAsync's existing role
+                // for the Power BI catalog). Never blocks the response: the caller already has a
+                // perfectly good report (the existing MUI/recharts fallback renders it), this is
+                // purely a backlog entry.
+                var client = await ResolveClientAsync(cancellationToken);
+                var columnNames = result.Kpis.Select(k => k.Column)
+                    .Concat(result.Charts.SelectMany(c => c.Series.Select(s => s.Name)))
+                    .Distinct()
+                    .ToList();
+                await _templateLogWriter.LogHtmlTemplateGapAsync(
+                    client?.ClientId, client?.ClientName ?? "Unknown", correlationId, columnNames,
+                    matchPath: "Deterministic", bestConfidence: null, cancellationToken);
+            }
 
             return Ok(ApiResponse<GeneratedReportDto>.SuccessResponse(result, "Report generated successfully."));
         }
@@ -215,34 +271,67 @@ public class ReportGeneratorController : ControllerBase
         }
     }
 
-    public sealed class ReportPdfExportRequest
-    {
-        public GeneratedReportDto Report { get; set; } = null!;
-        public string? AiSummary { get; set; }
-        public List<string>? Insights { get; set; }
-    }
-
     /// <summary>
-    /// POST /api/report-generator/export-pdf
-    /// Renders the already-generated report result as a downloadable PDF (QuestPDF). Optionally
-    /// includes an AI summary/insights block if the caller already fetched one via ai-summary —
-    /// this endpoint never triggers an AI call itself.
+    /// POST /api/report-generator/verify-html-match
+    /// AI-assisted "Verify Template Match" flow: profiles the uploaded file and returns the full
+    /// ranked list of HTML template candidates, filtered to >=HtmlMatchConfidenceThreshold so a
+    /// low-confidence guess is never surfaced for the user to pick — protects report accuracy.
+    /// Only needs the file (no blueprint/data model) since HTML matching works off column
+    /// profiles alone. Does not generate or assemble a report — that still happens via the normal
+    /// generate call once the caller has (optionally) chosen a candidate from this list.
     /// </summary>
-    [HttpPost("export-pdf")]
-    public IActionResult ExportPdf([FromBody] ReportPdfExportRequest request)
+    [HttpPost("verify-html-match")]
+    [RequestSizeLimit(MaxFileSizeBytes)]
+    public async Task<IActionResult> VerifyHtmlMatchAsync(IFormFile file, CancellationToken cancellationToken)
     {
-        if (request?.Report is null)
-            return BadRequest(ApiResponse<object>.ErrorResponse("No report data supplied to export."));
+        if (file is null || file.Length == 0)
+            return BadRequest(ApiResponse<object>.ErrorResponse("No file uploaded."));
 
-        var bytes = _pdfService.Generate(request.Report, request.AiSummary, request.Insights);
-        var fileName = SanitizeFileName(request.Report.TemplateName ?? "report") + "-report.pdf";
-        return File(bytes, "application/pdf", fileName);
-    }
+        if (file.Length > MaxFileSizeBytes)
+            return BadRequest(ApiResponse<object>.ErrorResponse("File exceeds the 50 MB limit."));
 
-    private static string SanitizeFileName(string name)
-    {
-        var invalid = Path.GetInvalidFileNameChars();
-        var cleaned = new string(name.Select(c => invalid.Contains(c) ? '-' : c).ToArray()).Trim();
-        return string.IsNullOrWhiteSpace(cleaned) ? "report" : cleaned;
+        var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+        if (!AllowedExtensions.Contains(ext))
+            return BadRequest(ApiResponse<object>.ErrorResponse(
+                $"Unsupported file type '{ext}'. Allowed: {string.Join(", ", AllowedExtensions)}"));
+
+        var correlationId = Guid.NewGuid().ToString();
+
+        try
+        {
+            List<HtmlTemplateCandidateDto> allCandidates;
+            await using (var stream = file.OpenReadStream())
+            {
+                allCandidates = await _reportGeneratorClient.MatchHtmlTemplateAsync(
+                    stream, file.FileName, correlationId, cancellationToken);
+            }
+
+            var qualifying = allCandidates
+                .Where(c => c.Confidence >= HtmlMatchConfidenceThreshold)
+                .OrderByDescending(c => c.Confidence)
+                .ToList();
+
+            if (qualifying.Count == 0)
+            {
+                var client = await ResolveClientAsync(cancellationToken);
+                var bestConfidence = allCandidates.Count > 0 ? allCandidates.Max(c => c.Confidence) : (double?)null;
+                await _templateLogWriter.LogHtmlTemplateGapAsync(
+                    client?.ClientId, client?.ClientName ?? "Unknown", correlationId,
+                    columnNames: [], matchPath: "AiAssisted", bestConfidence, cancellationToken);
+            }
+
+            var response = new VerifyHtmlTemplateMatchResponse(correlationId, qualifying);
+            return Ok(ApiResponse<VerifyHtmlTemplateMatchResponse>.SuccessResponse(response, "Template match check complete."));
+        }
+        catch (HttpRequestException ex)
+        {
+            return StatusCode(
+                (int)(ex.StatusCode ?? System.Net.HttpStatusCode.BadGateway),
+                ApiResponse<object>.ErrorResponse(ex.Message));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ApiResponse<object>.ErrorResponse(ex.Message));
+        }
     }
 }
