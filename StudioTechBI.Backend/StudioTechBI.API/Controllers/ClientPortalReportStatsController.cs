@@ -33,13 +33,16 @@ public sealed class ClientPortalReportStatsController : ControllerBase
     private readonly ApplicationDbContext _db;
     private readonly IClientService _clientService;
     private readonly IAgentHostClient _agentHostClient;
+    private readonly ILocalCreditLedgerService _localCredits;
 
     public ClientPortalReportStatsController(
-        ApplicationDbContext db, IClientService clientService, IAgentHostClient agentHostClient)
+        ApplicationDbContext db, IClientService clientService, IAgentHostClient agentHostClient,
+        ILocalCreditLedgerService localCredits)
     {
         _db = db;
         _clientService = clientService;
         _agentHostClient = agentHostClient;
+        _localCredits = localCredits;
     }
 
     [HttpGet]
@@ -59,16 +62,20 @@ public sealed class ClientPortalReportStatsController : ControllerBase
             .CountAsync(e => e.ClientId == client.ClientId && e.Mode == ReportGenerationModes.AiAssisted, cancellationToken);
 
         var usage = await _agentHostClient.GetUsageSummaryAsync(client.ClientId, ReportModelFeature, cancellationToken);
-        var credits = await _agentHostClient.CheckCreditsAsync(client.ClientId, client.ClientName, cancellationToken);
+
+        // Local interim balance (see LocalCreditLedgerService) -- AgentHost's own ledger is
+        // currently bypassed, so this is the real, per-client number today. Kept consistent with
+        // BlueprintsLegacyController.GetCredits, the other place this balance is read.
+        var creditsRemaining = await _localCredits.GetBalanceAsync(client.ClientId, cancellationToken);
 
         var dto = new ReportStatsDto(
             SavedReportsCount: savedReportsCount,
             DeterministicReportsCount: deterministicCount,
             AiAssistedReportsCount: aiAssistedCount,
             AiCreditsConsumed: usage.TotalCreditsConsumed,
-            CreditsRemaining: credits.CreditsRemaining,
-            IsUnlimited: credits.IsUnlimited,
-            ResetDate: credits.NextResetDate);
+            CreditsRemaining: creditsRemaining,
+            IsUnlimited: false,
+            ResetDate: null);
 
         return Ok(ApiResponse<ReportStatsDto>.SuccessResponse(dto));
     }

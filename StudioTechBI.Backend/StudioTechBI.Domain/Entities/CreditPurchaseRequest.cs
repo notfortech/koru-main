@@ -18,6 +18,12 @@ public class CreditPurchaseRequest : BaseEntity
     public string Status { get; set; } = CreditPurchaseRequestStatuses.Pending;
     public string? Notes { get; set; }
 
+    /// <summary>Distinguishes a client's own "buy credits" click (Client, the default — matches
+    /// pre-existing rows) from one LocalCreditLedgerService auto-files when a client's balance
+    /// crosses the low-balance threshold (System) — same queue, same Mark Paid action either
+    /// way, just a visual tag for admins.</summary>
+    public string Source { get; set; } = CreditPurchaseRequestSources.Client;
+
     public DateTime? PaidAtUtc { get; set; }
     public string? PaidByEmail { get; set; }
 }

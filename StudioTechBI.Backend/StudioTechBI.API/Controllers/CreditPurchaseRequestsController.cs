@@ -51,6 +51,7 @@ public class CreditPurchaseRequestsController : ControllerBase
             Id = Guid.NewGuid(),
             ClientId = client.ClientId,
             Status = CreditPurchaseRequestStatuses.Pending,
+            Source = CreditPurchaseRequestSources.Client,
             RequestedByEmail = requestedByEmail,
             CreditsRequested = request.CreditsRequested,
             PackLabel = request.PackLabel,

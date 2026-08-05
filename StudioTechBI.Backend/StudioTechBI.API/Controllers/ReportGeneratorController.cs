@@ -40,12 +40,18 @@ public class ReportGeneratorController : ControllerBase
     // pattern for its own (unrelated, Power BI catalog) threshold.
     private const double HtmlMatchConfidenceThreshold = 0.85;
 
+    // Flat per-action cost for the local interim ledger (see LocalCreditLedgerService) -- matches
+    // ReportDesignerController.ModelGenerationCreditCost's "1 credit per AI action, for now" stance.
+    private const int AiSummaryCreditCost = 1;
+    private const string AiSummaryFeature = "report-ai-summary";
+
     private readonly IReportGeneratorClient _reportGeneratorClient;
     private readonly IInsightsEngineReportInsightsClient _reportInsights;
     private readonly IOptionsMonitor<InsightsEngineOptions> _insightsEngineOptions;
     private readonly IHtmlReportAssemblyService _htmlAssembly;
     private readonly IDashboardTemplateLogWriter _templateLogWriter;
     private readonly IClientService _clientService;
+    private readonly ILocalCreditLedgerService _localCredits;
     private readonly ApplicationDbContext _db;
     private readonly ILogger<ReportGeneratorController> _logger;
 
@@ -56,6 +62,7 @@ public class ReportGeneratorController : ControllerBase
         IHtmlReportAssemblyService htmlAssembly,
         IDashboardTemplateLogWriter templateLogWriter,
         IClientService clientService,
+        ILocalCreditLedgerService localCredits,
         ApplicationDbContext db,
         ILogger<ReportGeneratorController> logger)
     {
@@ -65,6 +72,7 @@ public class ReportGeneratorController : ControllerBase
         _htmlAssembly = htmlAssembly;
         _templateLogWriter = templateLogWriter;
         _clientService = clientService;
+        _localCredits = localCredits;
         _db = db;
         _logger = logger;
     }
@@ -241,6 +249,23 @@ public class ReportGeneratorController : ControllerBase
         if (report is null || (report.Kpis.Count == 0 && report.Charts.Count == 0))
             return BadRequest(new { enabled = false, message = "No report data supplied to summarize." });
 
+        // Best-effort resolution, same posture as LogHtmlTemplateGapAsync's call sites elsewhere in
+        // this controller -- an unresolvable claim degrades to "not charged" rather than blocking a
+        // summary the caller is otherwise entitled to.
+        var client = await ResolveClientAsync(cancellationToken);
+        if (client is not null)
+        {
+            var creditCheck = await _localCredits.CheckAsync(client.ClientId, AiSummaryCreditCost, cancellationToken);
+            if (!creditCheck.Allowed)
+            {
+                return StatusCode(StatusCodes.Status402PaymentRequired, new
+                {
+                    enabled = false,
+                    message = creditCheck.DenialReason ?? "Insufficient AI credits to generate a summary."
+                });
+            }
+        }
+
         var samples = new List<DatasetQueryTableSample>();
         if (report.Kpis.Count > 0)
         {
@@ -303,6 +328,10 @@ public class ReportGeneratorController : ControllerBase
         try
         {
             var resp = await _reportInsights.GetInsightsFromMetadataAsync(req, cancellationToken);
+
+            if (client is not null)
+                await _localCredits.ConsumeAsync(client.ClientId, AiSummaryCreditCost, AiSummaryFeature, cancellationToken);
+
             return Ok(new
             {
                 enabled = true,

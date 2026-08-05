@@ -24,13 +24,16 @@ public class AdminCreditPurchaseRequestsController : ControllerBase
 {
     private readonly ApplicationDbContext _db;
     private readonly IAgentHostClient _agentHostClient;
+    private readonly ILocalCreditLedgerService _localCredits;
     private readonly ILogger<AdminCreditPurchaseRequestsController> _logger;
 
     public AdminCreditPurchaseRequestsController(
-        ApplicationDbContext db, IAgentHostClient agentHostClient, ILogger<AdminCreditPurchaseRequestsController> logger)
+        ApplicationDbContext db, IAgentHostClient agentHostClient, ILocalCreditLedgerService localCredits,
+        ILogger<AdminCreditPurchaseRequestsController> logger)
     {
         _db = db;
         _agentHostClient = agentHostClient;
+        _localCredits = localCredits;
         _logger = logger;
     }
 
@@ -43,7 +46,7 @@ public class AdminCreditPurchaseRequestsController : ControllerBase
 
         var items = await query
             .Select(r => new CreditPurchaseRequestSummaryDto(
-                r.Id, r.Status, r.CreditsRequested, r.PackLabel, r.CreatedAt, r.PaidAtUtc))
+                r.Id, r.Status, r.CreditsRequested, r.PackLabel, r.CreatedAt, r.PaidAtUtc, r.Source))
             .ToListAsync(cancellationToken);
 
         return Ok(ApiResponse<List<CreditPurchaseRequestSummaryDto>>.SuccessResponse(items));
@@ -58,16 +61,19 @@ public class AdminCreditPurchaseRequestsController : ControllerBase
 
         var dto = new CreditPurchaseRequestDetailDto(
             entity.Id, entity.ClientId, entity.Status, entity.RequestedByEmail, entity.CreditsRequested,
-            entity.PackLabel, entity.Notes, entity.CreatedAt, entity.PaidAtUtc, entity.PaidByEmail);
+            entity.PackLabel, entity.Notes, entity.CreatedAt, entity.PaidAtUtc, entity.PaidByEmail, entity.Source);
 
         return Ok(ApiResponse<CreditPurchaseRequestDetailDto>.SuccessResponse(dto));
     }
 
     /// <summary>
     /// POST /api/admin/credit-purchase-requests/{id}/mark-paid
-    /// Grants the requested credits against AgentHost's ledger, then marks the ticket Paid — in
-    /// that order, so a failed grant never leaves a ticket marked Paid with nothing actually
-    /// granted.
+    /// Tops up the local interim ledger (see LocalCreditLedgerService) first — that's what
+    /// actually gates AI-consuming actions today, so this is what makes credits genuinely "bounce
+    /// back" for the client. Also best-effort mirrors the grant to AgentHost's own ledger for
+    /// whenever that becomes the real source of truth; a failure there (e.g. AdminApiKey not
+    /// configured, or the sidecar unreachable) is logged but never blocks the local top-up or the
+    /// Paid status transition, unlike before this ledger existed.
     /// </summary>
     [HttpPost("{id:guid}/mark-paid")]
     public async Task<IActionResult> MarkPaidAsync(
@@ -80,17 +86,17 @@ public class AdminCreditPurchaseRequestsController : ControllerBase
         if (entity.Status == CreditPurchaseRequestStatuses.Paid)
             return BadRequest(ApiResponse<object>.ErrorResponse("This request has already been marked paid."));
 
-        var grant = await _agentHostClient.GrantCreditsAsync(
-            entity.ClientId, entity.CreditsRequested,
-            $"Credit purchase fulfilled — {entity.PackLabel}", entity.Id.ToString(), cancellationToken);
+        var reason = $"Credit purchase fulfilled — {entity.PackLabel}";
+        var newLocalBalance = await _localCredits.GrantAsync(
+            entity.ClientId, entity.CreditsRequested, reason, cancellationToken);
 
+        var grant = await _agentHostClient.GrantCreditsAsync(
+            entity.ClientId, entity.CreditsRequested, reason, entity.Id.ToString(), cancellationToken);
         if (grant is null)
         {
-            _logger.LogError(
-                "CreditPurchaseRequest.GrantFailed RequestId={RequestId} ClientId={ClientId} Credits={Credits}",
+            _logger.LogWarning(
+                "CreditPurchaseRequest.AgentHostGrantSkipped RequestId={RequestId} ClientId={ClientId} Credits={Credits} — local balance was still topped up.",
                 id, entity.ClientId, entity.CreditsRequested);
-            return StatusCode(502, ApiResponse<object>.ErrorResponse(
-                "Could not reach the credit ledger to grant these credits. Nothing was charged or changed — try again."));
         }
 
         entity.Status = CreditPurchaseRequestStatuses.Paid;
@@ -102,11 +108,11 @@ public class AdminCreditPurchaseRequestsController : ControllerBase
         await _db.SaveChangesAsync(cancellationToken);
 
         _logger.LogInformation(
-            "CreditPurchaseRequest.Paid RequestId={RequestId} ClientId={ClientId} CreditsGranted={CreditsGranted} CreditsRemaining={CreditsRemaining}",
-            id, entity.ClientId, grant.CreditsGranted, grant.CreditsRemaining);
+            "CreditPurchaseRequest.Paid RequestId={RequestId} ClientId={ClientId} CreditsGranted={CreditsGranted} LocalBalanceRemaining={LocalBalanceRemaining}",
+            id, entity.ClientId, entity.CreditsRequested, newLocalBalance);
 
         return Ok(ApiResponse<object>.SuccessResponse(
-            new { creditsGranted = grant.CreditsGranted, creditsRemaining = grant.CreditsRemaining },
+            new { creditsGranted = entity.CreditsRequested, creditsRemaining = newLocalBalance },
             "Request marked paid — credits granted."));
     }
 }

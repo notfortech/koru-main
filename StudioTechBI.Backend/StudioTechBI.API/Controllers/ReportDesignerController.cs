@@ -27,6 +27,11 @@ public class ReportDesignerController : ControllerBase
     private static readonly string[] AllowedExtensions = { ".xlsx", ".xls", ".csv" };
     private const string ReportModelFeature = "report-model-generation";
 
+    // Flat per-action cost for the local interim ledger (see LocalCreditLedgerService) -- no
+    // per-feature pricing exists yet, so every AI-consuming action costs the same 1 credit "for
+    // now" until real usage data justifies weighting them differently.
+    private const int ModelGenerationCreditCost = 1;
+
     private readonly IReportDesignerClient _reportDesignerClient;
     private readonly IBindDeployClient _bindDeployClient;
     private readonly SqlSchemaReaderService _sqlSchemaReader;
@@ -39,6 +44,7 @@ public class ReportDesignerController : ControllerBase
     private readonly ITemplateRefreshService _templateRefresh;
     private readonly ITemplateService _templates;
     private readonly IPowerBiAssetWriter _powerBiAssetWriter;
+    private readonly ILocalCreditLedgerService _localCredits;
     private readonly ILogger<ReportDesignerController> _logger;
 
     public ReportDesignerController(
@@ -54,6 +60,7 @@ public class ReportDesignerController : ControllerBase
         ITemplateRefreshService templateRefresh,
         ITemplateService templates,
         IPowerBiAssetWriter powerBiAssetWriter,
+        ILocalCreditLedgerService localCredits,
         ILogger<ReportDesignerController> logger)
     {
         _reportDesignerClient = reportDesignerClient;
@@ -68,6 +75,7 @@ public class ReportDesignerController : ControllerBase
         _templateRefresh = templateRefresh;
         _templates = templates;
         _powerBiAssetWriter = powerBiAssetWriter;
+        _localCredits = localCredits;
         _logger = logger;
     }
 
@@ -316,6 +324,15 @@ public class ReportDesignerController : ControllerBase
                 creditCheck.DenialReason ?? "Insufficient AI credits to generate a report model."));
         }
 
+        // Local interim gate (see LocalCreditLedgerService) -- AgentHost's own check above is
+        // currently bypassed (always Allowed), so this is what actually enforces anything today.
+        var localCheck = await _localCredits.CheckAsync(client.Id, ModelGenerationCreditCost, cancellationToken);
+        if (!localCheck.Allowed)
+        {
+            return StatusCode(StatusCodes.Status402PaymentRequired, ApiResponse<object>.ErrorResponse(
+                localCheck.DenialReason ?? "Insufficient AI credits to generate a report model."));
+        }
+
         var correlationId = Guid.NewGuid().ToString();
 
         try
@@ -325,6 +342,7 @@ public class ReportDesignerController : ControllerBase
 
             await _agentHostClient.ConsumeCreditAsync(
                 client.Id, ReportModelFeature, correlationId, result.DurationMs, cancellationToken);
+            await _localCredits.ConsumeAsync(client.Id, ModelGenerationCreditCost, ReportModelFeature, cancellationToken);
 
             return Ok(ApiResponse<GenerateReportModelResponse>.SuccessResponse(
                 result, "Report model generated successfully."));
