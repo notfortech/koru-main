@@ -12,6 +12,11 @@ namespace StudioTechBI.Application.Interfaces;
 public interface IHtmlReportAssemblyService
 {
     /// <summary>No-op (returns <paramref name="report"/> unchanged) when HtmlTemplateId is null —
-    /// callers don't need to branch on whether a template matched before calling this.</summary>
-    Task<GeneratedReportDto> AssembleAsync(GeneratedReportDto report, CancellationToken cancellationToken = default);
+    /// callers don't need to branch on whether a template matched before calling this.
+    /// <paramref name="themeOverride"/> is optional and also a no-op whenever null, or when the
+    /// resolved template's manifest has no themeSlots mapping.</summary>
+    Task<GeneratedReportDto> AssembleAsync(
+        GeneratedReportDto report,
+        ReportThemeOverride? themeOverride = null,
+        CancellationToken cancellationToken = default);
 }
