@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using StudioTechBI.API.Authorization;
+using StudioTechBI.Application.Constants;
 using StudioTechBI.Application.DTOs.Admin;
 using StudioTechBI.Application.Interfaces;
 
@@ -35,6 +36,7 @@ public class AdminTemplatesController : ControllerBase
     }
 
     [HttpPost]
+    [RequestSizeLimit(UploadLimits.MaxUploadBytes)]
     public async Task<ActionResult<TemplateDto>> Create([FromForm] TemplateCreateDto dto, IFormFile? file, CancellationToken cancellationToken)
     {
         Stream? stream = null;

@@ -1,12 +1,16 @@
 using System.Security.Claims;
+using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using StudioTechBI.Application.DTOs.Admin;
+using StudioTechBI.Application.Constants;
 using StudioTechBI.Application.DTOs.Common;
 using StudioTechBI.Application.DTOs.InsightsEngine;
 using StudioTechBI.Application.DTOs.ReportGenerator;
 using StudioTechBI.Application.Interfaces;
+using StudioTechBI.Application.Options;
 using StudioTechBI.Application.Models;
 using StudioTechBI.Domain.Entities;
 using StudioTechBI.Infrastructure.Data;
@@ -31,7 +35,6 @@ namespace StudioTechBI.API.Controllers;
 [Authorize]
 public class ReportGeneratorController : ControllerBase
 {
-    private const long MaxFileSizeBytes = 50 * 1024 * 1024; // 50 MB
     private static readonly string[] AllowedExtensions = { ".xlsx", ".csv" };
 
     // Below this, an HTML template candidate is never surfaced to the user — protects report
@@ -54,6 +57,9 @@ public class ReportGeneratorController : ControllerBase
     private readonly ILocalCreditLedgerService _localCredits;
     private readonly ApplicationDbContext _db;
     private readonly ILogger<ReportGeneratorController> _logger;
+    private readonly IOptions<UploadLimitsOptions> _uploadLimits;
+    private readonly IBlobSasUriProvider _sasUriProvider;
+    private readonly IReportGenerationJobQueue _jobQueue;
 
     public ReportGeneratorController(
         IReportGeneratorClient reportGeneratorClient,
@@ -64,7 +70,10 @@ public class ReportGeneratorController : ControllerBase
         IClientService clientService,
         ILocalCreditLedgerService localCredits,
         ApplicationDbContext db,
-        ILogger<ReportGeneratorController> logger)
+        ILogger<ReportGeneratorController> logger,
+        IOptions<UploadLimitsOptions> uploadLimits,
+        IBlobSasUriProvider sasUriProvider,
+        IReportGenerationJobQueue jobQueue)
     {
         _reportGeneratorClient = reportGeneratorClient;
         _reportInsights = reportInsights;
@@ -75,6 +84,9 @@ public class ReportGeneratorController : ControllerBase
         _localCredits = localCredits;
         _db = db;
         _logger = logger;
+        _uploadLimits = uploadLimits;
+        _sasUriProvider = sasUriProvider;
+        _jobQueue = jobQueue;
     }
 
     /// <summary>Resolves the caller's own client from the client_code claim — same pattern as
@@ -113,13 +125,168 @@ public class ReportGeneratorController : ControllerBase
     }
 
     /// <summary>
+    /// GET /api/report-generator/upload-limits
+    /// The server-configured max upload size, so the frontend can reject an oversized file before
+    /// spending upload bandwidth on a doomed request, without hardcoding a value that can drift
+    /// from the backend's actual configured limit (see UploadLimitsOptions).
+    /// </summary>
+    [HttpGet("upload-limits")]
+    public IActionResult GetUploadLimits()
+    {
+        return Ok(ApiResponse<object>.SuccessResponse(
+            new
+            {
+                maxUploadBytes = _uploadLimits.Value.MaxUploadBytes,
+                maxAsyncUploadBytes = _uploadLimits.Value.MaxAsyncUploadBytes
+            },
+            "Upload limits retrieved successfully."));
+    }
+
+    // ── Large-file upload: direct-to-blob + durable async processing (Phase 1) ─────────────────
+    // Below UploadLimits.MaxUploadBytes, /generate above is unchanged and stays the fast path.
+    // At/above it, the frontend uses this trio instead: init mints a write-only SAS URL and a
+    // Pending job row; the browser PUTs bytes straight to blob (this app tier never buffers the
+    // file); complete verifies the REAL committed size server-side (a write SAS carries no byte
+    // cap of its own) and only then enqueues the job; the frontend polls the third endpoint for
+    // the result. See ReportGenerationJobBackgroundService for the worker that actually processes it.
+
+    private static readonly TimeSpan UploadWriteSasValidFor = TimeSpan.FromMinutes(30);
+
+    /// <summary>POST /api/report-generator/uploads/init — mints a write-only SAS URL for a
+    /// server-chosen (never client-supplied) blob path, and persists the expected job/path before
+    /// any bytes move.</summary>
+    [HttpPost("uploads/init")]
+    public async Task<IActionResult> InitUploadAsync([FromBody] ReportUploadInitRequest body, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(body.FileName))
+            return BadRequest(ApiResponse<object>.ErrorResponse("fileName is required."));
+
+        var ext = Path.GetExtension(body.FileName).ToLowerInvariant();
+        if (!AllowedExtensions.Contains(ext))
+            return BadRequest(ApiResponse<object>.ErrorResponse(
+                $"Unsupported file type '{ext}'. Allowed: {string.Join(", ", AllowedExtensions)}"));
+
+        var client = await ResolveClientAsync(cancellationToken);
+        if (client is null)
+            return BadRequest(ApiResponse<object>.ErrorResponse("Could not resolve the calling client."));
+
+        var jobId = Guid.NewGuid();
+        var safeName = SanitizeFileName(body.FileName);
+        var blobPath = $"{client.ClientId}/report-generator/uploads/{jobId:N}/{safeName}";
+
+        var writeUrl = await _sasUriProvider.GetWriteSasUriAsync(blobPath, UploadWriteSasValidFor, cancellationToken);
+        if (writeUrl is null)
+            return StatusCode(502, ApiResponse<object>.ErrorResponse("Could not prepare a direct upload URL. Please try again."));
+
+        _db.ReportGenerationJobs.Add(new ReportGenerationJob
+        {
+            Id = jobId,
+            ClientId = client.ClientId,
+            BlobPath = blobPath,
+            FileName = body.FileName,
+            Status = ReportGenerationJobStatuses.Pending,
+            CorrelationId = jobId.ToString(),
+        });
+        await _db.SaveChangesAsync(cancellationToken);
+
+        var response = new ReportUploadInitResponse(jobId, writeUrl, blobPath, DateTimeOffset.UtcNow.Add(UploadWriteSasValidFor));
+        return Ok(ApiResponse<ReportUploadInitResponse>.SuccessResponse(response, "Upload URL created."));
+    }
+
+    /// <summary>POST /api/report-generator/uploads/{jobId}/complete — called once the browser's
+    /// direct PUT to blob finishes. Verifies the real committed blob size (the actual enforcement
+    /// point for this flow) before enqueueing anything.</summary>
+    [HttpPost("uploads/{jobId:guid}/complete")]
+    public async Task<IActionResult> CompleteUploadAsync(
+        Guid jobId, [FromBody] ReportUploadCompleteRequest body, CancellationToken cancellationToken)
+    {
+        var client = await ResolveClientAsync(cancellationToken);
+        if (client is null)
+            return BadRequest(ApiResponse<object>.ErrorResponse("Could not resolve the calling client."));
+
+        var job = await _db.ReportGenerationJobs.FirstOrDefaultAsync(j => j.Id == jobId, cancellationToken);
+        if (job is null || job.ClientId != client.ClientId)
+            return NotFound(ApiResponse<object>.ErrorResponse("Upload not found."));
+
+        if (job.Status != ReportGenerationJobStatuses.Pending)
+            return Conflict(ApiResponse<object>.ErrorResponse($"This upload is already {job.Status}."));
+
+        var actualSize = await _sasUriProvider.GetBlobSizeAsync(job.BlobPath, cancellationToken);
+        if (actualSize is null)
+            return BadRequest(ApiResponse<object>.ErrorResponse("No file was found at the expected upload location. Please upload again."));
+
+        if (actualSize > _uploadLimits.Value.MaxAsyncUploadBytes)
+        {
+            await _sasUriProvider.DeleteBlobAsync(job.BlobPath, cancellationToken);
+            job.Status = ReportGenerationJobStatuses.Failed;
+            job.ErrorMessage = $"Uploaded file ({actualSize} bytes) exceeds the {_uploadLimits.Value.MaxAsyncUploadBytes} byte limit.";
+            job.CompletedAt = DateTime.UtcNow;
+            await _db.SaveChangesAsync(cancellationToken);
+            return BadRequest(ApiResponse<object>.ErrorResponse(
+                $"Uploaded file exceeds the {_uploadLimits.Value.MaxAsyncUploadBytes / (1024 * 1024)} MB limit."));
+        }
+
+        job.RequestPayloadJson = JsonSerializer.Serialize(body);
+        await _db.SaveChangesAsync(cancellationToken);
+
+        await _jobQueue.EnqueueAsync(job.Id, cancellationToken);
+
+        return Accepted(ApiResponse<ReportUploadCompleteResponse>.SuccessResponse(
+            new ReportUploadCompleteResponse(job.Id, job.Status), "Upload confirmed — processing has started."));
+    }
+
+    /// <summary>GET /api/report-generator/jobs/{jobId} — status poll for a large-file job.
+    /// Client-scoped: filters by the caller's own resolved ClientId, same posture as
+    /// ReportValidationController's run-status endpoint.</summary>
+    [HttpGet("jobs/{jobId:guid}")]
+    public async Task<IActionResult> GetJobStatusAsync(Guid jobId, CancellationToken cancellationToken)
+    {
+        var client = await ResolveClientAsync(cancellationToken);
+        if (client is null)
+            return BadRequest(ApiResponse<object>.ErrorResponse("Could not resolve the calling client."));
+
+        var job = await _db.ReportGenerationJobs.FirstOrDefaultAsync(j => j.Id == jobId, cancellationToken);
+        if (job is null || job.ClientId != client.ClientId)
+            return NotFound(ApiResponse<object>.ErrorResponse("Job not found."));
+
+        GeneratedReportDto? result = null;
+        if (job.Status == ReportGenerationJobStatuses.Completed && !string.IsNullOrWhiteSpace(job.ResultJson))
+        {
+            result = JsonSerializer.Deserialize<GeneratedReportDto>(
+                job.ResultJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true, PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+        }
+
+        return Ok(ApiResponse<ReportGenerationJobStatusResponse>.SuccessResponse(
+            new ReportGenerationJobStatusResponse(job.Id, job.Status, result, job.ErrorMessage),
+            "Job status retrieved."));
+    }
+
+    private static string SanitizeFileName(string fileName)
+    {
+        var name = (fileName ?? string.Empty).Trim();
+        if (name.Length == 0) return "upload.bin";
+
+        name = name.Replace("\\", "_").Replace("/", "_");
+
+        var sb = new System.Text.StringBuilder(name.Length);
+        foreach (var c in name)
+        {
+            if (char.IsLetterOrDigit(c) || c == '.' || c == '_' || c == '-' || c == ' ')
+                sb.Append(c);
+        }
+
+        var cleaned = sb.ToString().Trim().Replace(' ', '_');
+        return cleaned.Length == 0 ? "upload.bin" : cleaned;
+    }
+
+    /// <summary>
     /// POST /api/report-generator/generate
     /// Accepts an Excel/CSV upload and an optional templateId (defaults to
     /// the engine's best rule-based match). Returns real, computed KPI/chart
     /// values — no AI touches this file at any point in the pipeline.
     /// </summary>
     [HttpPost("generate")]
-    [RequestSizeLimit(MaxFileSizeBytes)]
+    [RequestSizeLimit(UploadLimits.MaxUploadBytes)]
     public async Task<IActionResult> GenerateAsync(
         IFormFile file,
         [FromForm] string? templateId,
@@ -136,8 +303,9 @@ public class ReportGeneratorController : ControllerBase
         if (file is null || file.Length == 0)
             return BadRequest(ApiResponse<object>.ErrorResponse("No file uploaded."));
 
-        if (file.Length > MaxFileSizeBytes)
-            return BadRequest(ApiResponse<object>.ErrorResponse("File exceeds the 50 MB limit."));
+        if (file.Length > _uploadLimits.Value.MaxUploadBytes)
+            return BadRequest(ApiResponse<object>.ErrorResponse(
+                $"File exceeds the {_uploadLimits.Value.MaxUploadBytes / (1024 * 1024)} MB limit."));
 
         var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
         if (!AllowedExtensions.Contains(ext))
@@ -358,14 +526,15 @@ public class ReportGeneratorController : ControllerBase
     /// generate call once the caller has (optionally) chosen a candidate from this list.
     /// </summary>
     [HttpPost("verify-html-match")]
-    [RequestSizeLimit(MaxFileSizeBytes)]
+    [RequestSizeLimit(UploadLimits.MaxUploadBytes)]
     public async Task<IActionResult> VerifyHtmlMatchAsync(IFormFile file, CancellationToken cancellationToken)
     {
         if (file is null || file.Length == 0)
             return BadRequest(ApiResponse<object>.ErrorResponse("No file uploaded."));
 
-        if (file.Length > MaxFileSizeBytes)
-            return BadRequest(ApiResponse<object>.ErrorResponse("File exceeds the 50 MB limit."));
+        if (file.Length > _uploadLimits.Value.MaxUploadBytes)
+            return BadRequest(ApiResponse<object>.ErrorResponse(
+                $"File exceeds the {_uploadLimits.Value.MaxUploadBytes / (1024 * 1024)} MB limit."));
 
         var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
         if (!AllowedExtensions.Contains(ext))

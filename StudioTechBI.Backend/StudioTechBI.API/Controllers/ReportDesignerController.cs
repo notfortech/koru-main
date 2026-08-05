@@ -7,8 +7,11 @@ using StudioTechBI.Application.DTOs.Common;
 using StudioTechBI.Application.DTOs.Connectors;
 using StudioTechBI.Application.DTOs.ReportDesigner;
 using StudioTechBI.Application.DTOs.TemplateRefresh;
+using StudioTechBI.Application.Constants;
 using StudioTechBI.Application.Interfaces;
+using StudioTechBI.Application.Options;
 using StudioTechBI.Application.Utilities;
+using Microsoft.Extensions.Options;
 using StudioTechBI.Domain.Entities;
 using StudioTechBI.Infrastructure.Services;
 
@@ -23,7 +26,6 @@ namespace StudioTechBI.API.Controllers;
 [Authorize]
 public class ReportDesignerController : ControllerBase
 {
-    private const long MaxFileSizeBytes = 50 * 1024 * 1024; // 50 MB
     private static readonly string[] AllowedExtensions = { ".xlsx", ".xls", ".csv" };
     private const string ReportModelFeature = "report-model-generation";
 
@@ -46,6 +48,7 @@ public class ReportDesignerController : ControllerBase
     private readonly IPowerBiAssetWriter _powerBiAssetWriter;
     private readonly ILocalCreditLedgerService _localCredits;
     private readonly ILogger<ReportDesignerController> _logger;
+    private readonly IOptions<UploadLimitsOptions> _uploadLimits;
 
     public ReportDesignerController(
         IReportDesignerClient reportDesignerClient,
@@ -61,7 +64,8 @@ public class ReportDesignerController : ControllerBase
         ITemplateService templates,
         IPowerBiAssetWriter powerBiAssetWriter,
         ILocalCreditLedgerService localCredits,
-        ILogger<ReportDesignerController> logger)
+        ILogger<ReportDesignerController> logger,
+        IOptions<UploadLimitsOptions> uploadLimits)
     {
         _reportDesignerClient = reportDesignerClient;
         _bindDeployClient = bindDeployClient;
@@ -77,6 +81,7 @@ public class ReportDesignerController : ControllerBase
         _powerBiAssetWriter = powerBiAssetWriter;
         _localCredits = localCredits;
         _logger = logger;
+        _uploadLimits = uploadLimits;
     }
 
     /// <summary>
@@ -85,7 +90,7 @@ public class ReportDesignerController : ControllerBase
     /// File content is streamed and discarded — never stored.
     /// </summary>
     [HttpPost("extract-schema/excel")]
-    [RequestSizeLimit(MaxFileSizeBytes)]
+    [RequestSizeLimit(UploadLimits.MaxUploadBytes)]
     public async Task<IActionResult> ExtractExcelSchemaAsync(
         IFormFile file,
         CancellationToken cancellationToken)
@@ -93,8 +98,9 @@ public class ReportDesignerController : ControllerBase
         if (file is null || file.Length == 0)
             return BadRequest(ApiResponse<object>.ErrorResponse("No file uploaded."));
 
-        if (file.Length > MaxFileSizeBytes)
-            return BadRequest(ApiResponse<object>.ErrorResponse("File exceeds the 50 MB limit."));
+        if (file.Length > _uploadLimits.Value.MaxUploadBytes)
+            return BadRequest(ApiResponse<object>.ErrorResponse(
+                $"File exceeds the {_uploadLimits.Value.MaxUploadBytes / (1024 * 1024)} MB limit."));
 
         var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
         if (!AllowedExtensions.Contains(ext))

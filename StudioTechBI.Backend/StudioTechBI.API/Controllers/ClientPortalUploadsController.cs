@@ -1,7 +1,10 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
+using StudioTechBI.Application.Constants;
 using StudioTechBI.Application.Interfaces;
+using StudioTechBI.Application.Options;
 
 namespace StudioTechBI.API.Controllers;
 
@@ -10,26 +13,27 @@ namespace StudioTechBI.API.Controllers;
 [Authorize]
 public sealed class ClientPortalUploadsController : ControllerBase
 {
-    private const long MaxUploadBytes = 50L * 1024L * 1024L; // 50 MB
-
     private readonly IBlobStorageService _blobStorage;
     private readonly IClientResolver _clientResolver;
     private readonly IClientByCompanyQuery _clientByCompanyQuery;
     private readonly IClientService _clientService;
     private readonly ILogger<ClientPortalUploadsController> _logger;
+    private readonly IOptions<UploadLimitsOptions> _uploadLimits;
 
     public ClientPortalUploadsController(
         IBlobStorageService blobStorage,
         IClientResolver clientResolver,
         IClientByCompanyQuery clientByCompanyQuery,
         IClientService clientService,
-        ILogger<ClientPortalUploadsController> logger)
+        ILogger<ClientPortalUploadsController> logger,
+        IOptions<UploadLimitsOptions> uploadLimits)
     {
         _blobStorage = blobStorage;
         _clientResolver = clientResolver;
         _clientByCompanyQuery = clientByCompanyQuery;
         _clientService = clientService;
         _logger = logger;
+        _uploadLimits = uploadLimits;
     }
 
     private async Task<IReadOnlyList<string>> GetAccessibleClientCodesAsync(CancellationToken ct)
@@ -85,7 +89,7 @@ public sealed class ClientPortalUploadsController : ControllerBase
     /// Used by the client portal so Insights can read the latest uploaded dataset.
     /// </summary>
     [HttpPost("accounting-created")]
-    [RequestSizeLimit(MaxUploadBytes)]
+    [RequestSizeLimit(UploadLimits.MaxUploadBytes)]
     public async Task<IActionResult> UploadAccountingCreated(
         [FromForm] IFormFile? file,
         [FromForm] string? clientCode,
@@ -95,8 +99,8 @@ public sealed class ClientPortalUploadsController : ControllerBase
         if (file == null || file.Length <= 0)
             return BadRequest(new { success = false, message = "file is required." });
 
-        if (file.Length > MaxUploadBytes)
-            return BadRequest(new { success = false, message = $"file is too large (max {MaxUploadBytes} bytes)." });
+        if (file.Length > _uploadLimits.Value.MaxUploadBytes)
+            return BadRequest(new { success = false, message = $"file is too large (max {_uploadLimits.Value.MaxUploadBytes} bytes)." });
 
         var originalName = (file.FileName ?? "").Trim();
         if (string.IsNullOrWhiteSpace(originalName))

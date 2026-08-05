@@ -307,6 +307,7 @@ builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddAgentHostIntegration();
 builder.Services.AddReportDesignerIntegration();
 builder.Services.AddReportGeneratorIntegration();
+builder.Services.AddReportGenerationJobIntegration();
 builder.Services.AddReportValidationIntegration();
 builder.Services.AddBindDeployIntegration();
 builder.Services.AddTemplateRebindIntegration();
@@ -390,6 +391,14 @@ var app = builder.Build();
         string.IsNullOrWhiteSpace(bindDeployOpts.BaseUrl) ? "(not set)" : bindDeployOpts.BaseUrl,
         !string.IsNullOrWhiteSpace(bindDeployOpts.ApiKey),
         bindDeployOpts.TimeoutSeconds);
+
+    // Effective file-upload ceiling — this is the outer layer of a two-layer upload pipeline
+    // (ReportAgent.Api's own MaxInputFileBytes, in stbi_transformers, is the inner layer and
+    // logs its own effective value at its own startup). Must always stay <= the inner layer's
+    // value; drift between the two is now visible in logs on both sides instead of a mystery 502.
+    var uploadLimitsOpts = app.Services.GetRequiredService<IOptions<StudioTechBI.Application.Options.UploadLimitsOptions>>().Value;
+    startupLogger.LogInformation(
+        "Upload limits configured. MaxUploadBytes={MaxUploadBytes}", uploadLimitsOpts.MaxUploadBytes);
 }
 
 var enableSwaggerInAzure = app.Configuration.GetValue<bool>("Swagger:Enabled");
