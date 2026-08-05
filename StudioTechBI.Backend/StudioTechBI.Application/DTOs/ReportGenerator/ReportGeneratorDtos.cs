@@ -22,6 +22,14 @@ public record GeneratedReportDto(
     double? HtmlMatchConfidence = null,
     string? HtmlReport = null);
 
+/// <summary>Optional brand-color override for an HTML report's chrome.html, resolved from the
+/// frontend's existing theme picker (reportThemes.tsx). Hex strings or null per slot; null means
+/// "leave that slot at the template's own default". Passed alongside GeneratedReportDto to
+/// IHtmlReportAssemblyService.AssembleAsync -- deliberately not a GeneratedReportDto field, since
+/// the frontend already knows these values and round-tripping them back would be pointless.
+/// </summary>
+public record ReportThemeOverride(string? Primary, string? Dark, string? Light, string? Bg);
+
 /// <summary>One HTML report template candidate returned by ReportAgent.Api's
 /// /api/reports/match-html-template — the AI-assisted "Verify Template Match" flow's ranked
 /// list, before koru-main filters it down to >=0.85 confidence.</summary>

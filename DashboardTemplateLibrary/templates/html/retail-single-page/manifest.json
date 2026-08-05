@@ -38,5 +38,11 @@
     "resultsLoaded": "dashboard-ready",
     "kpiPrefix": "kpi-tile-",
     "chartPrefix": "chart-"
+  },
+  "themeSlots": {
+    "primary": "--brand",
+    "secondary": "--brand2",
+    "accent": "--brand3",
+    "background": "--bg"
   }
 }

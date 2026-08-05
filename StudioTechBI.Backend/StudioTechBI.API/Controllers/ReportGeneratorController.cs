@@ -119,6 +119,10 @@ public class ReportGeneratorController : ControllerBase
         [FromForm] string? htmlTemplateId,
         [FromForm] string? mode,
         [FromForm] bool isRefinement,
+        [FromForm] string? themePrimary,
+        [FromForm] string? themeDark,
+        [FromForm] string? themeLight,
+        [FromForm] string? themeBg,
         CancellationToken cancellationToken)
     {
         if (file is null || file.Length == 0)
@@ -143,7 +147,11 @@ public class ReportGeneratorController : ControllerBase
                     stream, file.FileName, templateId, filters, htmlTemplateId, correlationId, cancellationToken);
             }
 
-            result = await _htmlAssembly.AssembleAsync(result, cancellationToken);
+            ReportThemeOverride? themeOverride = null;
+            if (themePrimary is not null || themeDark is not null || themeLight is not null || themeBg is not null)
+                themeOverride = new ReportThemeOverride(themePrimary, themeDark, themeLight, themeBg);
+
+            result = await _htmlAssembly.AssembleAsync(result, themeOverride, cancellationToken);
 
             ClientDto? client = null;
             if (result.HtmlTemplateId is null)

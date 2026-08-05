@@ -79,6 +79,12 @@ public static class HtmlTemplateSeedCatalog
                 "resultsLoaded": "dashboard-ready",
                 "kpiPrefix": "kpi-tile-",
                 "chartPrefix": "chart-"
+              },
+              "themeSlots": {
+                "primary": "--brand",
+                "secondary": "--brand2",
+                "accent": "--brand3",
+                "background": "--bg"
               }
             }
             """,
@@ -140,7 +146,13 @@ public static class HtmlTemplateSeedCatalog
                 "kpiPrefix": "kpi-tile-",
                 "chartPrefix": "chart-"
               },
-              "notes": "Executive Summary and Expenditure Detail tabs are driven by real client data. The Funding & Sustainability tab needs a second, differently-shaped row table (funding by channel/funder) that the current single-table row export pipeline doesn't produce yet, so it renders with no data until that's added -- closest-match, not fully interactive, per the template library's own coverage policy."
+              "notes": "Executive Summary and Expenditure Detail tabs are driven by real client data. The Funding & Sustainability tab needs a second, differently-shaped row table (funding by channel/funder) that the current single-table row export pipeline doesn't produce yet, so it renders with no data until that's added -- closest-match, not fully interactive, per the template library's own coverage policy.",
+              "themeSlots": {
+                "primary": "--brand",
+                "secondary": "--brand-mid",
+                "accent": "--brand-light",
+                "background": "--bg"
+              }
             }
             """,
             ChromeResourceName: "HtmlTemplates.healthcare-fpna-multi-tab.chrome.html"),
