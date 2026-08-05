@@ -84,9 +84,7 @@ public class ClientPortalDashboardService : IClientPortalDashboardService
                 GrowthRate = Math.Round(growthRate, 1, MidpointRounding.AwayFromZero)
             },
             ChartData = chartData,
-            QuickActions = context.IsAccountantView
-                ? new[] { "Upload Report", "Create Proposal", "Request Documents", "Flag Issue" }
-                : new[] { "View Reports", "Upload Documents", "Accept Proposal", "Contact Accountant" }
+            QuickActions = BuildQuickActions(context)
         };
     }
 
@@ -97,10 +95,31 @@ public class ClientPortalDashboardService : IClientPortalDashboardService
             Role = context.IsAccountantView ? "accountant" : "client",
             Kpis = new DashboardKpisDto(),
             ChartData = Array.Empty<DashboardChartPointDto>(),
-            QuickActions = context.IsAccountantView
-                ? new[] { "Upload Report", "Create Proposal", "Request Documents", "Flag Issue" }
-                : new[] { "View Reports", "Upload Documents", "Accept Proposal", "Contact Accountant" }
+            QuickActions = BuildQuickActions(context)
         };
+    }
+
+    // "View Report Stats" is the only clickable one (see PortalDashboardPanel.tsx's
+    // handleQuickAction) -- everything else stays informational text, matching the original
+    // plain-string list this replaced.
+    private static IReadOnlyList<QuickActionDto> BuildQuickActions(DashboardRequestContext context)
+    {
+        return context.IsAccountantView
+            ? new[]
+            {
+                new QuickActionDto("Upload Report"),
+                new QuickActionDto("Create Proposal"),
+                new QuickActionDto("Request Documents"),
+                new QuickActionDto("Flag Issue"),
+            }
+            : new[]
+            {
+                new QuickActionDto("View Reports"),
+                new QuickActionDto("Upload Documents"),
+                new QuickActionDto("Accept Proposal"),
+                new QuickActionDto("Contact Accountant"),
+                new QuickActionDto("View Report Stats", "view-report-stats"),
+            };
     }
 
     private async Task<Dictionary<(int Y, int M), (decimal Rev, decimal Exp)>> GetMonthlyAggregatesAsync(
