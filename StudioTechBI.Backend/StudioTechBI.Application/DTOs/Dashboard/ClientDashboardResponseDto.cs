@@ -11,6 +11,11 @@ public class ClientDashboardResponseDto
     [JsonPropertyName("chartData")]
     public IReadOnlyList<DashboardChartPointDto> ChartData { get; set; } = Array.Empty<DashboardChartPointDto>();
 
+    /// <summary>Client view only (empty for accountant view, which keeps the financial
+    /// ChartData above) -- monthly count of ReportGenerationEvents, same window as ChartData.</summary>
+    [JsonPropertyName("reportGenerationChartData")]
+    public IReadOnlyList<ReportGenerationChartPointDto> ReportGenerationChartData { get; set; } = Array.Empty<ReportGenerationChartPointDto>();
+
     [JsonPropertyName("quickActions")]
     public IReadOnlyList<QuickActionDto> QuickActions { get; set; } = Array.Empty<QuickActionDto>();
 
@@ -53,6 +58,26 @@ public class DashboardKpisDto
     /// <summary>Month-over-month growth percentage (revenue-based; accountant may use profit when revenue baseline is zero — see service).</summary>
     [JsonPropertyName("growthRate")]
     public decimal GrowthRate { get; set; }
+
+    /// <summary>Client view only -- total ReportGenerationEvents count (all-time). Null for
+    /// accountant view, where "reports generated" isn't a single-client concept.</summary>
+    [JsonPropertyName("reportsGenerated")]
+    public int? ReportsGenerated { get; set; }
+
+    /// <summary>Client view only -- current AI credit balance (see LocalCreditLedgerService).
+    /// Null for accountant view.</summary>
+    [JsonPropertyName("aiCreditsRemaining")]
+    public int? AiCreditsRemaining { get; set; }
+}
+
+public class ReportGenerationChartPointDto
+{
+    /// <summary>ISO year-month (yyyy-MM), same convention as DashboardChartPointDto.Month.</summary>
+    [JsonPropertyName("month")]
+    public string Month { get; set; } = string.Empty;
+
+    [JsonPropertyName("count")]
+    public int Count { get; set; }
 }
 
 public class DashboardChartPointDto

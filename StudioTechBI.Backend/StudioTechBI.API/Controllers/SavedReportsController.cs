@@ -174,6 +174,32 @@ public class SavedReportsController : ControllerBase
             html, savedReport.PowerBiAssetId, savedReport.CreatedAt)));
     }
 
+    /// <summary>PATCH /api/saved-reports/{id} — renames the report. Title only; every other field
+    /// (source type, versions, blob) is untouched.</summary>
+    [HttpPatch("{id:guid}")]
+    public async Task<IActionResult> RenameAsync(Guid id, [FromBody] RenameSavedReportRequest request, CancellationToken cancellationToken)
+    {
+        var client = await ResolveClientAsync(cancellationToken);
+        if (client is null)
+            return BadRequest(ApiResponse<object>.ErrorResponse("A resolvable client_code claim is required."));
+
+        var title = request?.Title?.Trim();
+        if (string.IsNullOrWhiteSpace(title))
+            return BadRequest(ApiResponse<object>.ErrorResponse("Title is required."));
+        if (title.Length > 300)
+            return BadRequest(ApiResponse<object>.ErrorResponse("Title is too long (max 300 characters)."));
+
+        var savedReport = await _db.SavedReports.FirstOrDefaultAsync(r => r.Id == id, cancellationToken);
+        if (savedReport is null || savedReport.ClientId != client.ClientId)
+            return NotFound(ApiResponse<object>.ErrorResponse($"Saved report {id} not found."));
+
+        savedReport.Title = title;
+        savedReport.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync(cancellationToken);
+
+        return Ok(ApiResponse<object>.SuccessResponse(new { title }, "Saved report renamed."));
+    }
+
     /// <summary>DELETE /api/saved-reports/{id} — soft-delete (Status = Archived), same convention
     /// as Blueprint's own Active/Archived lifecycle. Never deletes the underlying blob.</summary>
     [HttpDelete("{id:guid}")]

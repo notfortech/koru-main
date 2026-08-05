@@ -18,10 +18,12 @@ public class ClientPortalDashboardService : IClientPortalDashboardService
     public const string ProposalPendingActionEventType = "Proposal.PendingAction";
 
     private readonly ApplicationDbContext _db;
+    private readonly ILocalCreditLedgerService _localCredits;
 
-    public ClientPortalDashboardService(ApplicationDbContext db)
+    public ClientPortalDashboardService(ApplicationDbContext db, ILocalCreditLedgerService localCredits)
     {
         _db = db;
+        _localCredits = localCredits;
     }
 
     public async Task<ClientDashboardResponseDto> GetDashboardAsync(
@@ -73,6 +75,34 @@ public class ClientPortalDashboardService : IClientPortalDashboardService
             ? ComputeGrowthPct(lastRev, prevRev)
             : ComputeGrowthPct(lastProfit, prevProfit);
 
+        // Single-client only -- "reports generated"/"AI credits" aren't accountant-firm-wide
+        // concepts, so both stay null and the chart stays empty outside client view.
+        int? reportsGenerated = null;
+        int? aiCreditsRemaining = null;
+        var reportGenerationChartData = (IReadOnlyList<ReportGenerationChartPointDto>)Array.Empty<ReportGenerationChartPointDto>();
+
+        if (context.IsClientView && clientIds.Count == 1)
+        {
+            var singleClientId = clientIds[0];
+
+            reportsGenerated = await _db.ReportGenerationEvents.AsNoTracking()
+                .CountAsync(e => !e.IsDeleted && e.ClientId == singleClientId, cancellationToken);
+
+            aiCreditsRemaining = await _localCredits.GetBalanceAsync(singleClientId, cancellationToken);
+
+            var reportGenRows = await _db.ReportGenerationEvents.AsNoTracking()
+                .Where(e => !e.IsDeleted
+                            && e.ClientId == singleClientId
+                            && e.CreatedAt >= chartStart
+                            && e.CreatedAt < rangeEnd)
+                .GroupBy(e => new { e.CreatedAt.Year, e.CreatedAt.Month })
+                .Select(g => new { g.Key.Year, g.Key.Month, Count = g.Count() })
+                .ToListAsync(cancellationToken);
+
+            var reportGenCounts = reportGenRows.ToDictionary(r => (r.Year, r.Month), r => r.Count);
+            reportGenerationChartData = BuildReportGenerationChartSeries(reportGenCounts, chartStart, months);
+        }
+
         return new ClientDashboardResponseDto
         {
             Role = context.IsAccountantView ? "accountant" : "client",
@@ -81,11 +111,35 @@ public class ClientPortalDashboardService : IClientPortalDashboardService
                 TotalBalance = totalBalance,
                 ActiveReports = activeReports,
                 Propositions = propositions,
-                GrowthRate = Math.Round(growthRate, 1, MidpointRounding.AwayFromZero)
+                GrowthRate = Math.Round(growthRate, 1, MidpointRounding.AwayFromZero),
+                ReportsGenerated = reportsGenerated,
+                AiCreditsRemaining = aiCreditsRemaining
             },
             ChartData = chartData,
+            ReportGenerationChartData = reportGenerationChartData,
             QuickActions = BuildQuickActions(context)
         };
+    }
+
+    private static IReadOnlyList<ReportGenerationChartPointDto> BuildReportGenerationChartSeries(
+        Dictionary<(int Y, int M), int> counts,
+        DateTime firstMonthStart,
+        int monthCount)
+    {
+        var list = new List<ReportGenerationChartPointDto>(monthCount);
+        var cursor = firstMonthStart;
+        for (var i = 0; i < monthCount; i++)
+        {
+            counts.TryGetValue((cursor.Year, cursor.Month), out var count);
+            list.Add(new ReportGenerationChartPointDto
+            {
+                Month = $"{cursor.Year:D4}-{cursor.Month:D2}",
+                Count = count
+            });
+            cursor = cursor.AddMonths(1);
+        }
+
+        return list;
     }
 
     private static ClientDashboardResponseDto EmptyResponse(DashboardRequestContext context)

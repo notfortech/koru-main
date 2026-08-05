@@ -13,6 +13,10 @@ public record SaveReportRequest(
 
 public record SaveReportResponse(Guid SavedReportId, int VersionNumber);
 
+/// <summary>Body for PATCH /api/saved-reports/{id} — renames the report only; no other field is
+/// editable through this endpoint.</summary>
+public record RenameSavedReportRequest(string Title);
+
 public record SavedReportSummaryDto(
     Guid SavedReportId,
     string Title,
