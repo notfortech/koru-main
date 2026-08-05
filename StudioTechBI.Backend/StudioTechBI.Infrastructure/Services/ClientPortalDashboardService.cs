@@ -153,9 +153,9 @@ public class ClientPortalDashboardService : IClientPortalDashboardService
         };
     }
 
-    // "View Report Stats" is the only clickable one (see PortalDashboardPanel.tsx's
-    // handleQuickAction) -- everything else stays informational text, matching the original
-    // plain-string list this replaced.
+    // "View Saved Reports"/"Buy AI Credits" are clickable (see PortalDashboardPanel.tsx's
+    // handleQuickAction) -- Upload Documents/Accept Proposal stay informational text, matching
+    // the original plain-string list this replaced.
     private static IReadOnlyList<QuickActionDto> BuildQuickActions(DashboardRequestContext context)
     {
         return context.IsAccountantView
@@ -168,11 +168,10 @@ public class ClientPortalDashboardService : IClientPortalDashboardService
             }
             : new[]
             {
-                new QuickActionDto("View Reports"),
                 new QuickActionDto("Upload Documents"),
                 new QuickActionDto("Accept Proposal"),
-                new QuickActionDto("Contact Accountant"),
-                new QuickActionDto("View Report Stats", "view-report-stats"),
+                new QuickActionDto("View Saved Reports", "view-saved-reports"),
+                new QuickActionDto("Buy AI Credits", "buy-ai-credits"),
             };
     }
 
@@ -260,8 +259,12 @@ public class ClientPortalDashboardService : IClientPortalDashboardService
                 .CountAsync(cancellationToken);
         }
 
-        return await _db.PowerBiAssets.AsNoTracking()
-            .Where(a => a.IsActive == true && a.ClientId != null && clientIds.Contains(a.ClientId!.Value))
+        // Client view: this tile is labeled "Saved Reports" on the frontend (see
+        // PortalDashboardPanel.tsx's role-based label) -- Power BI asset count was the right
+        // metric back when Power BI embeds were the primary report format; now that HTML/Saved
+        // Reports is primary, the client's own SavedReports list is the more meaningful count.
+        return await _db.SavedReports.AsNoTracking()
+            .Where(r => !r.IsDeleted && r.Status != "Archived" && clientIds.Contains(r.ClientId))
             .CountAsync(cancellationToken);
     }
 
