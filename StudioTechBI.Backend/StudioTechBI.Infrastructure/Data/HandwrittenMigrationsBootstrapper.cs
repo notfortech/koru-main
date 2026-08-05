@@ -499,6 +499,14 @@ public static class HandwrittenMigrationsBootstrapper
             END
         ", cancellationToken);
 
+        await ExecAsync(context, logger, "CustomReportRequests.BlobPath/ExportedToBlobAtUtc columns", @"
+            IF COL_LENGTH('dbo.CustomReportRequests', 'BlobPath') IS NULL
+                ALTER TABLE [dbo].[CustomReportRequests] ADD [BlobPath] NVARCHAR(1000) NULL;
+
+            IF COL_LENGTH('dbo.CustomReportRequests', 'ExportedToBlobAtUtc') IS NULL
+                ALTER TABLE [dbo].[CustomReportRequests] ADD [ExportedToBlobAtUtc] DATETIME2 NULL;
+        ", cancellationToken);
+
         // ── Report generation events (Report Stats: deterministic vs. AI-assisted counts) ───────
         await ExecAsync(context, logger, "ReportGenerationEvents", @"
             IF OBJECT_ID('dbo.ReportGenerationEvents', 'U') IS NULL

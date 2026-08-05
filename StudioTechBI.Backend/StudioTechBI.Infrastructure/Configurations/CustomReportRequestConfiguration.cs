@@ -17,6 +17,7 @@ public class CustomReportRequestConfiguration : IEntityTypeConfiguration<CustomR
         builder.Property(e => e.SchemaSnapshotJson).IsRequired().HasColumnType("nvarchar(max)");
         builder.Property(e => e.SourceFileName).HasMaxLength(500);
         builder.Property(e => e.FulfilledByEmail).HasMaxLength(320);
+        builder.Property(e => e.BlobPath).HasMaxLength(1000);
         builder.Property(e => e.CreatedBy).HasMaxLength(500);
         builder.Property(e => e.UpdatedBy).HasMaxLength(500);
 

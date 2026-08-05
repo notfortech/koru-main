@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -6,6 +7,7 @@ using Microsoft.EntityFrameworkCore;
 using StudioTechBI.Application.DTOs.Common;
 using StudioTechBI.Application.DTOs.ReportDesigner;
 using StudioTechBI.Application.DTOs.ReportRequests;
+using StudioTechBI.Application.Interfaces;
 using StudioTechBI.Domain.Entities;
 using StudioTechBI.Infrastructure.Data;
 
@@ -30,11 +32,14 @@ public class AdminReportRequestsController : ControllerBase
     };
 
     private readonly ApplicationDbContext _db;
+    private readonly IBlobStorageService _blobStorage;
     private readonly ILogger<AdminReportRequestsController> _logger;
 
-    public AdminReportRequestsController(ApplicationDbContext db, ILogger<AdminReportRequestsController> logger)
+    public AdminReportRequestsController(
+        ApplicationDbContext db, IBlobStorageService blobStorage, ILogger<AdminReportRequestsController> logger)
     {
         _db = db;
+        _blobStorage = blobStorage;
         _logger = logger;
     }
 
@@ -47,7 +52,8 @@ public class AdminReportRequestsController : ControllerBase
 
         var items = await query
             .Select(r => new CustomReportRequestSummaryDto(
-                r.Id, r.Status, r.RequestedByEmail, r.SourceFileName, r.CreatedAt, r.FulfilledAtUtc))
+                r.Id, r.Status, r.RequestedByEmail, r.SourceFileName, r.CreatedAt, r.FulfilledAtUtc,
+                r.ExportedToBlobAtUtc))
             .ToListAsync(cancellationToken);
 
         return Ok(ApiResponse<List<CustomReportRequestSummaryDto>>.SuccessResponse(items));
@@ -73,9 +79,48 @@ public class AdminReportRequestsController : ControllerBase
         var dto = new CustomReportRequestDetailDto(
             entity.Id, entity.ClientId, entity.Status, entity.RequestedByEmail, entity.Notes, schema,
             entity.SourceFileName, entity.CreatedAt, entity.FulfilledSavedReportId, entity.FulfilledAtUtc,
-            entity.FulfilledByEmail);
+            entity.FulfilledByEmail, entity.BlobPath, entity.ExportedToBlobAtUtc);
 
         return Ok(ApiResponse<CustomReportRequestDetailDto>.SuccessResponse(dto));
+    }
+
+    /// <summary>
+    /// POST /api/admin/report-requests/{id}/export-to-blob
+    /// Writes the request's SchemaSnapshotJson to blob storage on demand — the hand-off point for
+    /// feeding a data shape with no matching template into the template-generating agent.
+    /// Deliberately on-demand rather than scheduled: staff triggers it per-request once they've
+    /// actually decided to act on it, same "manual, no new automation" posture as fulfillment.
+    /// Re-exporting (calling this again on an already-exported request) simply overwrites the same
+    /// blob path and refreshes the timestamp.
+    /// </summary>
+    [HttpPost("{id:guid}/export-to-blob")]
+    public async Task<IActionResult> ExportToBlobAsync(Guid id, CancellationToken cancellationToken)
+    {
+        var entity = await _db.CustomReportRequests.FirstOrDefaultAsync(r => r.Id == id, cancellationToken);
+        if (entity is null)
+            return NotFound(ApiResponse<object>.ErrorResponse($"Report request {id} not found."));
+
+        var blobPath = $"{entity.ClientId}/custom-report-requests/{entity.Id}/schema-snapshot.json";
+        try
+        {
+            await using var stream = new MemoryStream(Encoding.UTF8.GetBytes(entity.SchemaSnapshotJson));
+            await _blobStorage.UploadClientBlobAsync(blobPath, stream, "application/json", cancellationToken);
+        }
+        catch (InvalidOperationException ex)
+        {
+            _logger.LogWarning(ex, "Blob export failed for report request {RequestId} — blob storage not configured.", id);
+            return StatusCode(502, ApiResponse<object>.ErrorResponse("Blob storage is not configured."));
+        }
+
+        entity.BlobPath = blobPath;
+        entity.ExportedToBlobAtUtc = DateTime.UtcNow;
+        await _db.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation(
+            "CustomReportRequest.ExportedToBlob RequestId={RequestId} BlobPath={BlobPath}", id, blobPath);
+
+        var response = new ExportCustomReportRequestToBlobResponse(blobPath, entity.ExportedToBlobAtUtc.Value);
+        return Ok(ApiResponse<ExportCustomReportRequestToBlobResponse>.SuccessResponse(response, "Schema exported to blob storage."));
     }
 
     /// <summary>
