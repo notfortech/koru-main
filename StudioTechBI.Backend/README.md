@@ -293,6 +293,45 @@ az webapp deployment source config-zip --resource-group YOUR_RG --name YOUR_APP 
 - `ConnectionStrings__DefaultConnection`
 - `JwtSettings__SecretKey`
 - `ASPNETCORE_ENVIRONMENT` (Production)
+- `UploadLimits__MaxUploadBytes` (optional, default 50 MB) — sync-path/routing threshold for
+  file uploads (Report Generator, Report Designer, Dashboard Template Generator, Report
+  Validation, admin template upload). Below this, uploads go through the original fast
+  synchronous flow unchanged.
+- `UploadLimits__MaxAsyncUploadBytes` (optional, default 500 MB) — hard ceiling for the
+  Report Generator's direct-to-blob async upload path (see "Large-file upload" below). Must
+  stay `<=` `ReportAgent:MaxInputFileBytes` on the ReportAgent.Api side (stbi_transformers) or
+  a large job will fail late, inside the worker, instead of at upload time.
+
+### Large-file upload (direct-to-blob + async processing) — deploy-time prerequisites
+
+The Report Generator's large-file path (`POST /api/report-generator/uploads/init` +
+`.../{jobId}/complete`) uploads straight from the browser to Azure Blob Storage using a
+short-lived SAS URL — the app tier never buffers the file. Two things must be configured on
+the **Storage Account** itself for this to work; neither is something the application code
+can set up on its own:
+
+1. **CORS rules on the Storage Account**, so a browser on the frontend's origin(s) is allowed
+   to `PUT` directly to a blob URL. Without this, every direct upload fails with a CORS error
+   in the browser console even though the SAS URL itself is valid — this is the most common
+   silent failure point for this pattern in practice. Minimum required rule (Storage Account →
+   Settings → Resource sharing (CORS) → Blob service):
+   - Allowed origins: the frontend's deployed origin(s) (e.g. `https://app.studiotechbi.com`)
+   - Allowed methods: `PUT`, `OPTIONS`
+   - Allowed headers: `x-ms-*`, `Content-Type`, `Content-Length`
+   - Exposed headers: `x-ms-*`
+   - Max age: a few hours is fine (e.g. `3600`)
+2. **A blob lifecycle management policy** on the `clients` container's
+   `*/report-generator/uploads/*` prefix, to clean up an orphaned upload — the case where a
+   browser's direct PUT succeeds but the "confirm complete" call never arrives (closed tab,
+   dropped connection, network failure). A simple "delete blobs under this prefix N days after
+   last modified" rule (Storage Account → Data management → Lifecycle management) is enough;
+   no application code sweeps these on its own. `ReportGenerationJob` rows for an orphaned
+   upload just stay `Pending` forever — harmless, but worth knowing they won't self-clean
+   either (a low-priority admin cleanup query, not built as part of this feature).
+
+Also requires the **Azure Storage Queue** service to be reachable on the same storage account
+already configured via `AzureBlob:ConnectionString` — `ReportGenerationJobQueue` creates its
+own queue (`report-generation-jobs`) on first use, no manual provisioning needed there.
 
 ## Common Commands
 

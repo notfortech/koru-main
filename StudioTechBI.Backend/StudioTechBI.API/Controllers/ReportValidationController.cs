@@ -3,11 +3,14 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
+using StudioTechBI.Application.Constants;
 using StudioTechBI.Application.DTOs.Admin;
 using StudioTechBI.Application.DTOs.Common;
 using StudioTechBI.Application.DTOs.ReportGenerator;
 using StudioTechBI.Application.DTOs.ReportValidation;
 using StudioTechBI.Application.Interfaces;
+using StudioTechBI.Application.Options;
 using StudioTechBI.Domain.Entities;
 using StudioTechBI.Infrastructure.Data;
 
@@ -23,7 +26,6 @@ namespace StudioTechBI.API.Controllers;
 [Authorize]
 public class ReportValidationController : ControllerBase
 {
-    private const long MaxFileSizeBytes = 50 * 1024 * 1024; // 50 MB, same cap as report-generator
     private static readonly string[] AllowedExtensions = { ".xlsx", ".csv" };
 
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -37,19 +39,22 @@ public class ReportValidationController : ControllerBase
     private readonly IReportValidationQueue _queue;
     private readonly IReportValidationScratchStorageService _scratchStorage;
     private readonly ILogger<ReportValidationController> _logger;
+    private readonly IOptions<UploadLimitsOptions> _uploadLimits;
 
     public ReportValidationController(
         ApplicationDbContext db,
         IClientService clientService,
         IReportValidationQueue queue,
         IReportValidationScratchStorageService scratchStorage,
-        ILogger<ReportValidationController> logger)
+        ILogger<ReportValidationController> logger,
+        IOptions<UploadLimitsOptions> uploadLimits)
     {
         _db = db;
         _clientService = clientService;
         _queue = queue;
         _scratchStorage = scratchStorage;
         _logger = logger;
+        _uploadLimits = uploadLimits;
     }
 
     /// <summary>
@@ -59,7 +64,7 @@ public class ReportValidationController : ControllerBase
     /// actually looking at. Returns 202 with a runId to poll.
     /// </summary>
     [HttpPost("run")]
-    [RequestSizeLimit(MaxFileSizeBytes)]
+    [RequestSizeLimit(UploadLimits.MaxUploadBytes)]
     public async Task<IActionResult> Run(
         IFormFile file,
         [FromForm] string? templateId,
@@ -79,8 +84,9 @@ public class ReportValidationController : ControllerBase
         if (file is null || file.Length == 0)
             return BadRequest(ApiResponse<object>.ErrorResponse("No file uploaded."));
 
-        if (file.Length > MaxFileSizeBytes)
-            return BadRequest(ApiResponse<object>.ErrorResponse("File exceeds the 50 MB limit."));
+        if (file.Length > _uploadLimits.Value.MaxUploadBytes)
+            return BadRequest(ApiResponse<object>.ErrorResponse(
+                $"File exceeds the {_uploadLimits.Value.MaxUploadBytes / (1024 * 1024)} MB limit."));
 
         var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
         if (!AllowedExtensions.Contains(ext))

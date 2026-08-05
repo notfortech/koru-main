@@ -6,6 +6,7 @@ using Polly.Extensions.Http;
 using Polly;
 using StudioTechBI.Application.Interfaces;
 using StudioTechBI.Application.Models;
+using StudioTechBI.Application.Options;
 using StudioTechBI.Domain.Interfaces;
 using StudioTechBI.Infrastructure.Clients;
 using StudioTechBI.Infrastructure.Connectors;
@@ -64,6 +65,8 @@ public static class DependencyInjection
         services.AddScoped<IHtmlReportAssemblyService, HtmlReportAssemblyService>();
         services.AddScoped<ILocalCreditLedgerService, LocalCreditLedgerService>();
         services.AddHostedService<HtmlTemplateRegistrySyncService>();
+
+        services.Configure<UploadLimitsOptions>(configuration.GetSection(UploadLimitsOptions.SectionName));
 
         services.Configure<InsightEngineOptions>(configuration.GetSection(InsightEngineOptions.SectionName));
         services.AddHttpClient<InsightEngineClient>()

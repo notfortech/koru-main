@@ -12,6 +12,13 @@ public static class ExcelSchemaExtractor
     private const int TypeInferenceSampleRows = 50;
     private const int MaxBufferedBytes = 50 * 1024 * 1024;
 
+    /// <summary>Row-counting stops here rather than reading every remaining row to the end of the
+    /// file. A file with 1,000,000 rows would otherwise cost 1,000,000 synchronous reader.Read()
+    /// calls just to produce a count that's already forwarded downstream as "approximateRowCount"
+    /// (see ReportDesignerClient.cs) and rendered as a plain informational label -- nothing
+    /// consumes an exact count, so there's no reason to pay for one on a large file.</summary>
+    private const int MaxRowCountScan = 50_000;
+
     /// <summary>
     /// Returns a <see cref="TableSchemaDto"/> for the first worksheet. Reads up to
     /// <see cref="TypeInferenceSampleRows"/> data rows to infer column types — those row
@@ -52,7 +59,7 @@ public static class ExcelSchemaExtractor
         foreach (var h in headers) typeSamples[h] = new List<string>();
 
         var rowCount = 0;
-        while (reader.Read())
+        while (rowCount < MaxRowCountScan && reader.Read())
         {
             cancellationToken.ThrowIfCancellationRequested();
             rowCount++;

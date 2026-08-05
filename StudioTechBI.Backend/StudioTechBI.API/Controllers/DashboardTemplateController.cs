@@ -8,8 +8,10 @@ using StudioTechBI.Application.DTOs.Common;
 using StudioTechBI.Application.DTOs.DashboardTemplate;
 using StudioTechBI.Application.DTOs.ReportDesigner;
 using StudioTechBI.Application.DTOs.TemplateRefresh;
+using StudioTechBI.Application.Constants;
 using StudioTechBI.Application.Interfaces;
 using StudioTechBI.Application.Models;
+using StudioTechBI.Application.Options;
 using StudioTechBI.Application.Utilities;
 using StudioTechBI.Domain.Entities;
 
@@ -37,7 +39,6 @@ namespace StudioTechBI.API.Controllers;
 [Authorize]
 public class DashboardTemplateController : ControllerBase
 {
-    private const long MaxFileSizeBytes = 50 * 1024 * 1024; // 50 MB
     private static readonly string[] AllowedExtensions = { ".xlsx", ".xls" };
     private static readonly TimeSpan SasValidFor = TimeSpan.FromHours(1);
 
@@ -63,6 +64,7 @@ public class DashboardTemplateController : ControllerBase
     private readonly DashboardTemplateOptions _options;
     private readonly IOptionsMonitor<TemplateCatalogOptions> _catalogOptions;
     private readonly ILogger<DashboardTemplateController> _logger;
+    private readonly IOptions<UploadLimitsOptions> _uploadLimits;
 
     public DashboardTemplateController(
         IReportDesignerClient reportDesignerClient,
@@ -82,7 +84,8 @@ public class DashboardTemplateController : ControllerBase
         IAuditLogService auditLog,
         IOptions<DashboardTemplateOptions> options,
         IOptionsMonitor<TemplateCatalogOptions> catalogOptions,
-        ILogger<DashboardTemplateController> logger)
+        ILogger<DashboardTemplateController> logger,
+        IOptions<UploadLimitsOptions> uploadLimits)
     {
         _reportDesignerClient = reportDesignerClient;
         _blendService = blendService;
@@ -102,6 +105,7 @@ public class DashboardTemplateController : ControllerBase
         _options = options.Value;
         _catalogOptions = catalogOptions;
         _logger = logger;
+        _uploadLimits = uploadLimits;
     }
 
     /// <summary>Best-effort — a logging failure must never break the actual response.</summary>
@@ -166,8 +170,9 @@ public class DashboardTemplateController : ControllerBase
         if (file is null || file.Length == 0)
             return new ContextResolution(null, BadRequest(ApiResponse<object>.ErrorResponse("No file uploaded.")));
 
-        if (file.Length > MaxFileSizeBytes)
-            return new ContextResolution(null, BadRequest(ApiResponse<object>.ErrorResponse("File exceeds the 50 MB limit.")));
+        if (file.Length > _uploadLimits.Value.MaxUploadBytes)
+            return new ContextResolution(null, BadRequest(ApiResponse<object>.ErrorResponse(
+                $"File exceeds the {_uploadLimits.Value.MaxUploadBytes / (1024 * 1024)} MB limit.")));
 
         var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
         if (!AllowedExtensions.Contains(ext))
@@ -275,7 +280,7 @@ public class DashboardTemplateController : ControllerBase
     /// the caller re-copying its JSON by hand). Exactly one of the two must be supplied.
     /// </summary>
     [HttpPost("generate")]
-    [RequestSizeLimit(MaxFileSizeBytes)]
+    [RequestSizeLimit(UploadLimits.MaxUploadBytes)]
     public async Task<IActionResult> GenerateAsync(
         IFormFile file,
         [FromForm] string clientId,
@@ -501,7 +506,7 @@ public class DashboardTemplateController : ControllerBase
     /// "contact support" message to the caller.
     /// </summary>
     [HttpPost("verify-match")]
-    [RequestSizeLimit(MaxFileSizeBytes)]
+    [RequestSizeLimit(UploadLimits.MaxUploadBytes)]
     public async Task<IActionResult> VerifyMatchAsync(
         IFormFile file,
         [FromForm] string clientId,

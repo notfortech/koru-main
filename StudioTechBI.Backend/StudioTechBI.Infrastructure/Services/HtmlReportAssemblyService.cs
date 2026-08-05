@@ -46,15 +46,32 @@ public class HtmlReportAssemblyService : IHtmlReportAssemblyService
         if (string.IsNullOrWhiteSpace(report.HtmlTemplateId))
             return report;
 
-        // A seed-catalog template's chrome.html ships as an embedded resource with this assembly
-        // (see HtmlTemplateSeedCatalog) rather than living under this service's default
-        // "clients"/templates/html/<id>/ blob convention below.
-        var seed = HtmlTemplateSeedCatalog.Find(report.HtmlTemplateId);
+        // Blob is always tried first, regardless of whether this id also has a built-in seed
+        // (HtmlTemplateSeedCatalog) -- the master "clients"/templates/html/<id>/ blob copy is the
+        // source of truth once it exists, so an author can update a template by uploading a new
+        // blob, with zero koru-main code change or redeploy. The seed catalog is only a
+        // fallback-of-last-resort (a cold/fresh environment that hasn't synced yet, or a
+        // transient blob outage) -- it must never permanently shadow a correctly-uploaded
+        // template the way an unconditional seed-first check would.
+        string? chromeHtml = await TryDownloadTextAsync(
+            $"{TemplatesBasePath}/{report.HtmlTemplateId}/{ChromeFileName}", cancellationToken);
+        string? manifestJson = chromeHtml is null
+            ? null
+            : await TryDownloadTextAsync(
+                $"{TemplatesBasePath}/{report.HtmlTemplateId}/{ManifestFileName}", cancellationToken);
 
-        string chromeHtml;
-        string? manifestJson;
-        if (seed is not null)
+        if (chromeHtml is null)
         {
+            var seed = HtmlTemplateSeedCatalog.Find(report.HtmlTemplateId);
+            if (seed is null)
+            {
+                _logger.LogWarning(
+                    "HtmlReportAssembly.ChromeNotFound TemplateId={TemplateId} — no blob copy and no seed fallback " +
+                    "found; falling back to the existing KPI/chart rendering for this report.",
+                    report.HtmlTemplateId);
+                return report;
+            }
+
             await using var seedStream = HtmlTemplateSeedCatalog.OpenChromeHtml(seed);
             if (seedStream is null)
             {
@@ -65,51 +82,13 @@ public class HtmlReportAssemblyService : IHtmlReportAssemblyService
                 return report;
             }
 
+            _logger.LogInformation(
+                "HtmlReportAssembly.SeedFallback TemplateId={TemplateId} — no blob copy found, serving the " +
+                "built-in seed template instead.", report.HtmlTemplateId);
+
             using var seedReader = new StreamReader(seedStream, Encoding.UTF8);
             chromeHtml = await seedReader.ReadToEndAsync(cancellationToken);
             manifestJson = seed.ManifestJson;
-        }
-        else
-        {
-            var chromePath = $"{TemplatesBasePath}/{report.HtmlTemplateId}/{ChromeFileName}";
-
-            await using var chromeStream = await _blobStorage.DownloadBlobAsync(chromePath, cancellationToken);
-            if (chromeStream is null)
-            {
-                _logger.LogWarning(
-                    "HtmlReportAssembly.ChromeNotFound TemplateId={TemplateId} Path={Path} — falling back to the " +
-                    "existing KPI/chart rendering for this report.",
-                    report.HtmlTemplateId, chromePath);
-                return report;
-            }
-
-            using var reader = new StreamReader(chromeStream, Encoding.UTF8);
-            chromeHtml = await reader.ReadToEndAsync(cancellationToken);
-
-            // Manifest is only needed for theming (below) -- a missing/unreadable one just means
-            // no theme override happens, it must never block rendering the chrome itself.
-            var manifestPath = $"{TemplatesBasePath}/{report.HtmlTemplateId}/{ManifestFileName}";
-            try
-            {
-                await using var manifestStream = await _blobStorage.DownloadBlobAsync(manifestPath, cancellationToken);
-                if (manifestStream is null)
-                {
-                    manifestJson = null;
-                }
-                else
-                {
-                    using var manifestReader = new StreamReader(manifestStream, Encoding.UTF8);
-                    manifestJson = await manifestReader.ReadToEndAsync(cancellationToken);
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex,
-                    "HtmlReportAssembly.ManifestFetchFailed TemplateId={TemplateId} Path={Path} — theme override " +
-                    "skipped for this report, chrome rendering is unaffected.",
-                    report.HtmlTemplateId, manifestPath);
-                manifestJson = null;
-            }
         }
 
         chromeHtml = ApplyThemeOverride(report.HtmlTemplateId, chromeHtml, manifestJson, themeOverride);
@@ -156,6 +135,27 @@ public class HtmlReportAssemblyService : IHtmlReportAssemblyService
         }
 
         return report with { HtmlReport = html };
+    }
+
+    /// <summary>Downloads and reads a blob as UTF-8 text, or null if it doesn't exist / can't be
+    /// read -- callers treat a null result as "try the next source" (the seed fallback), never as
+    /// a hard failure.</summary>
+    private async Task<string?> TryDownloadTextAsync(string blobPath, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await using var stream = await _blobStorage.DownloadBlobAsync(blobPath, cancellationToken);
+            if (stream is null)
+                return null;
+
+            using var reader = new StreamReader(stream, Encoding.UTF8);
+            return await reader.ReadToEndAsync(cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "HtmlReportAssembly.BlobFetchFailed Path={Path}", blobPath);
+            return null;
+        }
     }
 
     // Two-level indirection: VisualTheme's 4 hex fields map onto 4 fixed semantic slot names in

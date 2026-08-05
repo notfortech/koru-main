@@ -75,3 +75,37 @@ public record ReportChartSeriesDto(
     List<double> Values,
     string? Unit = null,
     List<double>? PercentOfTotal = null);
+
+// ── Large-file upload (direct-to-blob + durable async processing, Phase 1) ─────────────────────
+
+public record ReportUploadInitRequest(string FileName);
+
+public record ReportUploadInitResponse(
+    Guid JobId,
+    string WriteUrl,
+    string BlobPath,
+    DateTimeOffset ExpiresAtUtc);
+
+/// <summary>Same optional fields the synchronous /generate endpoint already accepts as form
+/// fields, carried here as a JSON body since no file rides along on this call — the file already
+/// landed in blob during the direct upload step.</summary>
+public record ReportUploadCompleteRequest(
+    string? TemplateId,
+    string? Filters,
+    string? HtmlTemplateId,
+    string? Mode,
+    bool IsRefinement,
+    string? ThemePrimary,
+    string? ThemeDark,
+    string? ThemeLight,
+    string? ThemeBg);
+
+public record ReportUploadCompleteResponse(Guid JobId, string Status);
+
+/// <summary>Poll response for GET /api/report-generator/jobs/{jobId}. Result is populated only
+/// once Status is Completed; ErrorMessage only once Failed.</summary>
+public record ReportGenerationJobStatusResponse(
+    Guid JobId,
+    string Status,
+    GeneratedReportDto? Result,
+    string? ErrorMessage);

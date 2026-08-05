@@ -21,6 +21,19 @@ public interface IReportGeneratorClient
         string correlationId,
         CancellationToken cancellationToken = default);
 
+    /// <summary>Large-file path: sends a short-lived blob read-SAS URL instead of the raw file
+    /// bytes, so the app tier never buffers the file a second time on this internal hop. Used by
+    /// ReportGenerationJobBackgroundService for jobs that went through the direct-to-blob upload
+    /// flow; the small/synchronous path keeps using GenerateReportAsync unchanged.</summary>
+    Task<GeneratedReportDto> GenerateReportFromUrlAsync(
+        string fileUrl,
+        string fileName,
+        string? templateId,
+        string? filtersJson,
+        string? htmlTemplateId,
+        string correlationId,
+        CancellationToken cancellationToken = default);
+
     /// <summary>Full ranked HTML template candidate list (profiling + matching only, no KPI/chart
     /// computation) — backs the AI-assisted "Verify Template Match" flow.</summary>
     Task<List<HtmlTemplateCandidateDto>> MatchHtmlTemplateAsync(

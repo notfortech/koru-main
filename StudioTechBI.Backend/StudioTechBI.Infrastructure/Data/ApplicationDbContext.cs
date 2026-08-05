@@ -64,6 +64,9 @@ public class ApplicationDbContext : DbContext
     public DbSet<SavedReportVersion> SavedReportVersions => Set<SavedReportVersion>();
     public DbSet<CustomReportRequest> CustomReportRequests => Set<CustomReportRequest>();
 
+    // Large-file Report Generator uploads (direct-to-blob + durable async processing)
+    public DbSet<ReportGenerationJob> ReportGenerationJobs => Set<ReportGenerationJob>();
+
     // Report Stats + AI credit purchase requests
     public DbSet<ReportGenerationEvent> ReportGenerationEvents => Set<ReportGenerationEvent>();
     public DbSet<CreditPurchaseRequest> CreditPurchaseRequests => Set<CreditPurchaseRequest>();

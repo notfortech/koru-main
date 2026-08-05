@@ -91,6 +91,7 @@ public sealed class HtmlTemplateRegistrySyncService : BackgroundService
             }
         }
 
+        var blobResolvedCount = 0;
         if (templateIds is { Count: > 0 })
         {
             foreach (var id in templateIds)
@@ -109,6 +110,7 @@ public sealed class HtmlTemplateRegistrySyncService : BackgroundService
                 using var reader = new StreamReader(manifestStream, Encoding.UTF8);
                 var manifestJson = await reader.ReadToEndAsync(cancellationToken);
                 manifestsById[id] = new HtmlTemplateManifestPushDto(id, manifestJson);
+                blobResolvedCount++;
             }
         }
 
@@ -122,6 +124,13 @@ public sealed class HtmlTemplateRegistrySyncService : BackgroundService
         await reportGeneratorClient.PushHtmlTemplateRegistryAsync(
             manifests, correlationId: Guid.NewGuid().ToString("N"), cancellationToken);
 
-        _logger.LogInformation("HtmlTemplateRegistrySync.Pushed Count={Count}", manifests.Count);
+        // A future onboarding mistake (right id added to index.json, but the manifest/chrome files
+        // land in the wrong container/path) is otherwise invisible here -- everything just quietly
+        // falls back to whatever seed exists, or drops out of the registry. Surfacing the
+        // blob-vs-seed split every cycle turns that into a visible, at-a-glance log signal instead.
+        var seedFallbackCount = manifestsById.Count - blobResolvedCount;
+        _logger.LogInformation(
+            "HtmlTemplateRegistrySync.Pushed Count={Count} BlobResolved={BlobResolved} SeedFallback={SeedFallback}",
+            manifests.Count, blobResolvedCount, seedFallbackCount);
     }
 }

@@ -142,6 +142,92 @@ public class ReportGeneratorClient : IReportGeneratorClient
         }
     }
 
+    public async Task<GeneratedReportDto> GenerateReportFromUrlAsync(
+        string fileUrl,
+        string fileName,
+        string? templateId,
+        string? filtersJson,
+        string? htmlTemplateId,
+        string correlationId,
+        CancellationToken cancellationToken = default)
+    {
+        RequireBaseAddress();
+
+        // No raw bytes cross this call at all -- only a short-lived SAS URL koru-main already
+        // minted. ReportAgent.Api's own C# layer fetches it; the Python subprocess still never
+        // sees a URL or gets network access (see ReportGeneratorClient's class remarks + that
+        // service's PythonAgentRunner doc comment).
+        _logger.LogInformation(
+            "ReportGenerator.FileUrlSentToEngine CorrelationId={CorrelationId} FileName={FileName} TemplateId={TemplateId}",
+            correlationId, fileName, templateId ?? "(auto-match)");
+
+        var request = new HttpRequestMessage(HttpMethod.Post, "api/reports/generate-from-url")
+        {
+            Content = JsonContent.Create(
+                new
+                {
+                    fileUrl,
+                    fileName,
+                    templateId,
+                    filters = filtersJson,
+                    htmlTemplateId
+                },
+                options: JsonOptions)
+        };
+        request.Headers.Add("X-Correlation-Id", correlationId);
+
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        HttpResponseMessage response;
+        try
+        {
+            response = await _httpClient.SendAsync(request, cancellationToken);
+        }
+        catch (TaskCanceledException ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            sw.Stop();
+            _logger.LogError(
+                "ReportGenerator.GenerateFromUrlTimeout DurationMs={DurationMs} CorrelationId={CorrelationId}",
+                sw.ElapsedMilliseconds, correlationId);
+            throw new HttpRequestException(
+                "Report generation request timed out.", ex, HttpStatusCode.RequestTimeout);
+        }
+
+        using (response)
+        {
+            sw.Stop();
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning(
+                    "ReportGenerator.GenerateFromUrlFailed StatusCode={StatusCode} DurationMs={DurationMs} CorrelationId={CorrelationId}",
+                    (int)response.StatusCode, sw.ElapsedMilliseconds, correlationId);
+                throw new HttpRequestException(
+                    MapStatusCode(response.StatusCode, body), inner: null, statusCode: response.StatusCode);
+            }
+
+            GeneratedReportDto result;
+            try
+            {
+                result = JsonSerializer.Deserialize<GeneratedReportDto>(body, JsonOptions)
+                    ?? throw new InvalidOperationException("Report generation returned an empty response body.");
+            }
+            catch (JsonException ex)
+            {
+                _logger.LogError(ex,
+                    "ReportGenerator.GenerateFromUrlParseError CorrelationId={CorrelationId} Body={Body}",
+                    correlationId, Truncate(body, 1000));
+                throw new InvalidOperationException("Report generation response could not be parsed.", ex);
+            }
+
+            _logger.LogInformation(
+                "ReportGenerator.GenerateFromUrlSuccess TemplateId={TemplateId} DurationMs={DurationMs} CorrelationId={CorrelationId}",
+                result.TemplateId, sw.ElapsedMilliseconds, correlationId);
+
+            return result;
+        }
+    }
+
     public async Task<List<HtmlTemplateCandidateDto>> MatchHtmlTemplateAsync(
         Stream fileStream,
         string fileName,
