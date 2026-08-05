@@ -12,11 +12,31 @@ public class ClientDashboardResponseDto
     public IReadOnlyList<DashboardChartPointDto> ChartData { get; set; } = Array.Empty<DashboardChartPointDto>();
 
     [JsonPropertyName("quickActions")]
-    public IReadOnlyList<string> QuickActions { get; set; } = Array.Empty<string>();
+    public IReadOnlyList<QuickActionDto> QuickActions { get; set; } = Array.Empty<QuickActionDto>();
 
     /// <summary>"accountant" | "client"</summary>
     [JsonPropertyName("role")]
     public string Role { get; set; } = string.Empty;
+}
+
+/// <summary>ActionKey is null for the original, purely informational items (rendered as plain
+/// text, no click affordance) -- only a recognized key (currently just "view-report-stats")
+/// makes an item clickable client-side. Mirrors PortalQuickAction in userDashboardService.ts.</summary>
+public class QuickActionDto
+{
+    [JsonPropertyName("label")]
+    public string Label { get; set; } = string.Empty;
+
+    [JsonPropertyName("actionKey")]
+    public string? ActionKey { get; set; }
+
+    public QuickActionDto() { }
+
+    public QuickActionDto(string label, string? actionKey = null)
+    {
+        Label = label;
+        ActionKey = actionKey;
+    }
 }
 
 public class DashboardKpisDto
