@@ -14,6 +14,7 @@ public class CreditPurchaseRequestConfiguration : IEntityTypeConfiguration<Credi
         builder.Property(e => e.RequestedByEmail).HasMaxLength(320);
         builder.Property(e => e.PackLabel).IsRequired().HasMaxLength(100);
         builder.Property(e => e.Status).IsRequired().HasMaxLength(50);
+        builder.Property(e => e.Source).IsRequired().HasMaxLength(20);
         builder.Property(e => e.Notes).HasMaxLength(2000);
         builder.Property(e => e.PaidByEmail).HasMaxLength(320);
         builder.Property(e => e.CreatedBy).HasMaxLength(500);

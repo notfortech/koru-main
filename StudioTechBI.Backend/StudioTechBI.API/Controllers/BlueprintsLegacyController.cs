@@ -18,18 +18,18 @@ public class BlueprintsLegacyController : BaseApiController
 {
     private readonly IAiGateway _gateway;
     private readonly IClientService _clientService;
-    private readonly IAgentHostClient _agentHostClient;
+    private readonly ILocalCreditLedgerService _localCredits;
     private readonly ILogger<BlueprintsLegacyController> _logger;
 
     public BlueprintsLegacyController(
         IAiGateway gateway,
         IClientService clientService,
-        IAgentHostClient agentHostClient,
+        ILocalCreditLedgerService localCredits,
         ILogger<BlueprintsLegacyController> logger)
     {
         _gateway = gateway;
         _clientService = clientService;
-        _agentHostClient = agentHostClient;
+        _localCredits = localCredits;
         _logger = logger;
     }
 
@@ -123,10 +123,10 @@ public class BlueprintsLegacyController : BaseApiController
     }
 
     /// <summary>
-    /// Returns the tenant's real AI credit balance from the shared ledger in stbi-agenthost
-    /// (same balance Blueprint generation and AI-assisted report generation both draw from).
-    /// Falls back to a null/unknown balance if the tenant can't be resolved or AgentHost is
-    /// unreachable, so this endpoint never breaks the caller.
+    /// Returns the tenant's real AI credit balance from the local interim ledger (see
+    /// LocalCreditLedgerService) -- the same balance Blueprint generation, report model
+    /// generation, and "Ask AI Assistant" all draw from, while AgentHost's own plan-based ledger
+    /// stays bypassed. Falls back to a null/unknown balance if the tenant can't be resolved.
     /// </summary>
     [HttpGet("credits")]
     public async Task<IActionResult> GetCredits(
@@ -163,15 +163,18 @@ public class BlueprintsLegacyController : BaseApiController
             });
         }
 
-        var balance = await _agentHostClient.CheckCreditsAsync(client.ClientId, client.ClientName, ct);
+        // Local interim balance (see LocalCreditLedgerService) -- AgentHost's own ledger is
+        // currently bypassed (always returns a fixed constant), so this is the real, per-client
+        // number today.
+        var creditsRemaining = await _localCredits.GetBalanceAsync(client.ClientId, ct);
 
         return Ok(new
         {
-            creditsRemaining = balance.CreditsRemaining,
-            isUnlimited = balance.IsUnlimited,
-            subscriptionPlan = balance.Plan,
-            resetDate = balance.NextResetDate,
-            message = balance.Allowed ? (string?)null : balance.DenialReason
+            creditsRemaining = (int?)creditsRemaining,
+            isUnlimited = false,
+            subscriptionPlan = (string?)null,
+            resetDate = (DateTimeOffset?)null,
+            message = (string?)null
         });
     }
 }

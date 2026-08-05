@@ -22,10 +22,16 @@ namespace StudioTechBI.API.Controllers;
 [Produces("application/json")]
 public class BlueprintsController : BaseApiController
 {
+    // Flat per-action cost for the local interim ledger (see LocalCreditLedgerService) -- matches
+    // ReportDesignerController/ReportGeneratorController's "1 credit per AI action, for now" stance.
+    private const int AiSummaryCreditCost = 1;
+    private const string AiSummaryFeature = "blueprint-ai-summary";
+
     private readonly IAiGateway _gateway;
     private readonly IClientService _clientService;
     private readonly IInsightsEngineReportInsightsClient _reportInsights;
     private readonly IOptionsMonitor<InsightsEngineOptions> _insightsEngineOptions;
+    private readonly ILocalCreditLedgerService _localCredits;
     private readonly ILogger<BlueprintsController> _logger;
 
     public BlueprintsController(
@@ -33,12 +39,14 @@ public class BlueprintsController : BaseApiController
         IClientService clientService,
         IInsightsEngineReportInsightsClient reportInsights,
         IOptionsMonitor<InsightsEngineOptions> insightsEngineOptions,
+        ILocalCreditLedgerService localCredits,
         ILogger<BlueprintsController> logger)
     {
         _gateway = gateway;
         _clientService = clientService;
         _reportInsights = reportInsights;
         _insightsEngineOptions = insightsEngineOptions;
+        _localCredits = localCredits;
         _logger = logger;
     }
 
@@ -222,6 +230,20 @@ public class BlueprintsController : BaseApiController
         if (!opt.ExternalCopilotAiEnabled)
             return Ok(new { enabled = false, message = "AI is not enabled for this client." });
 
+        var blueprint = await _gateway.GetBlueprintAsync(id, cancellationToken);
+        if (blueprint is null)
+            return NotFound(ApiResponse<object>.ErrorResponse($"Blueprint {id} not found."));
+
+        var creditCheck = await _localCredits.CheckAsync(blueprint.ClientId, AiSummaryCreditCost, cancellationToken);
+        if (!creditCheck.Allowed)
+        {
+            return StatusCode(StatusCodes.Status402PaymentRequired, new
+            {
+                enabled = false,
+                message = creditCheck.DenialReason ?? "Insufficient AI credits to generate a summary."
+            });
+        }
+
         var json = await _gateway.GetBlueprintJsonAsync(id, cancellationToken);
         if (string.IsNullOrWhiteSpace(json))
             return NotFound(ApiResponse<object>.ErrorResponse($"No generated JSON found for blueprint '{id}'."));
@@ -284,6 +306,9 @@ public class BlueprintsController : BaseApiController
         try
         {
             var resp = await _reportInsights.GetInsightsFromMetadataAsync(req, cancellationToken);
+
+            await _localCredits.ConsumeAsync(blueprint.ClientId, AiSummaryCreditCost, AiSummaryFeature, cancellationToken);
+
             return Ok(new
             {
                 enabled = true,

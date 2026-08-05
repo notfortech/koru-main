@@ -564,6 +564,19 @@ public static class HandwrittenMigrationsBootstrapper
                     ON [dbo].[CreditPurchaseRequests] ([ClientId], [Status]);
             END
         ", cancellationToken);
+
+        // ── Local interim AI credit ledger (see LocalCreditLedgerService) ───────────────────────
+        await ExecAsync(context, logger, "Clients.AiCreditsRemaining column", @"
+            IF COL_LENGTH('dbo.Clients', 'AiCreditsRemaining') IS NULL
+                ALTER TABLE [dbo].[Clients] ADD [AiCreditsRemaining] INT NOT NULL
+                    CONSTRAINT [DF_Clients_AiCreditsRemaining] DEFAULT (1000);
+        ", cancellationToken);
+
+        await ExecAsync(context, logger, "CreditPurchaseRequests.Source column", @"
+            IF COL_LENGTH('dbo.CreditPurchaseRequests', 'Source') IS NULL
+                ALTER TABLE [dbo].[CreditPurchaseRequests] ADD [Source] NVARCHAR(20) NOT NULL
+                    CONSTRAINT [DF_CreditPurchaseRequests_Source] DEFAULT ('Client');
+        ", cancellationToken);
     }
 
     private static async Task ExecAsync(ApplicationDbContext context, ILogger logger, string label, string sql, CancellationToken cancellationToken)

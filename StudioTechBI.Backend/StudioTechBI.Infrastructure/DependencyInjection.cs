@@ -62,6 +62,7 @@ public static class DependencyInjection
         services.AddScoped<IBlobSasUriProvider, BlobSasUriProvider>();
         services.AddScoped<IDashboardTemplateLogWriter, DashboardTemplateLogWriter>();
         services.AddScoped<IHtmlReportAssemblyService, HtmlReportAssemblyService>();
+        services.AddScoped<ILocalCreditLedgerService, LocalCreditLedgerService>();
         services.AddHostedService<HtmlTemplateRegistrySyncService>();
 
         services.Configure<InsightEngineOptions>(configuration.GetSection(InsightEngineOptions.SectionName));

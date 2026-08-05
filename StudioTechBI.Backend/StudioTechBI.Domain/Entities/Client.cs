@@ -29,6 +29,13 @@ public class Client : BaseEntity
     public bool IsActive { get; set; } = true;
     public DateTime CreatedDate { get; set; } = DateTime.UtcNow;
 
+    /// <summary>Interim, locally-owned AI credit balance (see LocalCreditLedgerService) — used
+    /// while AgentHost's real plan-based ledger is still bypassed (CreditsOptions.BypassEnabled).
+    /// Decremented by AI-consuming actions (report model generation, "Ask AI Assistant"), topped
+    /// up when an admin marks a CreditPurchaseRequest paid. Default mirrors the current bypass
+    /// constant so existing clients don't see a perceived drop the moment this ships.</summary>
+    public int AiCreditsRemaining { get; set; } = 1000;
+
     // Power BI identifiers are now sourced from reporting.PowerBiAssets (not stored in dbo.Clients).
     // Keep these properties for backward compatibility with existing DTOs/code, but do not map them in EF.
     [System.ComponentModel.DataAnnotations.Schema.NotMapped]

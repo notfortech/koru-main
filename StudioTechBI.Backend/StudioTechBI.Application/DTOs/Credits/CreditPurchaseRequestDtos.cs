@@ -12,7 +12,8 @@ public record CreditPurchaseRequestSummaryDto(
     int CreditsRequested,
     string PackLabel,
     DateTime CreatedAt,
-    DateTime? PaidAtUtc);
+    DateTime? PaidAtUtc,
+    string Source);
 
 public record CreditPurchaseRequestDetailDto(
     Guid RequestId,
@@ -24,7 +25,8 @@ public record CreditPurchaseRequestDetailDto(
     string? Notes,
     DateTime CreatedAt,
     DateTime? PaidAtUtc,
-    string? PaidByEmail);
+    string? PaidByEmail,
+    string Source);
 
 /// <summary>Body for AdminCreditPurchaseRequestsController's mark-paid action — no separate
 /// "credits" field, since the amount granted is always exactly what the client requested.</summary>
