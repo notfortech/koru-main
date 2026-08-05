@@ -57,7 +57,8 @@ public class AdminLoggingService : IAdminLoggingService
             .Where(l => l.EventType == "DashboardTemplateGenerated"
                 || l.EventType == "DashboardTemplateGenerationFailed"
                 || l.EventType == "DashboardTemplateBuildRequested"
-                || l.EventType == "DashboardTemplateMatchCheckFailed");
+                || l.EventType == "DashboardTemplateMatchCheckFailed"
+                || l.EventType == "HtmlTemplateBuildRequested");
         if (clientId.HasValue)
             query = query.Where(l => l.ClientId == clientId.Value);
         query = query.OrderByDescending(l => l.Timestamp);

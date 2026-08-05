@@ -26,4 +26,10 @@ public class CustomReportRequest : BaseEntity
     public Guid? FulfilledSavedReportId { get; set; }
     public DateTime? FulfilledAtUtc { get; set; }
     public string? FulfilledByEmail { get; set; }
+
+    /// <summary>Set once an admin exports SchemaSnapshotJson to blob storage (the hand-off point
+    /// for feeding it into the template-generating agent) — see
+    /// AdminReportRequestsController.ExportToBlobAsync.</summary>
+    public string? BlobPath { get; set; }
+    public DateTime? ExportedToBlobAtUtc { get; set; }
 }

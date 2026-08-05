@@ -16,7 +16,8 @@ public record CustomReportRequestSummaryDto(
     string? RequestedByEmail,
     string? SourceFileName,
     DateTime CreatedAt,
-    DateTime? FulfilledAtUtc);
+    DateTime? FulfilledAtUtc,
+    DateTime? ExportedToBlobAtUtc);
 
 public record CustomReportRequestDetailDto(
     Guid RequestId,
@@ -29,6 +30,10 @@ public record CustomReportRequestDetailDto(
     DateTime CreatedAt,
     Guid? FulfilledSavedReportId,
     DateTime? FulfilledAtUtc,
-    string? FulfilledByEmail);
+    string? FulfilledByEmail,
+    string? BlobPath,
+    DateTime? ExportedToBlobAtUtc);
 
 public record FulfillCustomReportRequestDto(Guid PowerBiAssetId);
+
+public record ExportCustomReportRequestToBlobResponse(string BlobPath, DateTime ExportedToBlobAtUtc);
