@@ -510,13 +510,24 @@ public static class HandwrittenMigrationsBootstrapper
         // Distinguishes "we searched and found nothing confident" from "the AI/network call
         // itself failed" so staff can triage the right way (build a template vs. check for an
         // outage) without opening every ticket -- see CustomReportRequestReasons.
-        await ExecAsync(context, logger, "CustomReportRequests.RequestReason column", @"
+        // Each statement is its own ExecAsync/batch -- SQL Server compiles a batch against the
+        // schema snapshot taken before it runs, so ADD-then-UPDATE/ALTER-COLUMN in the same batch
+        // fails with "Invalid column name" (Error 207) even though the ADD itself is valid.
+        await ExecAsync(context, logger, "CustomReportRequests.RequestReason column (add)", @"
             IF COL_LENGTH('dbo.CustomReportRequests', 'RequestReason') IS NULL
-            BEGIN
                 ALTER TABLE [dbo].[CustomReportRequests] ADD [RequestReason] NVARCHAR(50) NULL;
-                UPDATE [dbo].[CustomReportRequests] SET [RequestReason] = 'NoConfidentMatch' WHERE [RequestReason] IS NULL;
+        ", cancellationToken);
+
+        await ExecAsync(context, logger, "CustomReportRequests.RequestReason column (backfill)", @"
+            UPDATE [dbo].[CustomReportRequests] SET [RequestReason] = 'NoConfidentMatch' WHERE [RequestReason] IS NULL;
+        ", cancellationToken);
+
+        await ExecAsync(context, logger, "CustomReportRequests.RequestReason column (not null)", @"
+            IF EXISTS (
+                SELECT 1 FROM sys.columns
+                WHERE object_id = OBJECT_ID('dbo.CustomReportRequests') AND name = 'RequestReason' AND is_nullable = 1
+            )
                 ALTER TABLE [dbo].[CustomReportRequests] ALTER COLUMN [RequestReason] NVARCHAR(50) NOT NULL;
-            END
         ", cancellationToken);
 
         // ── Report generation events (Report Stats: deterministic vs. AI-assisted counts) ───────
