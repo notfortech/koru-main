@@ -31,7 +31,10 @@ public record GeneratedReportDto(
     string? ClosestTemplateId = null,
     string? ClosestTemplateName = null,
     List<ProvenanceEntryDto>? BlendProvenance = null,
-    string? BlendedDatasetDownloadUrl = null,
+    // Base64-encoded .xlsx bytes -- returned inline rather than a blob/SAS URL, since the blended
+    // file is never persisted server-side (only its schema is, via LogClosestTemplateBlendAsync).
+    // The frontend decodes this directly into a Blob and downloads it with no extra network hop.
+    string? BlendedDatasetFileBase64 = null,
     string? BlendNote = null);
 
 /// <summary>Optional brand-color override for an HTML report's chrome.html, resolved from the
