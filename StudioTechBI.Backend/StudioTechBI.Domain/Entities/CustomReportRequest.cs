@@ -15,6 +15,10 @@ public class CustomReportRequest : BaseEntity
     public string? RequestedByEmail { get; set; }
     public string? Notes { get; set; }
 
+    /// <summary>Why this ticket exists -- see CustomReportRequestReasons. Lets staff tell "nothing
+    /// matched confidently" apart from "an AI/network call actually failed" at a glance.</summary>
+    public string RequestReason { get; set; } = CustomReportRequestReasons.NoConfidentMatch;
+
     /// <summary>The client's ExtractedSchemaDto, inlined as JSON — mirrors
     /// BlueprintVersion.GeneratedJsonContent's "small JSON inlined in SQL" convention.</summary>
     public string SchemaSnapshotJson { get; set; } = string.Empty;

@@ -507,6 +507,18 @@ public static class HandwrittenMigrationsBootstrapper
                 ALTER TABLE [dbo].[CustomReportRequests] ADD [ExportedToBlobAtUtc] DATETIME2 NULL;
         ", cancellationToken);
 
+        // Distinguishes "we searched and found nothing confident" from "the AI/network call
+        // itself failed" so staff can triage the right way (build a template vs. check for an
+        // outage) without opening every ticket -- see CustomReportRequestReasons.
+        await ExecAsync(context, logger, "CustomReportRequests.RequestReason column", @"
+            IF COL_LENGTH('dbo.CustomReportRequests', 'RequestReason') IS NULL
+            BEGIN
+                ALTER TABLE [dbo].[CustomReportRequests] ADD [RequestReason] NVARCHAR(50) NULL;
+                UPDATE [dbo].[CustomReportRequests] SET [RequestReason] = 'NoConfidentMatch' WHERE [RequestReason] IS NULL;
+                ALTER TABLE [dbo].[CustomReportRequests] ALTER COLUMN [RequestReason] NVARCHAR(50) NOT NULL;
+            END
+        ", cancellationToken);
+
         // ── Report generation events (Report Stats: deterministic vs. AI-assisted counts) ───────
         await ExecAsync(context, logger, "ReportGenerationEvents", @"
             IF OBJECT_ID('dbo.ReportGenerationEvents', 'U') IS NULL
