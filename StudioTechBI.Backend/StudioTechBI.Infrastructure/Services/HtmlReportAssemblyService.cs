@@ -137,6 +137,17 @@ public class HtmlReportAssemblyService : IHtmlReportAssemblyService
         return report with { HtmlReport = html };
     }
 
+    public async Task<string?> GetManifestJsonAsync(string templateId, CancellationToken cancellationToken = default)
+    {
+        var manifestJson = await TryDownloadTextAsync(
+            $"{TemplatesBasePath}/{templateId}/{ManifestFileName}", cancellationToken);
+        if (manifestJson is not null)
+            return manifestJson;
+
+        var seed = HtmlTemplateSeedCatalog.Find(templateId);
+        return seed?.ManifestJson;
+    }
+
     /// <summary>Downloads and reads a blob as UTF-8 text, or null if it doesn't exist / can't be
     /// read -- callers treat a null result as "try the next source" (the seed fallback), never as
     /// a hard failure.</summary>

@@ -1,3 +1,4 @@
+using StudioTechBI.Application.DTOs.DashboardTemplate;
 using StudioTechBI.Application.Interfaces;
 using StudioTechBI.Domain.Entities;
 using StudioTechBI.Infrastructure.Data;
@@ -80,6 +81,33 @@ public class DashboardTemplateLogWriter : IDashboardTemplateLogWriter
             $"CorrelationId={correlationId}){confidencePart}. Columns: {string.Join(", ", columnNames)}";
 
         await AddLogAsync("HtmlTemplateBuildRequested", clientId, description, cancellationToken);
+    }
+
+    public async Task LogClosestTemplateBlendAsync(
+        Guid? clientId,
+        string clientName,
+        string correlationId,
+        string closestTemplateId,
+        string closestTemplateName,
+        IReadOnlyList<ProvenanceEntryDto> provenance,
+        string originalUploadBlobPath,
+        string blendedDatasetBlobPath,
+        CancellationToken cancellationToken = default)
+    {
+        var realCount = provenance.Count(p => p.Source == ProvenanceSource.Uploaded);
+        var mockedColumns = provenance
+            .Where(p => p.Source == ProvenanceSource.Mocked)
+            .Select(p => p.Column)
+            .Distinct()
+            .ToList();
+
+        var description = $"[{clientName}] Closest HTML template match blended (CorrelationId={correlationId}). " +
+            $"ClosestTemplate={closestTemplateName} ({closestTemplateId}). " +
+            $"{realCount} of {provenance.Count} declared columns found in the client's upload. " +
+            $"Proposed/mocked columns: {string.Join(", ", mockedColumns)}. " +
+            $"Original upload: {originalUploadBlobPath}. Blended proposal: {blendedDatasetBlobPath}.";
+
+        await AddLogAsync("HtmlTemplateClosestMatchBlended", clientId, description, cancellationToken);
     }
 
     private async Task AddLogAsync(string eventType, Guid? clientId, string description, CancellationToken cancellationToken)

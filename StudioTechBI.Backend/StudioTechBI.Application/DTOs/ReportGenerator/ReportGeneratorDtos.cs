@@ -1,3 +1,5 @@
+using StudioTechBI.Application.DTOs.DashboardTemplate;
+
 namespace StudioTechBI.Application.DTOs.ReportGenerator;
 
 public record ReportTemplateDto(
@@ -20,7 +22,17 @@ public record GeneratedReportDto(
     string? HtmlTemplateId = null,
     string? HtmlTemplateName = null,
     double? HtmlMatchConfidence = null,
-    string? HtmlReport = null);
+    string? HtmlReport = null,
+    // AI-assisted "closest template" blend fallback (ReportGeneratorController.GenerateAsync):
+    // populated only when no confident HTML match existed but a closest role-gate-passing
+    // candidate was found and blended with mock data for the gaps. HtmlTemplateId/HtmlReport stay
+    // null in this case by design -- this fallback always renders as the classic KPI/chart view,
+    // never the branded HTML chrome, and never enables Save Report.
+    string? ClosestTemplateId = null,
+    string? ClosestTemplateName = null,
+    List<ProvenanceEntryDto>? BlendProvenance = null,
+    string? BlendedDatasetDownloadUrl = null,
+    string? BlendNote = null);
 
 /// <summary>Optional brand-color override for an HTML report's chrome.html, resolved from the
 /// frontend's existing theme picker (reportThemes.tsx). Hex strings or null per slot; null means

@@ -19,4 +19,11 @@ public interface IHtmlReportAssemblyService
         GeneratedReportDto report,
         ReportThemeOverride? themeOverride = null,
         CancellationToken cancellationToken = default);
+
+    /// <summary>Resolves just a template's manifest.json (blob-first, seed-fallback -- same
+    /// resolution order AssembleAsync uses for chrome.html) without fetching chrome.html at all.
+    /// Returns null when the template id resolves via neither path. Used by the AI-assisted
+    /// "closest template" blend fallback, which only needs the manifest's declared schema
+    /// (requiredColumns/optionalColumns/dataContract), never the rendered chrome.</summary>
+    Task<string?> GetManifestJsonAsync(string templateId, CancellationToken cancellationToken = default);
 }

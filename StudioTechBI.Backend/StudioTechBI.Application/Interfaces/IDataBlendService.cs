@@ -16,4 +16,15 @@ public record BlendResult(List<BlendedTable> Tables, List<ProvenanceEntryDto> Pr
 public interface IDataBlendService
 {
     Task<BlendResult> BlendAsync(Stream uploadedFile, JsonElement blueprint, CancellationToken cancellationToken = default);
+
+    /// <summary>Same real-value-or-mock blend as <see cref="BlendAsync"/>, but driven by an
+    /// already-resolved flat column list (name + declared type) for a single table, instead of a
+    /// blueprint's data_model JSON. Used by the AI-assisted "closest HTML template" fallback,
+    /// whose schema declaration (an HTML template manifest's requiredColumns/optionalColumns) has
+    /// no blueprint shape to enumerate.</summary>
+    Task<BlendResult> BlendFromColumnListAsync(
+        Stream uploadedFile,
+        string tableName,
+        IReadOnlyList<(string Name, string Type)> columns,
+        CancellationToken cancellationToken = default);
 }
