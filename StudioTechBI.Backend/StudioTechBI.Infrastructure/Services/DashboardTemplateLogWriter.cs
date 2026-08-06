@@ -91,7 +91,6 @@ public class DashboardTemplateLogWriter : IDashboardTemplateLogWriter
         string closestTemplateName,
         IReadOnlyList<ProvenanceEntryDto> provenance,
         string originalUploadBlobPath,
-        string blendedDatasetBlobPath,
         CancellationToken cancellationToken = default)
     {
         var realCount = provenance.Count(p => p.Source == ProvenanceSource.Uploaded);
@@ -101,11 +100,14 @@ public class DashboardTemplateLogWriter : IDashboardTemplateLogWriter
             .Distinct()
             .ToList();
 
+        // Only the blended dataset's schema is logged here (declared columns + real-vs-mocked
+        // provenance) -- the blended file itself is partially fabricated data and is never
+        // persisted; it's returned inline to the client for direct download instead.
         var description = $"[{clientName}] Closest HTML template match blended (CorrelationId={correlationId}). " +
             $"ClosestTemplate={closestTemplateName} ({closestTemplateId}). " +
             $"{realCount} of {provenance.Count} declared columns found in the client's upload. " +
             $"Proposed/mocked columns: {string.Join(", ", mockedColumns)}. " +
-            $"Original upload: {originalUploadBlobPath}. Blended proposal: {blendedDatasetBlobPath}.";
+            $"Original upload (client's real data): {originalUploadBlobPath}.";
 
         await AddLogAsync("HtmlTemplateClosestMatchBlended", clientId, description, cancellationToken);
     }

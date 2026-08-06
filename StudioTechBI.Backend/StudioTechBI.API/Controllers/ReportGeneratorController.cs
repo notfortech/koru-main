@@ -161,37 +161,37 @@ public class ReportGeneratorController : ControllerBase
             if (blend.Tables.Count == 0)
                 return null;
 
-            // WorkbookWriter returns a fresh, position-0 in-memory stream -- rewound and reused
-            // below for both the blob upload and the recompute call, rather than regenerating the
-            // workbook twice.
+            // The blended workbook is never persisted server-side -- it's partially fabricated
+            // data (real + mock), so only its *schema* (declared columns, real-vs-mocked
+            // provenance) belongs in our logs/blob storage, not the file itself. The bytes are
+            // returned inline in this response (base64) so the browser can save it straight to the
+            // client's machine with zero extra network hop -- this also sidesteps the CORS-driven
+            // "failed to fetch" a separate blob-SAS round trip would hit fetching cross-origin from
+            // Azure Blob Storage.
             await using var xlsxStream = await _workbookWriter.WriteAsync(blend.Tables, cancellationToken);
-
-            var blendedBlobPath = $"{client.ClientId}/report-generator/{correlationId}/blended-dataset.xlsx";
+            using var xlsxBuffer = new MemoryStream();
             xlsxStream.Position = 0;
-            await _blobStorage.UploadClientBlobAsync(
-                blendedBlobPath, xlsxStream,
-                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                cancellationToken);
+            await xlsxStream.CopyToAsync(xlsxBuffer, cancellationToken);
+            var blendedDatasetBase64 = Convert.ToBase64String(xlsxBuffer.ToArray());
 
+            // The client's real, original upload IS persisted (unchanged) -- this is the actual
+            // business data staff need to build a real template against; the blend above is just a
+            // preview aid, not a data source worth keeping.
             var originalBlobPath = $"{client.ClientId}/report-generator/{correlationId}/original-upload{ext}";
             await using (var originalStream = file.OpenReadStream())
             {
                 await _blobStorage.UploadClientBlobAsync(originalBlobPath, originalStream, file.ContentType, cancellationToken);
             }
 
-            // 24h (vs. the old Dashboard Template Generator's 1h) -- this is meant to be downloaded
-            // once immediately and possibly referenced again while the client updates their source file.
-            var downloadUrl = await _sasUriProvider.GetReadSasUriAsync(blendedBlobPath, TimeSpan.FromHours(24), cancellationToken);
-
-            xlsxStream.Position = 0;
+            xlsxBuffer.Position = 0;
             var blendedResult = await _reportGeneratorClient.GenerateReportAsync(
-                xlsxStream, "blended-dataset.xlsx", templateId, filters, htmlTemplateId: null,
+                xlsxBuffer, "blended-dataset.xlsx", templateId, filters, htmlTemplateId: null,
                 correlationId, cancellationToken);
 
             await _templateLogWriter.LogClosestTemplateBlendAsync(
                 client.ClientId, client.ClientName, correlationId,
                 closest.TemplateId, closest.TemplateName, blend.Provenance,
-                originalBlobPath, blendedBlobPath, cancellationToken);
+                originalBlobPath, cancellationToken);
 
             var realCount = blend.Provenance.Count(p => p.Source == ProvenanceSource.Uploaded);
             var blendNote =
@@ -216,7 +216,7 @@ public class ReportGeneratorController : ControllerBase
                 ClosestTemplateId = closest.TemplateId,
                 ClosestTemplateName = closest.TemplateName,
                 BlendProvenance = blend.Provenance,
-                BlendedDatasetDownloadUrl = downloadUrl,
+                BlendedDatasetFileBase64 = blendedDatasetBase64,
                 BlendNote = blendNote,
             };
         }
