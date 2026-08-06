@@ -1,3 +1,5 @@
+using StudioTechBI.Application.DTOs.DashboardTemplate;
+
 namespace StudioTechBI.Application.Interfaces;
 
 /// <summary>
@@ -47,5 +49,20 @@ public interface IDashboardTemplateLogWriter
         IReadOnlyList<string> columnNames,
         string matchPath,
         double? bestConfidence,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>AI-assisted path found no confident match, but a closest role-gate-passing HTML
+    /// template WAS identified and blended with mock data for the gaps -- logs both the original
+    /// upload and the blended proposal so staff can build a template that natively fits this
+    /// client's real schema (EventType "HtmlTemplateClosestMatchBlended").</summary>
+    Task LogClosestTemplateBlendAsync(
+        Guid? clientId,
+        string clientName,
+        string correlationId,
+        string closestTemplateId,
+        string closestTemplateName,
+        IReadOnlyList<ProvenanceEntryDto> provenance,
+        string originalUploadBlobPath,
+        string blendedDatasetBlobPath,
         CancellationToken cancellationToken = default);
 }

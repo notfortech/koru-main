@@ -29,45 +29,75 @@ public sealed class DataBlendService : IDataBlendService
             ? EnumerateDesignBlueprintTables(blueprint)
             : EnumerateBlueprintTables(blueprint);
 
-        foreach (var tableDef in tableEnumerator)
+        foreach (var (tableName, columns) in tableEnumerator)
         {
-            var (tableName, columns) = tableDef;
             if (columns.Count == 0) continue;
-
-            var tableHasRealColumn = columns.Any(c => realColumnSet.Contains(c.Name));
-            var rowCount = tableHasRealColumn ? Math.Max(realRows.Count, 1) : DefaultMockRowCount;
-
-            var blendedColumns = new List<string>();
-            var blendedRows = Enumerable.Range(0, rowCount)
-                .Select(_ => new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase))
-                .ToList();
-
-            foreach (var col in columns)
-            {
-                blendedColumns.Add(col.Name);
-
-                if (realColumnSet.Contains(col.Name))
-                {
-                    for (var i = 0; i < rowCount; i++)
-                    {
-                        var value = i < realRows.Count && realRows[i].TryGetValue(col.Name, out var v) ? v : "";
-                        blendedRows[i][col.Name] = value;
-                    }
-                    provenance.Add(new ProvenanceEntryDto(tableName, col.Name, col.Type, ProvenanceSource.Uploaded, rowCount));
-                }
-                else
-                {
-                    var mockValues = MockValueGenerator.Generate(tableName, col.Name, col.Type, rowCount);
-                    for (var i = 0; i < rowCount; i++)
-                        blendedRows[i][col.Name] = mockValues[i];
-                    provenance.Add(new ProvenanceEntryDto(tableName, col.Name, col.Type, ProvenanceSource.Mocked, rowCount));
-                }
-            }
-
-            tables.Add(new BlendedTable(tableName, blendedColumns, blendedRows));
+            var (table, tableProvenance) = BuildBlendedTable(tableName, columns, realColumnSet, realRows);
+            tables.Add(table);
+            provenance.AddRange(tableProvenance);
         }
 
         return new BlendResult(tables, provenance);
+    }
+
+    public async Task<BlendResult> BlendFromColumnListAsync(
+        Stream uploadedFile,
+        string tableName,
+        IReadOnlyList<(string Name, string Type)> columns,
+        CancellationToken cancellationToken = default)
+    {
+        var (realColumns, realRows) = await ExcelSampleExtractor.ExtractAsync(uploadedFile, ExcelSampleExtractor.DefaultMaxRows, cancellationToken);
+        var realColumnSet = new HashSet<string>(realColumns, StringComparer.OrdinalIgnoreCase);
+
+        if (columns.Count == 0)
+            return new BlendResult(new List<BlendedTable>(), new List<ProvenanceEntryDto>());
+
+        var (table, provenance) = BuildBlendedTable(tableName, columns.ToList(), realColumnSet, realRows);
+        return new BlendResult(new List<BlendedTable> { table }, provenance);
+    }
+
+    /// <summary>Shared blend core: for each declared column, copies real values row-by-row when
+    /// the uploaded file has a matching column name (case-insensitive), else synthesizes mock
+    /// values via MockValueGenerator -- recording provenance per column either way. Used by both
+    /// the blueprint-driven BlendAsync and the column-list-driven BlendFromColumnListAsync.</summary>
+    private static (BlendedTable Table, List<ProvenanceEntryDto> Provenance) BuildBlendedTable(
+        string tableName,
+        List<(string Name, string Type)> columns,
+        HashSet<string> realColumnSet,
+        List<Dictionary<string, string>> realRows)
+    {
+        var provenance = new List<ProvenanceEntryDto>();
+        var tableHasRealColumn = columns.Any(c => realColumnSet.Contains(c.Name));
+        var rowCount = tableHasRealColumn ? Math.Max(realRows.Count, 1) : DefaultMockRowCount;
+
+        var blendedColumns = new List<string>();
+        var blendedRows = Enumerable.Range(0, rowCount)
+            .Select(_ => new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase))
+            .ToList();
+
+        foreach (var col in columns)
+        {
+            blendedColumns.Add(col.Name);
+
+            if (realColumnSet.Contains(col.Name))
+            {
+                for (var i = 0; i < rowCount; i++)
+                {
+                    var value = i < realRows.Count && realRows[i].TryGetValue(col.Name, out var v) ? v : "";
+                    blendedRows[i][col.Name] = value;
+                }
+                provenance.Add(new ProvenanceEntryDto(tableName, col.Name, col.Type, ProvenanceSource.Uploaded, rowCount));
+            }
+            else
+            {
+                var mockValues = MockValueGenerator.Generate(tableName, col.Name, col.Type, rowCount);
+                for (var i = 0; i < rowCount; i++)
+                    blendedRows[i][col.Name] = mockValues[i];
+                provenance.Add(new ProvenanceEntryDto(tableName, col.Name, col.Type, ProvenanceSource.Mocked, rowCount));
+            }
+        }
+
+        return (new BlendedTable(tableName, blendedColumns, blendedRows), provenance);
     }
 
     private static IEnumerable<(string TableName, List<(string Name, string Type)> Columns)> EnumerateBlueprintTables(JsonElement blueprint)

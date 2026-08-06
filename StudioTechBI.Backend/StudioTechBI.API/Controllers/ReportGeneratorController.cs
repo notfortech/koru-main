@@ -7,11 +7,13 @@ using Microsoft.Extensions.Options;
 using StudioTechBI.Application.DTOs.Admin;
 using StudioTechBI.Application.Constants;
 using StudioTechBI.Application.DTOs.Common;
+using StudioTechBI.Application.DTOs.DashboardTemplate;
 using StudioTechBI.Application.DTOs.InsightsEngine;
 using StudioTechBI.Application.DTOs.ReportGenerator;
 using StudioTechBI.Application.Interfaces;
 using StudioTechBI.Application.Options;
 using StudioTechBI.Application.Models;
+using StudioTechBI.Application.Utilities;
 using StudioTechBI.Domain.Entities;
 using StudioTechBI.Infrastructure.Data;
 
@@ -60,6 +62,9 @@ public class ReportGeneratorController : ControllerBase
     private readonly IOptions<UploadLimitsOptions> _uploadLimits;
     private readonly IBlobSasUriProvider _sasUriProvider;
     private readonly IReportGenerationJobQueue _jobQueue;
+    private readonly IDataBlendService _blendService;
+    private readonly IWorkbookWriter _workbookWriter;
+    private readonly IBlobStorageService _blobStorage;
 
     public ReportGeneratorController(
         IReportGeneratorClient reportGeneratorClient,
@@ -73,7 +78,10 @@ public class ReportGeneratorController : ControllerBase
         ILogger<ReportGeneratorController> logger,
         IOptions<UploadLimitsOptions> uploadLimits,
         IBlobSasUriProvider sasUriProvider,
-        IReportGenerationJobQueue jobQueue)
+        IReportGenerationJobQueue jobQueue,
+        IDataBlendService blendService,
+        IWorkbookWriter workbookWriter,
+        IBlobStorageService blobStorage)
     {
         _reportGeneratorClient = reportGeneratorClient;
         _reportInsights = reportInsights;
@@ -87,6 +95,9 @@ public class ReportGeneratorController : ControllerBase
         _uploadLimits = uploadLimits;
         _sasUriProvider = sasUriProvider;
         _jobQueue = jobQueue;
+        _blendService = blendService;
+        _workbookWriter = workbookWriter;
+        _blobStorage = blobStorage;
     }
 
     /// <summary>Resolves the caller's own client from the client_code claim — same pattern as
@@ -100,6 +111,120 @@ public class ReportGeneratorController : ControllerBase
             return null;
 
         return await _clientService.GetByClientCodeOrIdAsync(clientCode, ct);
+    }
+
+    /// <summary>AI-assisted "closest template" fallback (see project plan). Asks the matcher for
+    /// the full ranked, role-gate-passed HTML template candidate list -- the same call
+    /// VerifyHtmlMatchAsync already makes, just without the &gt;=0.85 filter -- and, if anything
+    /// cleared the structural role gate, blends the client's real upload against that candidate's
+    /// declared schema (real values where present, deterministic mock values for the gaps),
+    /// uploads both the original upload and the blended proposal to blob for staff review, and
+    /// recomputes KPIs/charts from the blended data. Returns null (never throws) when no candidate
+    /// exists or anything in this pipeline fails -- the caller falls back to the plain no-match gap
+    /// log in that case, exactly today's behavior.</summary>
+    private async Task<GeneratedReportDto?> TryBuildClosestTemplateBlendAsync(
+        IFormFile file,
+        string ext,
+        ClientDto client,
+        string correlationId,
+        string? templateId,
+        string? filters,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            List<HtmlTemplateCandidateDto> candidates;
+            await using (var matchStream = file.OpenReadStream())
+            {
+                candidates = await _reportGeneratorClient.MatchHtmlTemplateAsync(
+                    matchStream, file.FileName, correlationId, cancellationToken);
+            }
+
+            if (candidates.Count == 0)
+                return null;
+
+            var closest = candidates[0];
+            var manifestJson = await _htmlAssembly.GetManifestJsonAsync(closest.TemplateId, cancellationToken);
+            if (manifestJson is null)
+                return null;
+
+            var (tableName, columns) = HtmlManifestColumnMapper.ToBlendColumns(manifestJson);
+            if (columns.Count == 0)
+                return null;
+
+            BlendResult blend;
+            await using (var blendStream = file.OpenReadStream())
+            {
+                blend = await _blendService.BlendFromColumnListAsync(blendStream, tableName, columns, cancellationToken);
+            }
+
+            if (blend.Tables.Count == 0)
+                return null;
+
+            // WorkbookWriter returns a fresh, position-0 in-memory stream -- rewound and reused
+            // below for both the blob upload and the recompute call, rather than regenerating the
+            // workbook twice.
+            await using var xlsxStream = await _workbookWriter.WriteAsync(blend.Tables, cancellationToken);
+
+            var blendedBlobPath = $"{client.ClientId}/report-generator/{correlationId}/blended-dataset.xlsx";
+            xlsxStream.Position = 0;
+            await _blobStorage.UploadClientBlobAsync(
+                blendedBlobPath, xlsxStream,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                cancellationToken);
+
+            var originalBlobPath = $"{client.ClientId}/report-generator/{correlationId}/original-upload{ext}";
+            await using (var originalStream = file.OpenReadStream())
+            {
+                await _blobStorage.UploadClientBlobAsync(originalBlobPath, originalStream, file.ContentType, cancellationToken);
+            }
+
+            // 24h (vs. the old Dashboard Template Generator's 1h) -- this is meant to be downloaded
+            // once immediately and possibly referenced again while the client updates their source file.
+            var downloadUrl = await _sasUriProvider.GetReadSasUriAsync(blendedBlobPath, TimeSpan.FromHours(24), cancellationToken);
+
+            xlsxStream.Position = 0;
+            var blendedResult = await _reportGeneratorClient.GenerateReportAsync(
+                xlsxStream, "blended-dataset.xlsx", templateId, filters, htmlTemplateId: null,
+                correlationId, cancellationToken);
+
+            await _templateLogWriter.LogClosestTemplateBlendAsync(
+                client.ClientId, client.ClientName, correlationId,
+                closest.TemplateId, closest.TemplateName, blend.Provenance,
+                originalBlobPath, blendedBlobPath, cancellationToken);
+
+            var realCount = blend.Provenance.Count(p => p.Source == ProvenanceSource.Uploaded);
+            var blendNote =
+                $"Your uploaded data was a partial match for our \"{closest.TemplateName}\" dashboard — " +
+                $"{realCount} of {blend.Provenance.Count} required fields were found in your file. We've " +
+                "generated a sample dataset with the missing fields filled in (already downloaded) so you " +
+                "can see what a matching file should look like. Update your data to match this schema and " +
+                "re-upload to regenerate with your real data — until then, here's your closest possible " +
+                "report using this proposed schema.";
+
+            // HtmlTemplateId/HtmlTemplateName/HtmlMatchConfidence/HtmlReport/RowData stay null even
+            // though blendedResult may itself have cleared the HTML auto-pick floor -- this
+            // fallback always renders as the classic KPI/chart view, never the branded HTML
+            // chrome, and never enables Save Report (see the project plan for why).
+            return blendedResult with
+            {
+                HtmlTemplateId = null,
+                HtmlTemplateName = null,
+                HtmlMatchConfidence = null,
+                HtmlReport = null,
+                RowData = null,
+                ClosestTemplateId = closest.TemplateId,
+                ClosestTemplateName = closest.TemplateName,
+                BlendProvenance = blend.Provenance,
+                BlendedDatasetDownloadUrl = downloadUrl,
+                BlendNote = blendNote,
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "ReportGenerator.ClosestTemplateBlendFailed CorrelationId={CorrelationId}", correlationId);
+            return null;
+        }
     }
 
     /// <summary>
@@ -332,19 +457,39 @@ public class ReportGeneratorController : ControllerBase
             ClientDto? client = null;
             if (result.HtmlTemplateId is null)
             {
-                // No HTML template matched at all -- log the gap so staff can author one against
-                // this real, observed schema shape (mirrors LogBuildRequestAsync's existing role
-                // for the Power BI catalog). Never blocks the response: the caller already has a
-                // perfectly good report (the existing MUI/recharts fallback renders it), this is
-                // purely a backlog entry.
                 client = await ResolveClientAsync(cancellationToken);
-                var columnNames = result.Kpis.Select(k => k.Column)
-                    .Concat(result.Charts.SelectMany(c => c.Series.Select(s => s.Name)))
-                    .Distinct()
-                    .ToList();
-                await _templateLogWriter.LogHtmlTemplateGapAsync(
-                    client?.ClientId, client?.ClientName ?? "Unknown", correlationId, columnNames,
-                    matchPath: "Deterministic", bestConfidence: null, cancellationToken);
+                var isAiAssisted = string.Equals(mode, "ai", StringComparison.OrdinalIgnoreCase);
+
+                // AI-assisted only: try to find the closest role-gate-passing HTML template
+                // (even below the confidence floor) and blend the client's upload against its
+                // declared schema, filling gaps with mock data -- gives the client a usable,
+                // as-representative-as-possible fallback report instead of a dead end. Strict
+                // mode is untouched: staff still just get the real, raw dataset logged below.
+                GeneratedReportDto? blended = isAiAssisted && client is not null
+                    ? await TryBuildClosestTemplateBlendAsync(
+                        file, ext, client, correlationId, templateId, filters, cancellationToken)
+                    : null;
+
+                if (blended is not null)
+                {
+                    result = blended;
+                }
+                else
+                {
+                    // No HTML template matched at all -- log the gap so staff can author one
+                    // against this real, observed schema shape (mirrors LogBuildRequestAsync's
+                    // existing role for the Power BI catalog). Never blocks the response: the
+                    // caller already has a perfectly good report (the existing MUI/recharts
+                    // fallback renders it), this is purely a backlog entry.
+                    var columnNames = result.Kpis.Select(k => k.Column)
+                        .Concat(result.Charts.SelectMany(c => c.Series.Select(s => s.Name)))
+                        .Distinct()
+                        .ToList();
+                    await _templateLogWriter.LogHtmlTemplateGapAsync(
+                        client?.ClientId, client?.ClientName ?? "Unknown", correlationId, columnNames,
+                        matchPath: isAiAssisted ? "AiAssisted" : "Deterministic", bestConfidence: null,
+                        cancellationToken);
+                }
             }
 
             // Only a genuinely new report counts toward Report Stats -- a filter re-apply re-POSTs
