@@ -52,8 +52,8 @@ public class AdminReportRequestsController : ControllerBase
 
         var items = await query
             .Select(r => new CustomReportRequestSummaryDto(
-                r.Id, r.Status, r.RequestedByEmail, r.SourceFileName, r.CreatedAt, r.FulfilledAtUtc,
-                r.ExportedToBlobAtUtc))
+                r.Id, r.Status, r.RequestReason, r.RequestedByEmail, r.SourceFileName, r.CreatedAt,
+                r.FulfilledAtUtc, r.ExportedToBlobAtUtc))
             .ToListAsync(cancellationToken);
 
         return Ok(ApiResponse<List<CustomReportRequestSummaryDto>>.SuccessResponse(items));
@@ -77,9 +77,9 @@ public class AdminReportRequestsController : ControllerBase
         }
 
         var dto = new CustomReportRequestDetailDto(
-            entity.Id, entity.ClientId, entity.Status, entity.RequestedByEmail, entity.Notes, schema,
-            entity.SourceFileName, entity.CreatedAt, entity.FulfilledSavedReportId, entity.FulfilledAtUtc,
-            entity.FulfilledByEmail, entity.BlobPath, entity.ExportedToBlobAtUtc);
+            entity.Id, entity.ClientId, entity.Status, entity.RequestReason, entity.RequestedByEmail,
+            entity.Notes, schema, entity.SourceFileName, entity.CreatedAt, entity.FulfilledSavedReportId,
+            entity.FulfilledAtUtc, entity.FulfilledByEmail, entity.BlobPath, entity.ExportedToBlobAtUtc);
 
         return Ok(ApiResponse<CustomReportRequestDetailDto>.SuccessResponse(dto));
     }

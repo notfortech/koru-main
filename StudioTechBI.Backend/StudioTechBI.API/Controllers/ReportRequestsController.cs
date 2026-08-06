@@ -52,11 +52,18 @@ public class ReportRequestsController : ControllerBase
 
         var requestedByEmail = User.FindFirstValue(ClaimTypes.Email) ?? User.Identity?.Name;
 
+        // Only the two known reasons are trusted -- an unrecognized or omitted value defaults to
+        // NoConfidentMatch rather than persisting arbitrary caller-supplied text into this field.
+        var reason = request.Reason is CustomReportRequestReasons.GenerationError
+            ? CustomReportRequestReasons.GenerationError
+            : CustomReportRequestReasons.NoConfidentMatch;
+
         var entity = new CustomReportRequest
         {
             Id = Guid.NewGuid(),
             ClientId = client.ClientId,
             Status = CustomReportRequestStatuses.Pending,
+            RequestReason = reason,
             RequestedByEmail = requestedByEmail,
             Notes = request.Notes,
             SchemaSnapshotJson = JsonSerializer.Serialize(request.Schema, JsonOptions),
