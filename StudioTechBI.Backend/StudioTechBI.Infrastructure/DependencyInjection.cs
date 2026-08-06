@@ -64,6 +64,8 @@ public static class DependencyInjection
         services.AddScoped<IDashboardTemplateLogWriter, DashboardTemplateLogWriter>();
         services.AddScoped<IHtmlReportAssemblyService, HtmlReportAssemblyService>();
         services.AddScoped<ILocalCreditLedgerService, LocalCreditLedgerService>();
+        services.AddScoped<IHtmlTemplateSyncRunner, HtmlTemplateSyncRunner>();
+        services.AddScoped<IHtmlTemplateAdminService, HtmlTemplateAdminService>();
         services.AddHostedService<HtmlTemplateRegistrySyncService>();
 
         services.Configure<UploadLimitsOptions>(configuration.GetSection(UploadLimitsOptions.SectionName));

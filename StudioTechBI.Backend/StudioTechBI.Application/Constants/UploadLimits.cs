@@ -11,4 +11,11 @@ namespace StudioTechBI.Application.Constants;
 public static class UploadLimits
 {
     public const long MaxUploadBytes = 50L * 1024L * 1024L; // 50 MB
+
+    /// <summary>
+    /// Bulk HTML report template (.zip) uploads -- admin-only, trusted content, infrequent, and
+    /// naturally bulkier than a single client data file (many manifest.json + chrome.html pairs
+    /// per zip), so this stays a separate, larger ceiling rather than sharing MaxUploadBytes.
+    /// </summary>
+    public const long MaxHtmlTemplateBatchBytes = 200L * 1024L * 1024L; // 200 MB
 }

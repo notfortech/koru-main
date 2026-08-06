@@ -1,0 +1,80 @@
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using StudioTechBI.Application.Constants;
+using StudioTechBI.Application.DTOs.Admin;
+using StudioTechBI.Application.Interfaces;
+
+namespace StudioTechBI.API.Controllers.Admin;
+
+/// <summary>
+/// Admin content management for interactive HTML report templates -- bulk zip upload, list,
+/// manifest-only editing, retirement, and an on-demand sync trigger. See
+/// IHtmlTemplateAdminService for the "no code changes to add/edit a template" design this exists
+/// to deliver.
+/// </summary>
+[ApiController]
+[Route("api/admin/html-templates")]
+[Authorize(Roles = "Admin,SuperAdmin,OperationsAdmin,SupportAdmin")]
+public class AdminHtmlTemplatesController : ControllerBase
+{
+    private readonly IHtmlTemplateAdminService _service;
+
+    public AdminHtmlTemplatesController(IHtmlTemplateAdminService service)
+    {
+        _service = service;
+    }
+
+    [HttpGet]
+    public async Task<ActionResult<List<HtmlTemplateSummaryDto>>> GetAll(CancellationToken cancellationToken)
+    {
+        var list = await _service.ListAsync(cancellationToken);
+        return Ok(list);
+    }
+
+    [HttpPost("upload-batch")]
+    [RequestSizeLimit(UploadLimits.MaxHtmlTemplateBatchBytes)]
+    public async Task<ActionResult<HtmlTemplateBulkUploadResponseDto>> UploadBatch(IFormFile? zip, CancellationToken cancellationToken)
+    {
+        if (zip is null || zip.Length == 0)
+            return BadRequest("A .zip file is required.");
+
+        await using var stream = zip.OpenReadStream();
+        var result = await _service.UploadBatchAsync(stream, cancellationToken);
+        return Ok(result);
+    }
+
+    [HttpDelete("{id}")]
+    public async Task<IActionResult> Delete(string id, CancellationToken cancellationToken)
+    {
+        await _service.DeleteAsync(id, cancellationToken);
+        return NoContent();
+    }
+
+    [HttpPost("sync-now")]
+    public async Task<ActionResult<object>> SyncNow(CancellationToken cancellationToken)
+    {
+        var count = await _service.ForceSyncNowAsync(cancellationToken);
+        return Ok(new { syncedCount = count });
+    }
+
+    [HttpGet("{id}/manifest")]
+    public async Task<ActionResult<HtmlTemplateManifestResponseDto>> GetManifest(string id, CancellationToken cancellationToken)
+    {
+        var raw = await _service.GetManifestRawAsync(id, cancellationToken);
+        if (raw is null)
+            return NotFound();
+
+        return Ok(new HtmlTemplateManifestResponseDto(id, raw));
+    }
+
+    [HttpPut("{id}/manifest")]
+    public async Task<ActionResult<HtmlTemplateUploadResultDto>> UpdateManifest(
+        string id, [FromBody] HtmlTemplateManifestUpdateRequestDto dto, CancellationToken cancellationToken)
+    {
+        var result = await _service.UpdateManifestAsync(id, dto.ManifestJson, cancellationToken);
+        if (result.Status == "Failed")
+            return UnprocessableEntity(result);
+
+        return Ok(result);
+    }
+}
