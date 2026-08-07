@@ -37,7 +37,6 @@ public class ReportDesignerController : ControllerBase
     private readonly SharePointSchemaService _sharePointSchemaService;
     private readonly IAgentHostClient _agentHostClient;
     private readonly IReportDesignerConsentService _consentService;
-    private readonly IReportMatchService _reportMatchService;
     private readonly IReportDataUsageConsentService _dataUsageConsentService;
     private readonly IClientResolver _clientResolver;
     private readonly ITemplateRefreshService _templateRefresh;
@@ -45,6 +44,7 @@ public class ReportDesignerController : ControllerBase
     private readonly IPowerBiAssetWriter _powerBiAssetWriter;
     private readonly ILocalCreditLedgerService _localCredits;
     private readonly IReportModelGenerationQueue _reportModelQueue;
+    private readonly ISchemaModelMatchQueue _schemaModelMatchQueue;
     private readonly ApplicationDbContext _db;
     private readonly ILogger<ReportDesignerController> _logger;
     private readonly IOptions<UploadLimitsOptions> _uploadLimits;
@@ -56,7 +56,6 @@ public class ReportDesignerController : ControllerBase
         SharePointSchemaService sharePointSchemaService,
         IAgentHostClient agentHostClient,
         IReportDesignerConsentService consentService,
-        IReportMatchService reportMatchService,
         IReportDataUsageConsentService dataUsageConsentService,
         IClientResolver clientResolver,
         ITemplateRefreshService templateRefresh,
@@ -64,6 +63,7 @@ public class ReportDesignerController : ControllerBase
         IPowerBiAssetWriter powerBiAssetWriter,
         ILocalCreditLedgerService localCredits,
         IReportModelGenerationQueue reportModelQueue,
+        ISchemaModelMatchQueue schemaModelMatchQueue,
         ApplicationDbContext db,
         ILogger<ReportDesignerController> logger,
         IOptions<UploadLimitsOptions> uploadLimits)
@@ -74,12 +74,12 @@ public class ReportDesignerController : ControllerBase
         _sharePointSchemaService = sharePointSchemaService;
         _agentHostClient = agentHostClient;
         _consentService = consentService;
-        _reportMatchService = reportMatchService;
         _dataUsageConsentService = dataUsageConsentService;
         _clientResolver = clientResolver;
         _templateRefresh = templateRefresh;
         _templates = templates;
         _reportModelQueue = reportModelQueue;
+        _schemaModelMatchQueue = schemaModelMatchQueue;
         _db = db;
         _powerBiAssetWriter = powerBiAssetWriter;
         _localCredits = localCredits;
@@ -597,8 +597,14 @@ public class ReportDesignerController : ControllerBase
     /// SchemaModel proposal (persisted as ReviewStatus = PendingReview) when nothing fits well.
     /// Result is persisted as a ReportMatchDraft either way. Requires the same prior consent
     /// grant as /generate-model.
+    ///
+    /// Async (submit -> matchId -> poll), same pattern as /generate-model — the deterministic
+    /// path is fast, but an AI-escalated match can take up to koru-main's own ~330s outbound AI
+    /// budget, and used to hold the HTTP request open for that whole window. Lets the client
+    /// navigate away and come back once the frontend's background-job tracker notifies it.
     /// </summary>
     [HttpPost("match")]
+    [ProducesResponseType(typeof(ApiResponse<SchemaModelMatchJobDto>), StatusCodes.Status202Accepted)]
     public async Task<IActionResult> MatchAsync(
         [FromBody] ReportMatchRequest request,
         CancellationToken cancellationToken)
@@ -626,27 +632,65 @@ public class ReportDesignerController : ControllerBase
                 "Call POST /api/report-designer/consent with ConsentGranted = true for this schema first."));
         }
 
-        try
+        var correlationId = Guid.NewGuid().ToString();
+        var match = new SchemaModelMatch
         {
-            var result = await _reportMatchService.MatchAsync(client.Id, request.Schema, cancellationToken);
+            Id = Guid.NewGuid(),
+            ClientId = client.Id,
+            RequestId = correlationId,
+            Status = SchemaModelMatchStatuses.Pending,
+            RequestPayloadJson = JsonSerializer.Serialize(request, JsonSerializerWebOptions),
+            CreatedBy = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "unknown"
+        };
 
-            var message = result switch
-            {
-                { SchemaModelId: null } => "No confident match found in the model directory.",
-                { PendingSupportReview: true } => $"No good fit in the directory — AI proposed a new model '{result.SchemaModelName}', pending support review before it can be used.",
-                { MatchSource: "AiProposedNew" } => $"No good fit in the directory — AI proposed a new model '{result.SchemaModelName}' and a matching dashboard template.",
-                { MatchSource: "AiMatched" } => $"AI matched '{result.SchemaModelName}' (confidence {result.Confidence:P0}).",
-                _ => $"Matched '{result.SchemaModelName}' (confidence {result.Confidence:P0}).",
-            };
+        _db.SchemaModelMatches.Add(match);
+        await _db.SaveChangesAsync(cancellationToken);
+        await _schemaModelMatchQueue.EnqueueAsync(match.Id, cancellationToken);
 
-            return Ok(ApiResponse<ReportMatchResultDto>.SuccessResponse(result, message));
-        }
-        catch (Exception)
-        {
-            return StatusCode(500, ApiResponse<object>.ErrorResponse(
-                "An error occurred while matching the schema against the model directory."));
-        }
+        _logger.LogInformation(
+            "SchemaModelMatch.Queued MatchId={MatchId} ClientId={ClientId} CorrelationId={CorrelationId}",
+            match.Id, client.Id, correlationId);
+
+        return StatusCode(
+            StatusCodes.Status202Accepted,
+            ApiResponse<SchemaModelMatchJobDto>.SuccessResponse(
+                MapToMatchJobDto(match, request.Schema), "Schema model match queued."));
     }
+
+    /// <summary>
+    /// GET /api/report-designer/match/{matchId}
+    /// Poll the status of an async schema-model library match job. Schema is echoed back from
+    /// the original request so the frontend can reconstruct its wizard state (e.g. after the
+    /// user navigated away and is resuming from a notification click) without re-uploading the
+    /// file. Mirrors GET /generate-model/{generationId} exactly.
+    /// </summary>
+    [HttpGet("match/{matchId:guid}")]
+    [ProducesResponseType(typeof(ApiResponse<SchemaModelMatchJobDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetSchemaModelMatchStatus(Guid matchId, CancellationToken cancellationToken)
+    {
+        var match = await _db.SchemaModelMatches.FirstOrDefaultAsync(m => m.Id == matchId, cancellationToken);
+        if (match is null)
+            return NotFound(ApiResponse<object>.ErrorResponse($"Match {matchId} not found."));
+
+        var request = JsonSerializer.Deserialize<ReportMatchRequest>(match.RequestPayloadJson, JsonSerializerWebOptions);
+        return Ok(ApiResponse<SchemaModelMatchJobDto>.SuccessResponse(MapToMatchJobDto(match, request?.Schema)));
+    }
+
+    private static SchemaModelMatchJobDto MapToMatchJobDto(SchemaModelMatch match, ExtractedSchemaDto? schema) => new()
+    {
+        MatchId = match.Id,
+        RequestId = match.RequestId,
+        Status = match.Status,
+        Schema = schema,
+        Result = match.Status == SchemaModelMatchStatuses.Completed && match.ResponseJson is not null
+            ? JsonSerializer.Deserialize<ReportMatchResultDto>(match.ResponseJson, JsonSerializerWebOptions)
+            : null,
+        ErrorMessage = match.ErrorMessage,
+        CreatedAt = match.CreatedAt,
+        ProcessingStartedAt = match.ProcessingStartedAt,
+        CompletedAt = match.CompletedAt
+    };
 
     /// <summary>
     /// POST /api/report-designer/match/{draftId}/data-usage-consent

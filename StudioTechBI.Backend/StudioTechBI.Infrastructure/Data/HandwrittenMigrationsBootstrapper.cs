@@ -665,6 +665,39 @@ public static class HandwrittenMigrationsBootstrapper
                 CREATE INDEX [IX_ReportModelGenerations_Status] ON [dbo].[ReportModelGenerations] ([Status]);
             END
         ", cancellationToken);
+
+        // ── Async AI-assisted Report Generator schema-model library match ─────────────────────
+        // Lets the client navigate away from the wizard mid-match and come back later instead of
+        // holding the browser connection open for up to ~330s (an AI-escalated match can take the
+        // full outbound AI budget) -- mirrors ReportModelGenerations' shape/lifecycle exactly.
+        await ExecAsync(context, logger, "SchemaModelMatches", @"
+            IF OBJECT_ID('dbo.SchemaModelMatches', 'U') IS NULL
+            BEGIN
+                CREATE TABLE [dbo].[SchemaModelMatches] (
+                    [Id]                   UNIQUEIDENTIFIER NOT NULL,
+                    [ClientId]             UNIQUEIDENTIFIER NOT NULL,
+                    [RequestId]            NVARCHAR(100)     NOT NULL,
+                    [Status]               NVARCHAR(20)      NOT NULL,
+                    [RequestPayloadJson]   NVARCHAR(MAX)     NOT NULL,
+                    [ResponseJson]         NVARCHAR(MAX)     NULL,
+                    [ErrorMessage]         NVARCHAR(MAX)     NULL,
+                    [ProcessingStartedAt]  DATETIME2         NULL,
+                    [CompletedAt]          DATETIME2         NULL,
+                    [CreatedAt]            DATETIME2         NOT NULL,
+                    [UpdatedAt]            DATETIME2         NULL,
+                    [CreatedBy]            NVARCHAR(500)     NULL,
+                    [UpdatedBy]            NVARCHAR(500)     NULL,
+                    [IsDeleted]            BIT               NOT NULL,
+                    CONSTRAINT [PK_SchemaModelMatches] PRIMARY KEY ([Id]),
+                    CONSTRAINT [FK_SchemaModelMatches_Clients_ClientId]
+                        FOREIGN KEY ([ClientId]) REFERENCES [dbo].[Clients] ([Id])
+                        ON DELETE NO ACTION
+                );
+
+                CREATE INDEX [IX_SchemaModelMatches_ClientId] ON [dbo].[SchemaModelMatches] ([ClientId]);
+                CREATE INDEX [IX_SchemaModelMatches_Status] ON [dbo].[SchemaModelMatches] ([Status]);
+            END
+        ", cancellationToken);
     }
 
     private static async Task ExecAsync(ApplicationDbContext context, ILogger logger, string label, string sql, CancellationToken cancellationToken)

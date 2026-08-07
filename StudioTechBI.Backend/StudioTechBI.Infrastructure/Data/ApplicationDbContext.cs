@@ -55,6 +55,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<BlueprintVersion> BlueprintVersions => Set<BlueprintVersion>();
     public DbSet<BlueprintGeneration> BlueprintGenerations => Set<BlueprintGeneration>();
     public DbSet<ReportModelGeneration> ReportModelGenerations => Set<ReportModelGeneration>();
+    public DbSet<SchemaModelMatch> SchemaModelMatches => Set<SchemaModelMatch>();
 
     // Report Validation module
     public DbSet<ReportValidationRun> ReportValidationRuns => Set<ReportValidationRun>();
