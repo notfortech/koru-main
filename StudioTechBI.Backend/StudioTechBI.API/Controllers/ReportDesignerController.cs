@@ -1,6 +1,8 @@
 using System.Security.Claims;
+using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using StudioTechBI.Application.DTOs.Admin;
 using StudioTechBI.Application.DTOs.BindDeploy;
 using StudioTechBI.Application.DTOs.Common;
@@ -13,6 +15,7 @@ using StudioTechBI.Application.Options;
 using StudioTechBI.Application.Utilities;
 using Microsoft.Extensions.Options;
 using StudioTechBI.Domain.Entities;
+using StudioTechBI.Infrastructure.Data;
 using StudioTechBI.Infrastructure.Services;
 
 namespace StudioTechBI.API.Controllers;
@@ -27,12 +30,6 @@ namespace StudioTechBI.API.Controllers;
 public class ReportDesignerController : ControllerBase
 {
     private static readonly string[] AllowedExtensions = { ".xlsx", ".xls", ".csv" };
-    private const string ReportModelFeature = "report-model-generation";
-
-    // Flat per-action cost for the local interim ledger (see LocalCreditLedgerService) -- no
-    // per-feature pricing exists yet, so every AI-consuming action costs the same 1 credit "for
-    // now" until real usage data justifies weighting them differently.
-    private const int ModelGenerationCreditCost = 1;
 
     private readonly IReportDesignerClient _reportDesignerClient;
     private readonly IBindDeployClient _bindDeployClient;
@@ -47,6 +44,8 @@ public class ReportDesignerController : ControllerBase
     private readonly ITemplateService _templates;
     private readonly IPowerBiAssetWriter _powerBiAssetWriter;
     private readonly ILocalCreditLedgerService _localCredits;
+    private readonly IReportModelGenerationQueue _reportModelQueue;
+    private readonly ApplicationDbContext _db;
     private readonly ILogger<ReportDesignerController> _logger;
     private readonly IOptions<UploadLimitsOptions> _uploadLimits;
 
@@ -64,6 +63,8 @@ public class ReportDesignerController : ControllerBase
         ITemplateService templates,
         IPowerBiAssetWriter powerBiAssetWriter,
         ILocalCreditLedgerService localCredits,
+        IReportModelGenerationQueue reportModelQueue,
+        ApplicationDbContext db,
         ILogger<ReportDesignerController> logger,
         IOptions<UploadLimitsOptions> uploadLimits)
     {
@@ -78,6 +79,8 @@ public class ReportDesignerController : ControllerBase
         _clientResolver = clientResolver;
         _templateRefresh = templateRefresh;
         _templates = templates;
+        _reportModelQueue = reportModelQueue;
+        _db = db;
         _powerBiAssetWriter = powerBiAssetWriter;
         _localCredits = localCredits;
         _logger = logger;
@@ -288,14 +291,20 @@ public class ReportDesignerController : ControllerBase
 
     /// <summary>
     /// POST /api/report-designer/generate-model
-    /// Sends extracted schema metadata (no data values) to the Report Designer AI endpoint.
-    /// Returns a star schema recommendation and template scores.
+    /// Queues an AI-assisted "Data Model" generation job and returns 202 Accepted with a
+    /// generationId immediately, instead of holding the connection open for the ~330s the LLM
+    /// call can take — lets the client navigate away from the wizard and come back later.
+    /// Poll GET /api/report-designer/generate-model/{generationId} for status/result.
+    ///
     /// Requires that POST /consent was already called with ConsentGranted = true for the
     /// same (ClientId, Schema.SchemaHash) pair — the AI is never called without it. Also
     /// gated by the client's shared AI credit balance (same ledger as Blueprint generation);
-    /// insufficient credits returns 402 before the AI call is made.
+    /// insufficient credits returns 402 immediately, before anything is queued. Credits are
+    /// only actually deducted once the queued job succeeds (see ReportModelGenerationBackgroundService)
+    /// — a client is never charged for a job that fails.
     /// </summary>
     [HttpPost("generate-model")]
+    [ProducesResponseType(typeof(ApiResponse<ReportModelGenerationJobDto>), StatusCodes.Status202Accepted)]
     public async Task<IActionResult> GenerateReportModelAsync(
         [FromBody] GenerateReportModelRequest request,
         CancellationToken cancellationToken)
@@ -332,7 +341,7 @@ public class ReportDesignerController : ControllerBase
 
         // Local interim gate (see LocalCreditLedgerService) -- AgentHost's own check above is
         // currently bypassed (always Allowed), so this is what actually enforces anything today.
-        var localCheck = await _localCredits.CheckAsync(client.Id, ModelGenerationCreditCost, cancellationToken);
+        var localCheck = await _localCredits.CheckAsync(client.Id, ReportModelGenerationConstants.CreditCost, cancellationToken);
         if (!localCheck.Allowed)
         {
             return StatusCode(StatusCodes.Status402PaymentRequired, ApiResponse<object>.ErrorResponse(
@@ -340,35 +349,69 @@ public class ReportDesignerController : ControllerBase
         }
 
         var correlationId = Guid.NewGuid().ToString();
+        var generation = new ReportModelGeneration
+        {
+            Id = Guid.NewGuid(),
+            ClientId = client.Id,
+            RequestId = correlationId,
+            Status = ReportModelGenerationStatuses.Pending,
+            RequestPayloadJson = JsonSerializer.Serialize(request, JsonSerializerWebOptions),
+            CreatedBy = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "unknown"
+        };
 
-        try
-        {
-            var result = await _reportDesignerClient.GenerateReportModelAsync(
-                request, correlationId, cancellationToken);
+        _db.ReportModelGenerations.Add(generation);
+        await _db.SaveChangesAsync(cancellationToken);
+        await _reportModelQueue.EnqueueAsync(generation.Id, cancellationToken);
 
-            await _agentHostClient.ConsumeCreditAsync(
-                client.Id, ReportModelFeature, correlationId, result.DurationMs, cancellationToken);
-            await _localCredits.ConsumeAsync(client.Id, ModelGenerationCreditCost, ReportModelFeature, cancellationToken);
+        _logger.LogInformation(
+            "ReportModelGeneration.Queued GenerationId={GenerationId} ClientId={ClientId} CorrelationId={CorrelationId}",
+            generation.Id, client.Id, correlationId);
 
-            return Ok(ApiResponse<GenerateReportModelResponse>.SuccessResponse(
-                result, "Report model generated successfully."));
-        }
-        catch (HttpRequestException ex)
-        {
-            return StatusCode(
-                (int)(ex.StatusCode ?? System.Net.HttpStatusCode.BadGateway),
-                ApiResponse<object>.ErrorResponse(ex.Message));
-        }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequest(ApiResponse<object>.ErrorResponse(ex.Message));
-        }
-        catch (Exception)
-        {
-            return StatusCode(500, ApiResponse<object>.ErrorResponse(
-                "An error occurred while generating the report model."));
-        }
+        return StatusCode(
+            StatusCodes.Status202Accepted,
+            ApiResponse<ReportModelGenerationJobDto>.SuccessResponse(
+                MapToJobDto(generation, request.Schema), "Report model generation queued."));
     }
+
+    /// <summary>
+    /// GET /api/report-designer/generate-model/{generationId}
+    /// Poll the status of an async "Data Model" generation job. Schema is echoed back from the
+    /// original request so the frontend can reconstruct its wizard state (e.g. after the user
+    /// navigated away and is resuming from a notification click) without re-uploading the file.
+    /// </summary>
+    [HttpGet("generate-model/{generationId:guid}")]
+    [ProducesResponseType(typeof(ApiResponse<ReportModelGenerationJobDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetReportModelGenerationStatus(Guid generationId, CancellationToken cancellationToken)
+    {
+        var generation = await _db.ReportModelGenerations.FirstOrDefaultAsync(g => g.Id == generationId, cancellationToken);
+        if (generation is null)
+            return NotFound(ApiResponse<object>.ErrorResponse($"Generation {generationId} not found."));
+
+        var request = JsonSerializer.Deserialize<GenerateReportModelRequest>(generation.RequestPayloadJson, JsonSerializerWebOptions);
+        return Ok(ApiResponse<ReportModelGenerationJobDto>.SuccessResponse(MapToJobDto(generation, request?.Schema)));
+    }
+
+    private static readonly JsonSerializerOptions JsonSerializerWebOptions = new()
+    {
+        PropertyNameCaseInsensitive = true,
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+    };
+
+    private static ReportModelGenerationJobDto MapToJobDto(ReportModelGeneration generation, ExtractedSchemaDto? schema) => new()
+    {
+        GenerationId = generation.Id,
+        RequestId = generation.RequestId,
+        Status = generation.Status,
+        Schema = schema,
+        Result = generation.Status == ReportModelGenerationStatuses.Completed && generation.ResponseJson is not null
+            ? JsonSerializer.Deserialize<GenerateReportModelResponse>(generation.ResponseJson, JsonSerializerWebOptions)
+            : null,
+        ErrorMessage = generation.ErrorMessage,
+        CreatedAt = generation.CreatedAt,
+        ProcessingStartedAt = generation.ProcessingStartedAt,
+        CompletedAt = generation.CompletedAt
+    };
 
     /// <summary>
     /// POST /api/report-designer/publish

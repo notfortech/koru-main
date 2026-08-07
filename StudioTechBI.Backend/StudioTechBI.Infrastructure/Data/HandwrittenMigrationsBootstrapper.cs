@@ -632,6 +632,39 @@ public static class HandwrittenMigrationsBootstrapper
                 CREATE INDEX [IX_ReportGenerationJobs_Status] ON [dbo].[ReportGenerationJobs] ([Status]);
             END
         ", cancellationToken);
+
+        // ── Async AI-assisted Report Generator "Data Model" generation ─────────────────────────
+        // Lets the client navigate away from the wizard mid-generation and come back later instead
+        // of holding the browser connection open for the multi-minute LLM call -- mirrors
+        // BlueprintGenerations' shape/lifecycle exactly.
+        await ExecAsync(context, logger, "ReportModelGenerations", @"
+            IF OBJECT_ID('dbo.ReportModelGenerations', 'U') IS NULL
+            BEGIN
+                CREATE TABLE [dbo].[ReportModelGenerations] (
+                    [Id]                   UNIQUEIDENTIFIER NOT NULL,
+                    [ClientId]             UNIQUEIDENTIFIER NOT NULL,
+                    [RequestId]            NVARCHAR(100)     NOT NULL,
+                    [Status]               NVARCHAR(20)      NOT NULL,
+                    [RequestPayloadJson]   NVARCHAR(MAX)     NOT NULL,
+                    [ResponseJson]         NVARCHAR(MAX)     NULL,
+                    [ErrorMessage]         NVARCHAR(MAX)     NULL,
+                    [ProcessingStartedAt]  DATETIME2         NULL,
+                    [CompletedAt]          DATETIME2         NULL,
+                    [CreatedAt]            DATETIME2         NOT NULL,
+                    [UpdatedAt]            DATETIME2         NULL,
+                    [CreatedBy]            NVARCHAR(500)     NULL,
+                    [UpdatedBy]            NVARCHAR(500)     NULL,
+                    [IsDeleted]            BIT               NOT NULL,
+                    CONSTRAINT [PK_ReportModelGenerations] PRIMARY KEY ([Id]),
+                    CONSTRAINT [FK_ReportModelGenerations_Clients_ClientId]
+                        FOREIGN KEY ([ClientId]) REFERENCES [dbo].[Clients] ([Id])
+                        ON DELETE NO ACTION
+                );
+
+                CREATE INDEX [IX_ReportModelGenerations_ClientId] ON [dbo].[ReportModelGenerations] ([ClientId]);
+                CREATE INDEX [IX_ReportModelGenerations_Status] ON [dbo].[ReportModelGenerations] ([Status]);
+            END
+        ", cancellationToken);
     }
 
     private static async Task ExecAsync(ApplicationDbContext context, ILogger logger, string label, string sql, CancellationToken cancellationToken)
