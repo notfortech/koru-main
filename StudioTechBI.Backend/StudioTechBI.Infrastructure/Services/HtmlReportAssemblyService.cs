@@ -1,6 +1,8 @@
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
+using StudioTechBI.Application.Constants;
 using StudioTechBI.Application.DTOs.ReportGenerator;
 using StudioTechBI.Application.Interfaces;
 
@@ -21,8 +23,13 @@ public class HtmlReportAssemblyService : IHtmlReportAssemblyService
     private const string TemplatesBasePath = "templates/html";
     private const string ChromeFileName = "chrome.html";
     private const string ManifestFileName = "manifest.json";
-    private const string DataMarker = "<!--STBI_REPORT_DATA-->";
     private const string StyleCloseTag = "</style>";
+
+    // Matches a template author's own pre-authored `id="stbi-report-data"` element (e.g. an empty
+    // placeholder they intended to fill in themselves), whole tag through its closing </script>.
+    private static readonly Regex ExistingDataScriptRegex = new(
+        "<script\\b[^>]*\\bid\\s*=\\s*[\"']stbi-report-data[\"'][^>]*>[\\s\\S]*?</script\\s*>",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -115,18 +122,38 @@ public class HtmlReportAssemblyService : IHtmlReportAssemblyService
         var scriptBlock = $"<script type=\"application/json\" id=\"stbi-report-data\">{scriptSafeJson}</script>";
 
         string html;
-        if (chromeHtml.Contains(DataMarker, StringComparison.Ordinal))
+        if (chromeHtml.Contains(HtmlTemplateBlobPaths.DataMarker, StringComparison.Ordinal))
         {
-            html = chromeHtml.Replace(DataMarker, scriptBlock);
+            html = chromeHtml.Replace(HtmlTemplateBlobPaths.DataMarker, scriptBlock);
+        }
+        else if (ExistingDataScriptRegex.IsMatch(chromeHtml))
+        {
+            // The marker itself is missing, but the template already declares its own
+            // id="stbi-report-data" element (typically an empty placeholder the author expected to
+            // fill in some other way). Appending a second element with the same id -- the old
+            // fallback below -- would silently lose: getElementById returns the FIRST match in
+            // document order, which is this original, still-empty one, not the data we just
+            // computed. Replace that element in place instead, so whichever one the template's own
+            // script finds is the real data. (Confirmed this is exactly what was happening to a
+            // real matched template in production: it always rendered with zero rows despite a
+            // confident match, because the append-at-</body> fallback lost to the template's own
+            // placeholder every time.)
+            _logger.LogWarning(
+                "HtmlReportAssembly.MarkerMissingReplacedExistingElement TemplateId={TemplateId} — no " +
+                "{Marker} marker found, but replaced the template's own pre-existing #stbi-report-data " +
+                "element in place.", report.HtmlTemplateId, HtmlTemplateBlobPaths.DataMarker);
+
+            html = ExistingDataScriptRegex.Replace(chromeHtml, _ => scriptBlock, 1);
         }
         else
         {
-            // Fail soft — a template-authoring mistake (forgetting the marker) must never break
-            // report generation, just degrade to appending the data block right before </body>.
+            // Fail soft — a template-authoring mistake (forgetting the marker entirely, with no
+            // element to replace either) must never break report generation, just degrade to
+            // appending the data block right before </body>.
             _logger.LogWarning(
                 "HtmlReportAssembly.MarkerMissing TemplateId={TemplateId} — appending the data block " +
                 "before </body> instead of substituting the {Marker} marker.",
-                report.HtmlTemplateId, DataMarker);
+                report.HtmlTemplateId, HtmlTemplateBlobPaths.DataMarker);
 
             var bodyCloseIndex = chromeHtml.LastIndexOf("</body>", StringComparison.OrdinalIgnoreCase);
             html = bodyCloseIndex >= 0
