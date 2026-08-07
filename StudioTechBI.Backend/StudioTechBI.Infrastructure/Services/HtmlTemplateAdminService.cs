@@ -355,8 +355,16 @@ public sealed class HtmlTemplateAdminService : IHtmlTemplateAdminService
         var errors = new List<string>();
         var warnings = new List<string>();
 
-        if (!chromeHtml.Contains("stbi-report-data", StringComparison.OrdinalIgnoreCase))
-            errors.Add("chrome.html does not reference the 'stbi-report-data' marker -- it will not receive injected report data.");
+        // Must be the literal marker HtmlReportAssemblyService substitutes -- not just any mention
+        // of "stbi-report-data" (e.g. a template author's own pre-authored, empty
+        // id="stbi-report-data" script tag satisfies a loose substring check but never actually
+        // receives injected data: assembly's marker-missing fallback would append a second element
+        // with the same id, and getElementById returns the FIRST match in document order -- the
+        // original empty one, not ours -- so the report would render with zero rows despite a
+        // confident match and a passed validation. Requiring the real marker here is what actually
+        // guarantees the template will receive data, not just reference the idea of it.
+        if (!chromeHtml.Contains(HtmlTemplateBlobPaths.DataMarker, StringComparison.Ordinal))
+            errors.Add($"chrome.html does not contain the {HtmlTemplateBlobPaths.DataMarker} marker -- it will not receive injected report data.");
 
         string? resultsLoadedId = null, kpiPrefix = null, chartPrefix = null;
         if (manifest.TryGetProperty("testIds", out var testIds) && testIds.ValueKind == JsonValueKind.Object)

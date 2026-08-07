@@ -13,4 +13,18 @@ public static class HtmlTemplateBlobPaths
     public static string ManifestPath(string templateId) => $"templates/html/{templateId}/manifest.json";
     public static string ChromeHtmlPath(string templateId) => $"templates/html/{templateId}/chrome.html";
     public static string PreviewPath(string templateId) => $"templates/html/{templateId}/preview.jpg";
+
+    /// <summary>
+    /// The literal HTML comment HtmlReportAssemblyService substitutes with the injected
+    /// &lt;script type="application/json" id="stbi-report-data"&gt; data block. Shared with
+    /// HtmlTemplateAdminService's upload/edit validation so "this template passed validation"
+    /// actually guarantees "this template will receive real data" -- a chrome.html that merely
+    /// references the id (e.g. its own pre-authored, empty `id="stbi-report-data"` script tag,
+    /// without this literal marker) used to pass a looser substring check at upload time, then
+    /// silently fail at assembly time: the marker-missing fallback appends a second element with
+    /// the same id right before &lt;/body&gt;, but getElementById returns the FIRST match in
+    /// document order -- the template author's own empty one -- so the report always renders with
+    /// zero rows even though the match/upload both looked successful.
+    /// </summary>
+    public const string DataMarker = "<!--STBI_REPORT_DATA-->";
 }
