@@ -1,3 +1,4 @@
+using System.Text.Json;
 using StudioTechBI.Application.DTOs.DashboardTemplate;
 
 namespace StudioTechBI.Application.DTOs.ReportGenerator;
@@ -18,7 +19,12 @@ public record GeneratedReportDto(
     List<ReportSlicerDto> Slicers,
     Dictionary<string, string> AppliedFilters,
     List<string> Warnings,
-    List<Dictionary<string, object?>>? RowData = null,
+    // Raw passthrough of the Python engine's own "rowData" JSON — either a flat array (single-
+    // table templates, the original shape) or an object keyed by table alias (multi-table
+    // templates, one array per declared sheet; see row_export.py's module docstring). A JsonElement
+    // round-trips whichever shape arrived without koru-main needing to know or care which one it
+    // is -- HtmlReportAssemblyService injects it into the chrome verbatim via GetRawText().
+    JsonElement? RowData = null,
     string? HtmlTemplateId = null,
     string? HtmlTemplateName = null,
     double? HtmlMatchConfidence = null,
