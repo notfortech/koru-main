@@ -64,6 +64,10 @@ public static class ReportDesignerIntegrationExtensions
         services.AddSingleton<IReportModelGenerationQueue, ReportModelGenerationQueue>();
         services.AddHostedService<ReportModelGenerationBackgroundService>();
 
+        // ── Async schema-model library match (same "navigate away and come back" treatment) ───
+        services.AddSingleton<ISchemaModelMatchQueue, SchemaModelMatchQueue>();
+        services.AddHostedService<SchemaModelMatchBackgroundService>();
+
         return services;
     }
 
