@@ -5,6 +5,7 @@ using Polly;
 using Polly.Extensions.Http;
 using StudioTechBI.Application.Interfaces;
 using StudioTechBI.Application.Models;
+using StudioTechBI.Infrastructure.AI;
 using StudioTechBI.Infrastructure.Clients;
 using StudioTechBI.Infrastructure.Services;
 
@@ -58,6 +59,10 @@ public static class ReportDesignerIntegrationExtensions
 
         services.AddScoped<SqlSchemaReaderService>();
         services.AddScoped<SharePointSchemaService>();
+
+        // ── Async "Data Model" generation (lets the client navigate away and come back) ────────
+        services.AddSingleton<IReportModelGenerationQueue, ReportModelGenerationQueue>();
+        services.AddHostedService<ReportModelGenerationBackgroundService>();
 
         return services;
     }
