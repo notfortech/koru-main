@@ -22,8 +22,10 @@ public interface IHtmlTemplateAdminService
 
     Task<List<HtmlTemplateSummaryDto>> ListAsync(CancellationToken cancellationToken = default);
 
-    /// <summary>Un-lists a template from index.json. Never deletes the underlying blob files.</summary>
-    Task DeleteAsync(string templateId, CancellationToken cancellationToken = default);
+    /// <summary>Un-lists a template from index.json. Never deletes the underlying blob files.
+    /// Returns false (no-op) when templateId wasn't listed in the first place, so the caller can
+    /// tell an already-gone template apart from a fresh removal.</summary>
+    Task<bool> DeleteAsync(string templateId, CancellationToken cancellationToken = default);
 
     /// <summary>Runs the sync cycle immediately; returns how many templates were pushed.</summary>
     Task<int> ForceSyncNowAsync(CancellationToken cancellationToken = default);

@@ -46,7 +46,10 @@ public class AdminHtmlTemplatesController : ControllerBase
     [HttpDelete("{id}")]
     public async Task<IActionResult> Delete(string id, CancellationToken cancellationToken)
     {
-        await _service.DeleteAsync(id, cancellationToken);
+        var removed = await _service.DeleteAsync(id, cancellationToken);
+        if (!removed)
+            return NotFound(new { message = $"Template '{id}' is not listed — it may already have been deleted." });
+
         return NoContent();
     }
 

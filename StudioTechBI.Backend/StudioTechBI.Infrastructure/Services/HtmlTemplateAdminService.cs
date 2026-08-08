@@ -151,6 +151,21 @@ public sealed class HtmlTemplateAdminService : IHtmlTemplateAdminService
             try
             {
                 await SaveIndexAsync(mergedIds, cancellationToken);
+
+                // Re-trigger the sync cycle immediately so a replaced/new template is live for
+                // matching right away instead of waiting up to 5 minutes -- mirrors
+                // UpdateManifestAsync's identical fail-soft trigger below. Without this, a client
+                // re-uploading the same template id (replacing it) would have its old blob
+                // content served to matching for up to 5 minutes even though the admin list
+                // already reflects the new one.
+                try
+                {
+                    await _syncRunner.RunOnceAsync(cancellationToken);
+                }
+                catch (Exception syncEx)
+                {
+                    _logger.LogWarning(syncEx, "HtmlTemplateAdmin.UploadBatch.SyncFailed");
+                }
             }
             catch (Exception ex)
             {
@@ -204,12 +219,32 @@ public sealed class HtmlTemplateAdminService : IHtmlTemplateAdminService
         return result;
     }
 
-    public async Task DeleteAsync(string templateId, CancellationToken cancellationToken = default)
+    public async Task<bool> DeleteAsync(string templateId, CancellationToken cancellationToken = default)
     {
         var ids = await LoadIndexAsync(cancellationToken);
         var updated = ids.Where(id => !string.Equals(id, templateId, StringComparison.Ordinal)).ToList();
-        if (updated.Count != ids.Count)
-            await SaveIndexAsync(updated, cancellationToken);
+        if (updated.Count == ids.Count)
+        {
+            // Nothing matched -- return false so the controller can report 404 instead of a
+            // silent no-op "success" that leaves the caller thinking a delete happened.
+            return false;
+        }
+
+        await SaveIndexAsync(updated, cancellationToken);
+
+        // Re-trigger the sync cycle immediately, same fail-soft pattern as UploadBatchAsync/
+        // UpdateManifestAsync -- an unlisted template stops matching right away instead of
+        // waiting up to 5 minutes.
+        try
+        {
+            await _syncRunner.RunOnceAsync(cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "HtmlTemplateAdmin.Delete.SyncFailed TemplateId={TemplateId}", templateId);
+        }
+
+        return true;
     }
 
     public async Task<int> ForceSyncNowAsync(CancellationToken cancellationToken = default)
