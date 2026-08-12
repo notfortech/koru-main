@@ -34,7 +34,7 @@ public sealed class HtmlTemplateAdminService : IHtmlTemplateAdminService
         _logger = logger;
     }
 
-    public async Task<HtmlTemplateBulkUploadResponseDto> UploadBatchAsync(Stream zipStream, CancellationToken cancellationToken = default)
+    public async Task<HtmlTemplateBulkUploadResponseDto> UploadBatchAsync(Stream zipStream, bool dryRun = false, CancellationToken cancellationToken = default)
     {
         var results = new List<HtmlTemplateUploadResultDto>();
         var existingIds = await LoadIndexAsync(cancellationToken);
@@ -50,7 +50,7 @@ public sealed class HtmlTemplateAdminService : IHtmlTemplateAdminService
         {
             results.Add(new HtmlTemplateUploadResultDto(
                 "(zip)", "Failed", new List<string> { "No manifest.json files were found anywhere in the uploaded zip." }, new List<string>()));
-            return new HtmlTemplateBulkUploadResponseDto(results, 0, 0, 1);
+            return new HtmlTemplateBulkUploadResponseDto(results, 0, 0, 1, dryRun);
         }
 
         foreach (var manifestEntry in manifestEntries)
@@ -111,26 +111,30 @@ public sealed class HtmlTemplateAdminService : IHtmlTemplateAdminService
 
                 var isUpdate = existingIds.Contains(templateId, StringComparer.Ordinal);
 
-                using (var manifestBytes = new MemoryStream(Encoding.UTF8.GetBytes(manifestText)))
-                    await _blobStorage.UploadClientBlobAsync(HtmlTemplateBlobPaths.ManifestPath(templateId), manifestBytes, "application/json", cancellationToken);
-
-                using (var chromeBytes = new MemoryStream(Encoding.UTF8.GetBytes(chromeHtml!)))
-                    await _blobStorage.UploadClientBlobAsync(HtmlTemplateBlobPaths.ChromeHtmlPath(templateId), chromeBytes, "text/html", cancellationToken);
-
-                var previewEntry = FindSiblingEntry(archive, directory, "preview.jpg");
-                if (previewEntry is not null)
+                if (!dryRun)
                 {
-                    await using var previewStream = previewEntry.Open();
-                    using var previewBuffer = new MemoryStream();
-                    await previewStream.CopyToAsync(previewBuffer, cancellationToken);
-                    previewBuffer.Position = 0;
-                    await _blobStorage.UploadClientBlobAsync(HtmlTemplateBlobPaths.PreviewPath(templateId), previewBuffer, "image/jpeg", cancellationToken);
+                    using (var manifestBytes = new MemoryStream(Encoding.UTF8.GetBytes(manifestText)))
+                        await _blobStorage.UploadClientBlobAsync(HtmlTemplateBlobPaths.ManifestPath(templateId), manifestBytes, "application/json", cancellationToken);
+
+                    using (var chromeBytes = new MemoryStream(Encoding.UTF8.GetBytes(chromeHtml!)))
+                        await _blobStorage.UploadClientBlobAsync(HtmlTemplateBlobPaths.ChromeHtmlPath(templateId), chromeBytes, "text/html", cancellationToken);
+
+                    var previewEntry = FindSiblingEntry(archive, directory, "preview.jpg");
+                    if (previewEntry is not null)
+                    {
+                        await using var previewStream = previewEntry.Open();
+                        using var previewBuffer = new MemoryStream();
+                        await previewStream.CopyToAsync(previewBuffer, cancellationToken);
+                        previewBuffer.Position = 0;
+                        await _blobStorage.UploadClientBlobAsync(HtmlTemplateBlobPaths.PreviewPath(templateId), previewBuffer, "image/jpeg", cancellationToken);
+                    }
+
+                    if (!mergedIds.Contains(templateId, StringComparer.Ordinal))
+                        mergedIds.Add(templateId);
+
+                    anySucceeded = true;
                 }
 
-                if (!mergedIds.Contains(templateId, StringComparer.Ordinal))
-                    mergedIds.Add(templateId);
-
-                anySucceeded = true;
                 results.Add(new HtmlTemplateUploadResultDto(templateId, isUpdate ? "Updated" : "Created", new List<string>(), warnings));
             }
             catch (JsonException jsonEx)
@@ -146,7 +150,7 @@ public sealed class HtmlTemplateAdminService : IHtmlTemplateAdminService
             }
         }
 
-        if (anySucceeded)
+        if (anySucceeded && !dryRun)
         {
             try
             {
@@ -180,7 +184,66 @@ public sealed class HtmlTemplateAdminService : IHtmlTemplateAdminService
         var created = results.Count(r => r.Status == "Created");
         var updated = results.Count(r => r.Status == "Updated");
         var failed = results.Count(r => r.Status == "Failed");
-        return new HtmlTemplateBulkUploadResponseDto(results, created, updated, failed);
+        return new HtmlTemplateBulkUploadResponseDto(results, created, updated, failed, dryRun);
+    }
+
+    public async Task<HtmlTemplateUploadResultDto> UploadChromeHtmlAsync(string templateId, string chromeHtml, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(templateId))
+            return new HtmlTemplateUploadResultDto(templateId ?? "", "Failed", new List<string> { "A template id is required." }, new List<string>());
+
+        if (string.IsNullOrWhiteSpace(chromeHtml))
+            return new HtmlTemplateUploadResultDto(templateId, "Failed", new List<string> { "The uploaded file is empty." }, new List<string>());
+
+        var ids = await LoadIndexAsync(cancellationToken);
+        if (!ids.Contains(templateId, StringComparer.Ordinal))
+        {
+            return new HtmlTemplateUploadResultDto(
+                templateId, "Failed",
+                new List<string> { $"Template '{templateId}' does not exist -- a single chrome.html file can only replace an existing template. Upload a full .zip (manifest.json + chrome.html) to create a new one." },
+                new List<string>());
+        }
+
+        await using var manifestStream = await _blobStorage.DownloadBlobAsync(HtmlTemplateBlobPaths.ManifestPath(templateId), cancellationToken);
+        if (manifestStream is null)
+        {
+            return new HtmlTemplateUploadResultDto(
+                templateId, "Failed",
+                new List<string> { "manifest.json not found for this template -- cannot validate the new chrome.html against its testIds contract." },
+                new List<string>());
+        }
+
+        JsonDocument manifestDoc;
+        try
+        {
+            manifestDoc = await JsonDocument.ParseAsync(manifestStream, cancellationToken: cancellationToken);
+        }
+        catch (JsonException jsonEx)
+        {
+            return new HtmlTemplateUploadResultDto(
+                templateId, "Failed", new List<string> { $"This template's existing manifest.json is not valid JSON: {jsonEx.Message}" }, new List<string>());
+        }
+
+        using (manifestDoc)
+        {
+            var (isValid, errors, warnings) = ValidateChromeHtml(chromeHtml, manifestDoc.RootElement);
+            if (!isValid)
+                return new HtmlTemplateUploadResultDto(templateId, "Failed", errors, warnings);
+
+            using var chromeBytes = new MemoryStream(Encoding.UTF8.GetBytes(chromeHtml));
+            await _blobStorage.UploadClientBlobAsync(HtmlTemplateBlobPaths.ChromeHtmlPath(templateId), chromeBytes, "text/html", cancellationToken);
+
+            try
+            {
+                await _syncRunner.RunOnceAsync(cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "HtmlTemplateAdmin.UploadChromeHtml.SyncFailed TemplateId={TemplateId}", templateId);
+            }
+
+            return new HtmlTemplateUploadResultDto(templateId, "Updated", new List<string>(), warnings);
+        }
     }
 
     public async Task<List<HtmlTemplateSummaryDto>> ListAsync(CancellationToken cancellationToken = default)
@@ -365,8 +428,42 @@ public sealed class HtmlTemplateAdminService : IHtmlTemplateAdminService
         {
             if (!dataContract.TryGetProperty("maxRows", out var maxRows) || !maxRows.TryGetInt32(out var maxRowsValue) || maxRowsValue <= 0)
                 errors.Add("'dataContract.maxRows' must be a positive integer.");
-            if (!dataContract.TryGetProperty("rowFields", out var rowFields) || rowFields.ValueKind != JsonValueKind.Array)
-                errors.Add("Missing 'dataContract.rowFields' array.");
+
+            // Two supported shapes, mirroring row_export.py's is_multi_table_contract() on the
+            // Python engine side: single-table ({"rowFields": [...]})  for a template whose data
+            // fits one flat array, or multi-table ({"tables": [{"table", "rowFields", ...}, ...]})
+            // for a template spanning several sheets/tables at different grains. A manifest must
+            // declare exactly one of the two -- this was previously hard-requiring the single-
+            // table shape even for templates correctly using the multi-table one, rejecting every
+            // multi-table upload with "Missing 'dataContract.rowFields' array."
+            var hasRowFields = dataContract.TryGetProperty("rowFields", out var rowFields) && rowFields.ValueKind == JsonValueKind.Array;
+            var hasTables = dataContract.TryGetProperty("tables", out var tables) && tables.ValueKind == JsonValueKind.Array && tables.GetArrayLength() > 0;
+
+            if (hasTables)
+            {
+                var index = 0;
+                foreach (var table in tables.EnumerateArray())
+                {
+                    if (table.ValueKind != JsonValueKind.Object)
+                    {
+                        errors.Add($"'dataContract.tables[{index}]' must be an object.");
+                    }
+                    else
+                    {
+                        if (string.IsNullOrWhiteSpace(GetString(table, "table")))
+                            errors.Add($"'dataContract.tables[{index}]' is missing a 'table' name.");
+                        if (!table.TryGetProperty("rowFields", out var tableRowFields) || tableRowFields.ValueKind != JsonValueKind.Array)
+                            errors.Add($"'dataContract.tables[{index}]' is missing a 'rowFields' array.");
+                    }
+                    index++;
+                }
+            }
+            else if (!hasRowFields)
+            {
+                errors.Add(
+                    "'dataContract' must declare either a 'rowFields' array (single-table) or a " +
+                    "non-empty 'tables' array (multi-table).");
+            }
         }
 
         if (!manifest.TryGetProperty("testIds", out var testIds) || testIds.ValueKind != JsonValueKind.Object)

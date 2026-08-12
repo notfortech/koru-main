@@ -11,7 +11,8 @@ public record HtmlTemplateBulkUploadResponseDto(
     List<HtmlTemplateUploadResultDto> Results,
     int Created,
     int Updated,
-    int Failed);
+    int Failed,
+    bool DryRun = false);
 
 /// <summary>Row shown on the admin HTML Templates list -- projected from index.json + each manifest.json.</summary>
 public record HtmlTemplateSummaryDto(

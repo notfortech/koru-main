@@ -18,4 +18,11 @@ public static class UploadLimits
     /// per zip), so this stays a separate, larger ceiling rather than sharing MaxUploadBytes.
     /// </summary>
     public const long MaxHtmlTemplateBatchBytes = 200L * 1024L * 1024L; // 200 MB
+
+    /// <summary>
+    /// Single-file replacement of one existing HTML template's chrome.html -- always a single
+    /// self-contained HTML document, never bundled with a manifest/preview, so a much smaller
+    /// ceiling than the batch zip is appropriate.
+    /// </summary>
+    public const long MaxHtmlTemplateSingleFileBytes = 20L * 1024L * 1024L; // 20 MB
 }
