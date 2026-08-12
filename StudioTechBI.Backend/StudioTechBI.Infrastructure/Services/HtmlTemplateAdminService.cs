@@ -365,8 +365,42 @@ public sealed class HtmlTemplateAdminService : IHtmlTemplateAdminService
         {
             if (!dataContract.TryGetProperty("maxRows", out var maxRows) || !maxRows.TryGetInt32(out var maxRowsValue) || maxRowsValue <= 0)
                 errors.Add("'dataContract.maxRows' must be a positive integer.");
-            if (!dataContract.TryGetProperty("rowFields", out var rowFields) || rowFields.ValueKind != JsonValueKind.Array)
-                errors.Add("Missing 'dataContract.rowFields' array.");
+
+            // Two supported shapes, mirroring row_export.py's is_multi_table_contract() on the
+            // Python engine side: single-table ({"rowFields": [...]})  for a template whose data
+            // fits one flat array, or multi-table ({"tables": [{"table", "rowFields", ...}, ...]})
+            // for a template spanning several sheets/tables at different grains. A manifest must
+            // declare exactly one of the two -- this was previously hard-requiring the single-
+            // table shape even for templates correctly using the multi-table one, rejecting every
+            // multi-table upload with "Missing 'dataContract.rowFields' array."
+            var hasRowFields = dataContract.TryGetProperty("rowFields", out var rowFields) && rowFields.ValueKind == JsonValueKind.Array;
+            var hasTables = dataContract.TryGetProperty("tables", out var tables) && tables.ValueKind == JsonValueKind.Array && tables.GetArrayLength() > 0;
+
+            if (hasTables)
+            {
+                var index = 0;
+                foreach (var table in tables.EnumerateArray())
+                {
+                    if (table.ValueKind != JsonValueKind.Object)
+                    {
+                        errors.Add($"'dataContract.tables[{index}]' must be an object.");
+                    }
+                    else
+                    {
+                        if (string.IsNullOrWhiteSpace(GetString(table, "table")))
+                            errors.Add($"'dataContract.tables[{index}]' is missing a 'table' name.");
+                        if (!table.TryGetProperty("rowFields", out var tableRowFields) || tableRowFields.ValueKind != JsonValueKind.Array)
+                            errors.Add($"'dataContract.tables[{index}]' is missing a 'rowFields' array.");
+                    }
+                    index++;
+                }
+            }
+            else if (!hasRowFields)
+            {
+                errors.Add(
+                    "'dataContract' must declare either a 'rowFields' array (single-table) or a " +
+                    "non-empty 'tables' array (multi-table).");
+            }
         }
 
         if (!manifest.TryGetProperty("testIds", out var testIds) || testIds.ValueKind != JsonValueKind.Object)
