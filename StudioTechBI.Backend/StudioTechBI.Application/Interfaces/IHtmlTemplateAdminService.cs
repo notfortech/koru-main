@@ -18,7 +18,20 @@ public interface IHtmlTemplateAdminService
     /// index.json (if present) is ignored -- templates/html/index.json is always merged, never
     /// replaced.
     /// </summary>
-    Task<HtmlTemplateBulkUploadResponseDto> UploadBatchAsync(Stream zipStream, CancellationToken cancellationToken = default);
+    /// <param name="dryRun">
+    /// When true, runs every validation check and reports what would happen (including which
+    /// template ids already exist and would be overwritten) without writing anything to blob
+    /// storage or index.json -- lets a caller confirm an overwrite before it actually happens.
+    /// </param>
+    Task<HtmlTemplateBulkUploadResponseDto> UploadBatchAsync(Stream zipStream, bool dryRun = false, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Replaces just the chrome.html of an already-existing template (its manifest.json is
+    /// untouched) -- the single-file complement to UpdateManifestAsync, for when only the markup
+    /// needs a fix and building a full zip is overkill. Fails if the template id isn't already
+    /// listed; use UploadBatchAsync to create a brand new template.
+    /// </summary>
+    Task<HtmlTemplateUploadResultDto> UploadChromeHtmlAsync(string templateId, string chromeHtml, CancellationToken cancellationToken = default);
 
     Task<List<HtmlTemplateSummaryDto>> ListAsync(CancellationToken cancellationToken = default);
 

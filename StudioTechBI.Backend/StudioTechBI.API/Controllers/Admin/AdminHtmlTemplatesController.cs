@@ -1,3 +1,4 @@
+using System.Text;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using StudioTechBI.Application.Constants;
@@ -33,13 +34,39 @@ public class AdminHtmlTemplatesController : ControllerBase
 
     [HttpPost("upload-batch")]
     [RequestSizeLimit(UploadLimits.MaxHtmlTemplateBatchBytes)]
-    public async Task<ActionResult<HtmlTemplateBulkUploadResponseDto>> UploadBatch(IFormFile? zip, CancellationToken cancellationToken)
+    public async Task<ActionResult<HtmlTemplateBulkUploadResponseDto>> UploadBatch(IFormFile? zip, [FromForm] bool dryRun, CancellationToken cancellationToken)
     {
         if (zip is null || zip.Length == 0)
             return BadRequest("A .zip file is required.");
 
         await using var stream = zip.OpenReadStream();
-        var result = await _service.UploadBatchAsync(stream, cancellationToken);
+        var result = await _service.UploadBatchAsync(stream, dryRun, cancellationToken);
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// Replaces just one existing template's chrome.html -- the single-file complement to the
+    /// manifest-only editor below. Fails (422) if the id isn't already listed, so a brand new
+    /// template still has to come in via a full .zip.
+    /// </summary>
+    [HttpPost("{id}/chrome-html")]
+    [RequestSizeLimit(UploadLimits.MaxHtmlTemplateSingleFileBytes)]
+    public async Task<ActionResult<HtmlTemplateUploadResultDto>> UploadChromeHtml(string id, IFormFile? file, CancellationToken cancellationToken)
+    {
+        if (file is null || file.Length == 0)
+            return BadRequest("An .html file is required.");
+
+        string html;
+        await using (var stream = file.OpenReadStream())
+        using (var reader = new StreamReader(stream, Encoding.UTF8))
+        {
+            html = await reader.ReadToEndAsync(cancellationToken);
+        }
+
+        var result = await _service.UploadChromeHtmlAsync(id, html, cancellationToken);
+        if (result.Status == "Failed")
+            return UnprocessableEntity(result);
+
         return Ok(result);
     }
 
