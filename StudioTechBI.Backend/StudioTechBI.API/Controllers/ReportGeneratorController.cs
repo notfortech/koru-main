@@ -672,7 +672,8 @@ public class ReportGeneratorController : ControllerBase
     /// </summary>
     [HttpPost("verify-html-match")]
     [RequestSizeLimit(UploadLimits.MaxUploadBytes)]
-    public async Task<IActionResult> VerifyHtmlMatchAsync(IFormFile file, CancellationToken cancellationToken)
+    public async Task<IActionResult> VerifyHtmlMatchAsync(
+        IFormFile file, [FromForm] string? columnNames, CancellationToken cancellationToken)
     {
         if (file is null || file.Length == 0)
             return BadRequest(ApiResponse<object>.ErrorResponse("No file uploaded."));
@@ -708,7 +709,7 @@ public class ReportGeneratorController : ControllerBase
                 var bestConfidence = allCandidates.Count > 0 ? allCandidates.Max(c => c.Confidence) : (double?)null;
                 await _templateLogWriter.LogHtmlTemplateGapAsync(
                     client?.ClientId, client?.ClientName ?? "Unknown", correlationId,
-                    columnNames: [], matchPath: "AiAssisted", bestConfidence, cancellationToken);
+                    columnNames: ParseColumnNames(columnNames), matchPath: "AiAssisted", bestConfidence, cancellationToken);
             }
 
             var response = new VerifyHtmlTemplateMatchResponse(correlationId, qualifying);
@@ -723,6 +724,24 @@ public class ReportGeneratorController : ControllerBase
         catch (InvalidOperationException ex)
         {
             return BadRequest(ApiResponse<object>.ErrorResponse(ex.Message));
+        }
+    }
+
+    /// <summary>
+    /// Best-effort decode of the client-supplied column list for the gap-log entry above — the
+    /// list is diagnostic only (it never drives matching), so malformed/missing input just falls
+    /// back to an empty list rather than failing the request.
+    /// </summary>
+    private static List<string> ParseColumnNames(string? columnNamesJson)
+    {
+        if (string.IsNullOrWhiteSpace(columnNamesJson)) return [];
+        try
+        {
+            return JsonSerializer.Deserialize<List<string>>(columnNamesJson) ?? [];
+        }
+        catch (JsonException)
+        {
+            return [];
         }
     }
 }
