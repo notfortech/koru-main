@@ -32,6 +32,11 @@ public sealed class HtmlTemplateSyncRunner : IHtmlTemplateSyncRunner
 
     public async Task<HtmlTemplateSyncResult> RunOnceAsync(CancellationToken cancellationToken = default)
     {
+        // Ids an admin has explicitly deleted via HtmlTemplateAdminService.DeleteAsync, for seed
+        // ids specifically -- un-listing from index.json alone can't stop a seed template from
+        // reappearing below, since the seed catalog is compiled into the assembly, not blob-backed.
+        var excludedSeedIds = await LoadExcludedSeedIdsAsync(cancellationToken);
+
         // Keyed by id so a properly-uploaded "clients"/templates/html/<id>/manifest.json always
         // wins over its built-in seed counterpart of the same id (HtmlTemplateSeedCatalog) — the
         // seed exists purely so the 2 already-onboarded templates (currently living as flat .html
@@ -39,7 +44,10 @@ public sealed class HtmlTemplateSyncRunner : IHtmlTemplateSyncRunner
         // designed convention) still match, without requiring anyone to re-upload anything.
         var manifestsById = new Dictionary<string, HtmlTemplateManifestPushDto>(StringComparer.OrdinalIgnoreCase);
         foreach (var seed in HtmlTemplateSeedCatalog.Templates)
+        {
+            if (excludedSeedIds.Contains(seed.Id, StringComparer.OrdinalIgnoreCase)) continue;
             manifestsById[seed.Id] = new HtmlTemplateManifestPushDto(seed.Id, seed.ManifestJson);
+        }
 
         List<string>? templateIds = null;
         await using (var indexStream = await _blobStorage.DownloadBlobAsync(HtmlTemplateBlobPaths.IndexPath, cancellationToken))
@@ -95,9 +103,18 @@ public sealed class HtmlTemplateSyncRunner : IHtmlTemplateSyncRunner
         // blob-vs-seed split every cycle turns that into a visible, at-a-glance log signal instead.
         var seedFallbackCount = manifestsById.Count - blobResolvedCount;
         _logger.LogInformation(
-            "HtmlTemplateRegistrySync.Pushed Count={Count} BlobResolved={BlobResolved} SeedFallback={SeedFallback}",
-            manifests.Count, blobResolvedCount, seedFallbackCount);
+            "HtmlTemplateRegistrySync.Pushed Count={Count} BlobResolved={BlobResolved} SeedFallback={SeedFallback} ExcludedSeeds={ExcludedSeeds}",
+            manifests.Count, blobResolvedCount, seedFallbackCount, excludedSeedIds.Count);
 
         return new HtmlTemplateSyncResult(manifests.Count, blobResolvedCount, seedFallbackCount);
+    }
+
+    private async Task<List<string>> LoadExcludedSeedIdsAsync(CancellationToken cancellationToken)
+    {
+        await using var stream = await _blobStorage.DownloadBlobAsync(HtmlTemplateBlobPaths.ExcludedSeedIdsPath, cancellationToken);
+        if (stream is null) return new List<string>();
+
+        var ids = await JsonSerializer.DeserializeAsync<List<string>>(stream, cancellationToken: cancellationToken);
+        return ids ?? new List<string>();
     }
 }

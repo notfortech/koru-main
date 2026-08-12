@@ -286,14 +286,26 @@ public sealed class HtmlTemplateAdminService : IHtmlTemplateAdminService
     {
         var ids = await LoadIndexAsync(cancellationToken);
         var updated = ids.Where(id => !string.Equals(id, templateId, StringComparison.Ordinal)).ToList();
-        if (updated.Count == ids.Count)
+        var wasListed = updated.Count != ids.Count;
+        var isSeedTemplate = HtmlTemplateSeedCatalog.Find(templateId) is not null;
+
+        if (!wasListed && !isSeedTemplate)
         {
             // Nothing matched -- return false so the controller can report 404 instead of a
             // silent no-op "success" that leaves the caller thinking a delete happened.
             return false;
         }
 
-        await SaveIndexAsync(updated, cancellationToken);
+        if (wasListed)
+            await SaveIndexAsync(updated, cancellationToken);
+
+        // Built-in seed templates (HtmlTemplateSeedCatalog) are compiled into the assembly, not
+        // blob-backed -- un-listing from index.json does nothing to stop HtmlTemplateSyncRunner
+        // from unconditionally re-adding them every cycle (including the very re-sync triggered
+        // a few lines below). Without this, a "deleted" seed template keeps being pushed to
+        // ReportAgent.Api and can keep winning matches forever, while the admin UI shows it gone.
+        if (isSeedTemplate)
+            await ExcludeSeedIdAsync(templateId, cancellationToken);
 
         // Re-trigger the sync cycle immediately, same fail-soft pattern as UploadBatchAsync/
         // UpdateManifestAsync -- an unlisted template stops matching right away instead of
@@ -535,6 +547,21 @@ public sealed class HtmlTemplateAdminService : IHtmlTemplateAdminService
         var json = JsonSerializer.Serialize(deduped, PrettyPrint);
         using var bytes = new MemoryStream(Encoding.UTF8.GetBytes(json));
         await _blobStorage.UploadClientBlobAsync(HtmlTemplateBlobPaths.IndexPath, bytes, "application/json", cancellationToken);
+    }
+
+    private async Task ExcludeSeedIdAsync(string templateId, CancellationToken cancellationToken)
+    {
+        await using var stream = await _blobStorage.DownloadBlobAsync(HtmlTemplateBlobPaths.ExcludedSeedIdsPath, cancellationToken);
+        var excluded = stream is null
+            ? new List<string>()
+            : await JsonSerializer.DeserializeAsync<List<string>>(stream, cancellationToken: cancellationToken) ?? new List<string>();
+
+        if (excluded.Contains(templateId, StringComparer.Ordinal)) return;
+
+        excluded.Add(templateId);
+        var json = JsonSerializer.Serialize(excluded, PrettyPrint);
+        using var bytes = new MemoryStream(Encoding.UTF8.GetBytes(json));
+        await _blobStorage.UploadClientBlobAsync(HtmlTemplateBlobPaths.ExcludedSeedIdsPath, bytes, "application/json", cancellationToken);
     }
 
     // ── Zip helpers ─────────────────────────────────────────────────────────────────────────────
