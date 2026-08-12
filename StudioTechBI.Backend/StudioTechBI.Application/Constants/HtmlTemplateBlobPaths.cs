@@ -10,6 +10,14 @@ public static class HtmlTemplateBlobPaths
 {
     public const string IndexPath = "templates/html/index.json";
 
+    /// <summary>
+    /// Ids an admin has explicitly deleted that also happen to be built-in seed templates
+    /// (HtmlTemplateSeedCatalog) -- those are compiled into the assembly, not blob-backed, so
+    /// un-listing them from IndexPath alone doesn't stop HtmlTemplateSyncRunner from re-adding
+    /// them every cycle. This is the only durable record of "this seed id was explicitly retired."
+    /// </summary>
+    public const string ExcludedSeedIdsPath = "templates/html/excluded-seed-ids.json";
+
     public static string ManifestPath(string templateId) => $"templates/html/{templateId}/manifest.json";
     public static string ChromeHtmlPath(string templateId) => $"templates/html/{templateId}/chrome.html";
     public static string PreviewPath(string templateId) => $"templates/html/{templateId}/preview.jpg";
