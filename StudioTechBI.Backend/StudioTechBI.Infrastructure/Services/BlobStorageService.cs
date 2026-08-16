@@ -90,6 +90,13 @@ public class BlobStorageService : IBlobStorageService
         return await client.ExistsAsync(cancellationToken);
     }
 
+    public async Task DeleteBlobIfExistsAsync(string path, CancellationToken cancellationToken = default)
+    {
+        if (_containerClient == null) return;
+        var client = _containerClient.GetBlobClient(path);
+        await client.DeleteIfExistsAsync(cancellationToken: cancellationToken);
+    }
+
     public async Task<string?> GetLatestBlobPathByPrefixAsync(string pathPrefix, string fileExtension, CancellationToken cancellationToken = default)
     {
         if (_containerClient == null) return null;

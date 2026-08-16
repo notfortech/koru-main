@@ -15,4 +15,7 @@ public interface IBlobStorageService
 
     /// <summary>Uploads a blob into the clients container at the given path (overwrite).</summary>
     Task UploadClientBlobAsync(string blobPath, Stream content, string? contentType = null, CancellationToken cancellationToken = default);
+
+    /// <summary>Deletes a blob if it exists; a no-op (never throws) if it doesn't.</summary>
+    Task DeleteBlobIfExistsAsync(string blobPath, CancellationToken cancellationToken = default);
 }

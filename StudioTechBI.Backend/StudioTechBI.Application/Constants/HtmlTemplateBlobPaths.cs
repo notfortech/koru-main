@@ -23,6 +23,16 @@ public static class HtmlTemplateBlobPaths
     public static string PreviewPath(string templateId) => $"templates/html/{templateId}/preview.jpg";
 
     /// <summary>
+    /// The admin-supplied xlsx/csv the template's dashboard was actually built from -- used to
+    /// derive/validate requiredColumns and requires.min* against a real dataset instead of a
+    /// hand-typed guess, and to re-run the deterministic match+render pipeline from the admin
+    /// "Preview" action. Keeps the original file extension since the profiling pipeline branches
+    /// on it (.xlsx workbook vs. .csv).
+    /// </summary>
+    public static string ReferenceDatasetPath(string templateId, string extension) =>
+        $"templates/html/{templateId}/reference-dataset{extension}";
+
+    /// <summary>
     /// The literal HTML comment HtmlReportAssemblyService substitutes with the injected
     /// &lt;script type="application/json" id="stbi-report-data"&gt; data block. Shared with
     /// HtmlTemplateAdminService's upload/edit validation so "this template passed validation"

@@ -52,4 +52,25 @@ public interface IHtmlTemplateAdminService
     /// renaming is a delete-and-recreate, not an edit, to avoid orphaning index.json.
     /// </summary>
     Task<HtmlTemplateUploadResultDto> UpdateManifestAsync(string templateId, string manifestJson, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Stores the admin-supplied reference dataset (the real xlsx/csv the template's dashboard was
+    /// built from) for this template, profiles its columns via the same profiler the deterministic
+    /// matcher's role gate uses at real match time, and returns a proposed, merged manifest.json --
+    /// existing dataContract.rowFields aliases are preserved (chrome.html depends on them staying
+    /// stable), only new columns are appended. The caller must still call UpdateManifestAsync to
+    /// actually save it; this never writes the manifest itself. The raw file is stored immediately
+    /// regardless, since it also backs PreviewWithReferenceDatasetAsync.
+    /// </summary>
+    Task<HtmlTemplateReferenceDatasetDeriveResponseDto> DeriveManifestFromReferenceDatasetAsync(
+        string templateId, Stream fileStream, string fileName, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Re-runs the deterministic match+render pipeline against this template's stored reference
+    /// dataset and asserts it resolves back to this same template id -- the admin-facing proof that
+    /// a client's matching file will actually be picked up by the no-AI path. No SavedReport/job
+    /// history/credit-ledger side effects.
+    /// </summary>
+    Task<HtmlTemplatePreviewResponseDto> PreviewWithReferenceDatasetAsync(
+        string templateId, CancellationToken cancellationToken = default);
 }

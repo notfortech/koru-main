@@ -276,6 +276,52 @@ public class ReportGeneratorClient : IReportGeneratorClient
         return wire?.Candidates ?? [];
     }
 
+    public async Task<ColumnProfileResultDto> ProfileColumnsAsync(
+        Stream fileStream,
+        string fileName,
+        string correlationId,
+        CancellationToken cancellationToken = default)
+    {
+        RequireBaseAddress();
+
+        _logger.LogInformation(
+            "ReportGenerator.ProfileColumnsFileSentToEngine CorrelationId={CorrelationId} FileName={FileName}",
+            correlationId, fileName);
+
+        using var content = new MultipartFormDataContent();
+        using var streamContent = new StreamContent(fileStream);
+        streamContent.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
+        content.Add(streamContent, "file", fileName);
+
+        var request = new HttpRequestMessage(HttpMethod.Post, "api/reports/profile-columns") { Content = content };
+        request.Headers.Add("X-Correlation-Id", correlationId);
+
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger.LogWarning(
+                "ReportGenerator.ProfileColumnsFailed StatusCode={StatusCode} CorrelationId={CorrelationId}",
+                (int)response.StatusCode, correlationId);
+            throw new HttpRequestException(
+                MapStatusCode(response.StatusCode, body), inner: null, statusCode: response.StatusCode);
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<ColumnProfileResultDto>(body, JsonOptions)
+                ?? throw new InvalidOperationException("Column profiling returned an empty response body.");
+        }
+        catch (JsonException ex)
+        {
+            _logger.LogError(ex,
+                "ReportGenerator.ProfileColumnsParseError CorrelationId={CorrelationId} Body={Body}",
+                correlationId, Truncate(body, 1000));
+            throw new InvalidOperationException("Column profiling response could not be parsed.", ex);
+        }
+    }
+
     public async Task PushHtmlTemplateRegistryAsync(
         List<HtmlTemplateManifestPushDto> manifests,
         string correlationId,

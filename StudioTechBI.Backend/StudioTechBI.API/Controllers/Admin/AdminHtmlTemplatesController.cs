@@ -107,4 +107,42 @@ public class AdminHtmlTemplatesController : ControllerBase
 
         return Ok(result);
     }
+
+    /// <summary>
+    /// Accepts the real xlsx/csv a template's dashboard was built from, profiles its columns via
+    /// the same profiler the deterministic matcher's role gate runs at real match time, and returns
+    /// a proposed, merged manifest.json -- unsaved. The frontend pre-fills the existing manifest
+    /// editor with it; saving still goes through PUT .../manifest unchanged. The file itself is
+    /// stored immediately regardless (also backs the Preview action below).
+    /// </summary>
+    [HttpPost("{id}/reference-dataset")]
+    [RequestSizeLimit(UploadLimits.MaxUploadBytes)]
+    public async Task<ActionResult<HtmlTemplateReferenceDatasetDeriveResponseDto>> UploadReferenceDataset(
+        string id, IFormFile? file, CancellationToken cancellationToken)
+    {
+        if (file is null || file.Length == 0)
+            return BadRequest("An .xlsx or .csv file is required.");
+
+        await using var stream = file.OpenReadStream();
+        var result = await _service.DeriveManifestFromReferenceDatasetAsync(id, stream, file.FileName, cancellationToken);
+        if (!result.Success)
+            return UnprocessableEntity(result);
+
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// Re-runs the deterministic match+render pipeline against this template's stored reference
+    /// dataset and asserts it resolves back to this same template -- the admin-facing proof that a
+    /// client's matching file will actually be picked up by the no-AI path.
+    /// </summary>
+    [HttpPost("{id}/preview")]
+    public async Task<ActionResult<HtmlTemplatePreviewResponseDto>> Preview(string id, CancellationToken cancellationToken)
+    {
+        var result = await _service.PreviewWithReferenceDatasetAsync(id, cancellationToken);
+        if (!result.Matched)
+            return UnprocessableEntity(result);
+
+        return Ok(result);
+    }
 }
