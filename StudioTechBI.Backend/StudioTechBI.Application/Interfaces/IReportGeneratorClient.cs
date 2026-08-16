@@ -50,4 +50,13 @@ public interface IReportGeneratorClient
         List<HtmlTemplateManifestPushDto> manifests,
         string correlationId,
         CancellationToken cancellationToken = default);
+
+    /// <summary>Profiles a reference dataset's columns (role + role-gate counts) using the same
+    /// profiler the deterministic HTML template matcher's role gate runs at real match time —
+    /// backs the admin "upload reference dataset" flow's manifest derivation.</summary>
+    Task<ColumnProfileResultDto> ProfileColumnsAsync(
+        Stream fileStream,
+        string fileName,
+        string correlationId,
+        CancellationToken cancellationToken = default);
 }

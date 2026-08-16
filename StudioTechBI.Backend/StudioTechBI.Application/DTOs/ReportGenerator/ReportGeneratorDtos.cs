@@ -72,6 +72,18 @@ public record VerifyHtmlTemplateMatchResponse(
     string CorrelationId,
     List<HtmlTemplateCandidateDto> Candidates);
 
+/// <summary>One column profiled by /api/reports/profile-columns, via the exact same profiler
+/// (lib/generic_report_engine.profile_table) the deterministic matcher's role gate runs at real
+/// match time -- keeps a template manifest's derived requires.min* counts consistent with what
+/// will actually be evaluated later.</summary>
+public record ProfiledColumnDto(string Name, string Role);
+
+public record ColumnProfileCountsDto(int MinNumeric, int MinDate, int MinCategorical);
+
+public record ColumnProfileResultDto(
+    List<ProfiledColumnDto> Columns,
+    ColumnProfileCountsDto Counts);
+
 public record ReportSlicerDto(
     string Column,
     List<string> Values);

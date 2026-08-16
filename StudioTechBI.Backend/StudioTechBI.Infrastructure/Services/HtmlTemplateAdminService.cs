@@ -1,10 +1,12 @@
 using System.IO.Compression;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
 using StudioTechBI.Application.Constants;
 using StudioTechBI.Application.DTOs.Admin;
+using StudioTechBI.Application.DTOs.ReportGenerator;
 using StudioTechBI.Application.Interfaces;
 
 namespace StudioTechBI.Infrastructure.Services;
@@ -18,19 +20,28 @@ namespace StudioTechBI.Infrastructure.Services;
 public sealed class HtmlTemplateAdminService : IHtmlTemplateAdminService
 {
     private static readonly Regex KebabCaseId = new("^[a-z0-9]+(-[a-z0-9]+)*$", RegexOptions.Compiled);
+    private static readonly Regex NormalizeKeyRegex = new("[^a-z0-9]", RegexOptions.Compiled);
+    private static readonly Regex AliasTokenRegex = new("[A-Za-z0-9]+", RegexOptions.Compiled);
+    private static readonly string[] ReferenceDatasetExtensions = [".xlsx", ".csv"];
     private static readonly JsonSerializerOptions PrettyPrint = new() { WriteIndented = true };
 
     private readonly IBlobStorageService _blobStorage;
     private readonly IHtmlTemplateSyncRunner _syncRunner;
+    private readonly IReportGeneratorClient _reportGeneratorClient;
+    private readonly IHtmlReportAssemblyService _htmlAssembly;
     private readonly ILogger<HtmlTemplateAdminService> _logger;
 
     public HtmlTemplateAdminService(
         IBlobStorageService blobStorage,
         IHtmlTemplateSyncRunner syncRunner,
+        IReportGeneratorClient reportGeneratorClient,
+        IHtmlReportAssemblyService htmlAssembly,
         ILogger<HtmlTemplateAdminService> logger)
     {
         _blobStorage = blobStorage;
         _syncRunner = syncRunner;
+        _reportGeneratorClient = reportGeneratorClient;
+        _htmlAssembly = htmlAssembly;
         _logger = logger;
     }
 
@@ -270,8 +281,9 @@ public sealed class HtmlTemplateAdminService : IHtmlTemplateAdminService
                 var optional = ReadStringArray(root, "optionalColumns");
                 var hasThemeSlots = root.TryGetProperty("themeSlots", out var themeSlots) && themeSlots.ValueKind == JsonValueKind.Object;
                 var hasPreview = await _blobStorage.BlobExistsAsync(HtmlTemplateBlobPaths.PreviewPath(id), cancellationToken);
+                var hasReferenceDataset = await FindReferenceDatasetExtensionAsync(id, cancellationToken) is not null;
 
-                result.Add(new HtmlTemplateSummaryDto(id, name, industry, required, optional, hasPreview, hasThemeSlots, false, null));
+                result.Add(new HtmlTemplateSummaryDto(id, name, industry, required, optional, hasPreview, hasThemeSlots, false, null, hasReferenceDataset));
             }
             catch (Exception ex)
             {
@@ -391,6 +403,246 @@ public sealed class HtmlTemplateAdminService : IHtmlTemplateAdminService
 
             return new HtmlTemplateUploadResultDto(templateId, "Updated", new List<string>(), warnings);
         }
+    }
+
+    public async Task<HtmlTemplateReferenceDatasetDeriveResponseDto> DeriveManifestFromReferenceDatasetAsync(
+        string templateId, Stream fileStream, string fileName, CancellationToken cancellationToken = default)
+    {
+        var warnings = new List<string>();
+
+        if (string.IsNullOrWhiteSpace(templateId))
+            return new HtmlTemplateReferenceDatasetDeriveResponseDto(templateId ?? "", false, null, warnings, new List<string> { "A template id is required." });
+
+        var ext = Path.GetExtension(fileName).ToLowerInvariant();
+        if (!ReferenceDatasetExtensions.Contains(ext))
+            return new HtmlTemplateReferenceDatasetDeriveResponseDto(templateId, false, null, warnings, new List<string> { "Only .xlsx or .csv files are supported." });
+
+        var ids = await LoadIndexAsync(cancellationToken);
+        if (!ids.Contains(templateId, StringComparer.Ordinal))
+        {
+            return new HtmlTemplateReferenceDatasetDeriveResponseDto(
+                templateId, false, null, warnings,
+                new List<string> { $"Template '{templateId}' does not exist -- upload a full .zip to create it first." });
+        }
+
+        await using var manifestStream = await _blobStorage.DownloadBlobAsync(HtmlTemplateBlobPaths.ManifestPath(templateId), cancellationToken);
+        if (manifestStream is null)
+        {
+            return new HtmlTemplateReferenceDatasetDeriveResponseDto(
+                templateId, false, null, warnings, new List<string> { "manifest.json not found for this template." });
+        }
+
+        using var manifestDoc = await JsonDocument.ParseAsync(manifestStream, cancellationToken: cancellationToken);
+
+        // Buffer once so the same bytes can be stored to blob and sent for profiling without
+        // depending on the caller's stream being seekable/re-readable.
+        using var buffer = new MemoryStream();
+        await fileStream.CopyToAsync(buffer, cancellationToken);
+        var fileBytes = buffer.ToArray();
+
+        // Stored immediately, independent of whether the derived manifest below is ever saved --
+        // this file also backs PreviewWithReferenceDatasetAsync. Any stale reference dataset under
+        // a different extension from a prior upload is removed so ListAsync/Preview don't find two.
+        foreach (var staleExt in ReferenceDatasetExtensions.Where(e => e != ext))
+            await _blobStorage.DeleteBlobIfExistsAsync(HtmlTemplateBlobPaths.ReferenceDatasetPath(templateId, staleExt), cancellationToken);
+
+        using (var storeStream = new MemoryStream(fileBytes))
+        {
+            await _blobStorage.UploadClientBlobAsync(
+                HtmlTemplateBlobPaths.ReferenceDatasetPath(templateId, ext), storeStream,
+                ext == ".csv" ? "text/csv" : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                cancellationToken);
+        }
+
+        ColumnProfileResultDto profile;
+        try
+        {
+            using var profileStream = new MemoryStream(fileBytes);
+            profile = await _reportGeneratorClient.ProfileColumnsAsync(profileStream, fileName, Guid.NewGuid().ToString(), cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "HtmlTemplateAdmin.DeriveManifest.ProfileFailed TemplateId={TemplateId}", templateId);
+            return new HtmlTemplateReferenceDatasetDeriveResponseDto(
+                templateId, false, null, warnings, new List<string> { $"Could not profile the reference dataset: {ex.Message}" });
+        }
+
+        var mergedManifestJson = MergeManifestWithProfile(manifestDoc.RootElement, profile, warnings);
+        return new HtmlTemplateReferenceDatasetDeriveResponseDto(templateId, true, mergedManifestJson, warnings, new List<string>());
+    }
+
+    public async Task<HtmlTemplatePreviewResponseDto> PreviewWithReferenceDatasetAsync(
+        string templateId, CancellationToken cancellationToken = default)
+    {
+        var ext = await FindReferenceDatasetExtensionAsync(templateId, cancellationToken);
+        if (ext is null)
+        {
+            return new HtmlTemplatePreviewResponseDto(
+                templateId, false, null, new List<string>(), "No reference dataset has been uploaded for this template yet.");
+        }
+
+        await using var blobStream = await _blobStorage.DownloadBlobAsync(HtmlTemplateBlobPaths.ReferenceDatasetPath(templateId, ext), cancellationToken);
+        if (blobStream is null)
+            return new HtmlTemplatePreviewResponseDto(templateId, false, null, new List<string>(), "The stored reference dataset could not be read.");
+
+        using var buffer = new MemoryStream();
+        await blobStream.CopyToAsync(buffer, cancellationToken);
+        buffer.Position = 0;
+
+        var correlationId = Guid.NewGuid().ToString();
+        var fileName = $"reference-dataset{ext}";
+
+        GeneratedReportDto result;
+        try
+        {
+            // Neither templateId (the unrelated generic KPI/chart engine's own registry, which
+            // always has a catch-all fallback) nor htmlTemplateId is forced here -- this must
+            // exercise the real auto-pick path exactly as a client's matching upload would, or it
+            // wouldn't prove anything about the deterministic matcher actually choosing this
+            // template on its own.
+            result = await _reportGeneratorClient.GenerateReportAsync(
+                buffer, fileName, templateId: null, filtersJson: null, htmlTemplateId: null, correlationId, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "HtmlTemplateAdmin.Preview.GenerateFailed TemplateId={TemplateId}", templateId);
+            return new HtmlTemplatePreviewResponseDto(templateId, false, null, new List<string>(), $"Report generation failed: {ex.Message}");
+        }
+
+        if (!string.Equals(result.HtmlTemplateId, templateId, StringComparison.Ordinal))
+        {
+            var message = result.HtmlTemplateId is null
+                ? "The reference dataset did not deterministically match this template -- review requiredColumns/requires against the uploaded file."
+                : $"The reference dataset matched a different template ('{result.HtmlTemplateId}') instead of this one -- another template's requiredColumns/requires may overlap.";
+            return new HtmlTemplatePreviewResponseDto(templateId, false, null, result.Warnings, message);
+        }
+
+        result = await _htmlAssembly.AssembleAsync(result, themeOverride: null, cancellationToken);
+        return new HtmlTemplatePreviewResponseDto(templateId, true, result.HtmlReport, result.Warnings, null);
+    }
+
+    // ── Reference dataset merge ──────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Merges a profiled reference dataset into an existing manifest -- union requiredColumns,
+    /// overwrite requires.min* with the real profiled counts, and append (never rename/remove)
+    /// dataContract.rowFields entries for genuinely new columns. Returns the proposed manifest as
+    /// pretty-printed JSON; never writes anything.
+    /// </summary>
+    private static string MergeManifestWithProfile(JsonElement manifestElement, ColumnProfileResultDto profile, List<string> warnings)
+    {
+        var manifest = JsonNode.Parse(manifestElement.GetRawText())!.AsObject();
+
+        var existingRequired = ReadStringArray(manifestElement, "requiredColumns");
+        var existingOptional = ReadStringArray(manifestElement, "optionalColumns");
+        var fileColumnNames = profile.Columns.Select(c => c.Name).ToList();
+
+        // requiredColumns = union(existing required, existing optional, file columns), de-duplicated
+        // by normalized key. Optionality is left for the admin to sort out afterward -- one
+        // reference file can't tell us which columns are truly optional for a different client's
+        // file.
+        var mergedRequired = new List<string>();
+        var seen = new HashSet<string>();
+        foreach (var name in existingRequired.Concat(existingOptional).Concat(fileColumnNames))
+        {
+            var key = NormalizeKey(name);
+            if (key.Length == 0 || !seen.Add(key)) continue;
+            mergedRequired.Add(name);
+        }
+        manifest["requiredColumns"] = new JsonArray(mergedRequired.Select(n => (JsonNode)n).ToArray());
+
+        var requires = manifest["requires"]?.AsObject() ?? new JsonObject();
+        requires["minNumeric"] = profile.Counts.MinNumeric;
+        requires["minDate"] = profile.Counts.MinDate;
+        requires["minCategorical"] = profile.Counts.MinCategorical;
+        manifest["requires"] = requires;
+
+        // dataContract.rowFields -- only for single-table manifests; profiling only covers the
+        // reference file's one primary table. Existing aliases are never touched (chrome.html's
+        // hardcoded JS depends on them staying stable) -- only new columns get appended.
+        var dataContract = manifest["dataContract"]?.AsObject();
+        if (dataContract is not null && dataContract["rowFields"] is JsonArray rowFieldsArray)
+        {
+            var existingNormalizedKeys = new HashSet<string>();
+            var existingAliases = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var field in rowFieldsArray)
+            {
+                if (field?["column"]?.GetValue<string>() is { } column) existingNormalizedKeys.Add(NormalizeKey(column));
+                if (field?["alias"]?.GetValue<string>() is { } alias) existingAliases.Add(alias);
+            }
+
+            foreach (var col in profile.Columns)
+            {
+                var key = NormalizeKey(col.Name);
+                if (!existingNormalizedKeys.Add(key)) continue;
+
+                var alias = ToCamelAlias(col.Name);
+                var candidate = alias;
+                for (var suffix = 2; !existingAliases.Add(candidate); suffix++)
+                    candidate = $"{alias}{suffix}";
+
+                rowFieldsArray.Add(new JsonObject { ["column"] = col.Name, ["alias"] = candidate, ["role"] = col.Role });
+            }
+        }
+        else if (dataContract?["tables"] is JsonArray { Count: > 0 })
+        {
+            warnings.Add(
+                "This template's dataContract uses a multi-table layout -- dataContract.rowFields " +
+                "could not be auto-derived (requiredColumns/requires were still updated). Review each " +
+                "table's rowFields manually.");
+        }
+
+        // Flag anything already in the manifest the reference dataset doesn't account for --
+        // surfaced for review, never auto-deleted (deleting could break a chrome.html alias
+        // reference the admin doesn't realize is still needed).
+        var fileNormalizedKeys = new HashSet<string>(fileColumnNames.Select(NormalizeKey));
+        foreach (var name in existingRequired.Concat(existingOptional))
+        {
+            var key = NormalizeKey(name);
+            if (key.Length > 0 && !fileNormalizedKeys.Contains(key))
+                warnings.Add($"'{name}' is in this template's manifest but was not found in the reference dataset -- verify it's still correct.");
+        }
+        if (dataContract?["rowFields"] is JsonArray rowFieldsCheck)
+        {
+            foreach (var field in rowFieldsCheck)
+            {
+                if (field?["column"]?.GetValue<string>() is { } column && !fileNormalizedKeys.Contains(NormalizeKey(column)))
+                    warnings.Add($"dataContract.rowFields column '{column}' was not found in the reference dataset -- verify it's still correct.");
+            }
+        }
+
+        return manifest.ToJsonString(PrettyPrint);
+    }
+
+    private static string NormalizeKey(string? s) => string.IsNullOrEmpty(s) ? "" : NormalizeKeyRegex.Replace(s.Trim().ToLowerInvariant(), "");
+
+    /// <summary>Best-effort camelCase alias for a brand-new dataContract.rowFields entry -- doesn't
+    /// split existing camelCase/PascalCase column names at internal case boundaries (e.g. "OrderDate"
+    /// becomes "orderdate", not "orderDate"), which is an acceptable simplification since this only
+    /// ever names a column with no prior alias to preserve.</summary>
+    private static string ToCamelAlias(string columnName)
+    {
+        var tokens = AliasTokenRegex.Matches(columnName).Select(m => m.Value).ToList();
+        if (tokens.Count == 0) return "col";
+
+        var sb = new StringBuilder(tokens[0].ToLowerInvariant());
+        for (var i = 1; i < tokens.Count; i++)
+        {
+            var t = tokens[i];
+            sb.Append(char.ToUpperInvariant(t[0]));
+            if (t.Length > 1) sb.Append(t[1..].ToLowerInvariant());
+        }
+        return sb.ToString();
+    }
+
+    private async Task<string?> FindReferenceDatasetExtensionAsync(string templateId, CancellationToken cancellationToken)
+    {
+        foreach (var ext in ReferenceDatasetExtensions)
+        {
+            if (await _blobStorage.BlobExistsAsync(HtmlTemplateBlobPaths.ReferenceDatasetPath(templateId, ext), cancellationToken))
+                return ext;
+        }
+        return null;
     }
 
     // ── Validation ───────────────────────────────────────────────────────────────────────────
