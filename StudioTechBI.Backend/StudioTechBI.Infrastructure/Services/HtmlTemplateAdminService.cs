@@ -21,7 +21,6 @@ public sealed class HtmlTemplateAdminService : IHtmlTemplateAdminService
 {
     private static readonly Regex KebabCaseId = new("^[a-z0-9]+(-[a-z0-9]+)*$", RegexOptions.Compiled);
     private static readonly Regex NormalizeKeyRegex = new("[^a-z0-9]", RegexOptions.Compiled);
-    private static readonly Regex AliasTokenRegex = new("[A-Za-z0-9]+", RegexOptions.Compiled);
     private static readonly string[] ReferenceDatasetExtensions = [".xlsx", ".csv"];
     private static readonly JsonSerializerOptions PrettyPrint = new() { WriteIndented = true };
 
@@ -639,7 +638,13 @@ public sealed class HtmlTemplateAdminService : IHtmlTemplateAdminService
             tableColumnKeys.Add(key);
             if (!existingNormalizedKeys.Add(key)) continue;
 
-            var alias = ToCamelAlias(col.Name);
+            // Alias defaults to the raw column name verbatim, not a camelCase transform -- a
+            // template's chrome.html reads row data by whatever key row_export.py exports under
+            // (literally the declared alias), and every template's chrome.html seen so far reads
+            // the original snake_case/whatever-case column names directly, not a camelCase
+            // rewrite. Inventing a different casing here would silently produce a key chrome.html
+            // never looks up -- exactly the all-zero-KPI bug this default is fixing.
+            var alias = col.Name;
             var candidate = alias;
             for (var suffix = 2; !existingAliases.Add(candidate); suffix++)
                 candidate = $"{alias}{suffix}";
@@ -664,25 +669,6 @@ public sealed class HtmlTemplateAdminService : IHtmlTemplateAdminService
     }
 
     private static string NormalizeKey(string? s) => string.IsNullOrEmpty(s) ? "" : NormalizeKeyRegex.Replace(s.Trim().ToLowerInvariant(), "");
-
-    /// <summary>Best-effort camelCase alias for a brand-new dataContract.rowFields entry -- doesn't
-    /// split existing camelCase/PascalCase column names at internal case boundaries (e.g. "OrderDate"
-    /// becomes "orderdate", not "orderDate"), which is an acceptable simplification since this only
-    /// ever names a column with no prior alias to preserve.</summary>
-    private static string ToCamelAlias(string columnName)
-    {
-        var tokens = AliasTokenRegex.Matches(columnName).Select(m => m.Value).ToList();
-        if (tokens.Count == 0) return "col";
-
-        var sb = new StringBuilder(tokens[0].ToLowerInvariant());
-        for (var i = 1; i < tokens.Count; i++)
-        {
-            var t = tokens[i];
-            sb.Append(char.ToUpperInvariant(t[0]));
-            if (t.Length > 1) sb.Append(t[1..].ToLowerInvariant());
-        }
-        return sb.ToString();
-    }
 
     private async Task<string?> FindReferenceDatasetExtensionAsync(string templateId, CancellationToken cancellationToken)
     {
