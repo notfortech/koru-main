@@ -524,10 +524,15 @@ public sealed class HtmlTemplateAdminService : IHtmlTemplateAdminService
     // ── Reference dataset merge ──────────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Merges a profiled reference dataset into an existing manifest -- union requiredColumns,
-    /// overwrite requires.min* with the real profiled counts, and append (never rename/remove)
-    /// dataContract.rowFields entries for genuinely new columns. Returns the proposed manifest as
-    /// pretty-printed JSON; never writes anything.
+    /// Merges a profiled reference dataset into an existing manifest. The dataset is always the
+    /// source of truth: requiredColumns becomes exactly the flat, de-duplicated set of every real
+    /// column found across every table/sheet in the file (full override, not a union), and
+    /// requires.min* is overwritten with the real aggregated counts. Anything the manifest
+    /// previously declared that the dataset doesn't account for at all is demoted into
+    /// optionalColumns rather than dropped. dataContract.rowFields (single- or multi-table, per the
+    /// manifest's own already-declared shape) is append-only -- existing aliases are never
+    /// touched (chrome.html's hardcoded JS depends on them staying stable). Returns the proposed
+    /// manifest as pretty-printed JSON; never writes anything.
     /// </summary>
     private static string MergeManifestWithProfile(JsonElement manifestElement, ColumnProfileResultDto profile, List<string> warnings)
     {
@@ -536,20 +541,17 @@ public sealed class HtmlTemplateAdminService : IHtmlTemplateAdminService
         var existingRequired = ReadStringArray(manifestElement, "requiredColumns");
         var existingOptional = ReadStringArray(manifestElement, "optionalColumns");
         var fileColumnNames = profile.Columns.Select(c => c.Name).ToList();
+        var fileNormalizedKeys = new HashSet<string>(fileColumnNames.Select(NormalizeKey));
 
-        // requiredColumns = union(existing required, existing optional, file columns), de-duplicated
-        // by normalized key. Optionality is left for the admin to sort out afterward -- one
-        // reference file can't tell us which columns are truly optional for a different client's
-        // file.
-        var mergedRequired = new List<string>();
-        var seen = new HashSet<string>();
-        foreach (var name in existingRequired.Concat(existingOptional).Concat(fileColumnNames))
-        {
-            var key = NormalizeKey(name);
-            if (key.Length == 0 || !seen.Add(key)) continue;
-            mergedRequired.Add(name);
-        }
-        manifest["requiredColumns"] = new JsonArray(mergedRequired.Select(n => (JsonNode)n).ToArray());
+        // requiredColumns/optionalColumns feed the AI-assisted scoring's column-overlap check
+        // against a client's WHOLE uploaded file (html_template_matcher._score_template), never
+        // scoped to one table -- so this stays a flat union across every sheet regardless of
+        // whether the manifest itself is single- or multi-table.
+        var newRequired = DedupeByNormalizedKey(fileColumnNames, seen: null, out var requiredKeys);
+        manifest["requiredColumns"] = new JsonArray(newRequired.Select(n => (JsonNode)n).ToArray());
+
+        var newOptional = DedupeByNormalizedKey(existingOptional.Concat(existingRequired), seen: requiredKeys, out _);
+        manifest["optionalColumns"] = new JsonArray(newOptional.Select(n => (JsonNode)n).ToArray());
 
         var requires = manifest["requires"]?.AsObject() ?? new JsonObject();
         requires["minNumeric"] = profile.Counts.MinNumeric;
@@ -557,61 +559,108 @@ public sealed class HtmlTemplateAdminService : IHtmlTemplateAdminService
         requires["minCategorical"] = profile.Counts.MinCategorical;
         manifest["requires"] = requires;
 
-        // dataContract.rowFields -- only for single-table manifests; profiling only covers the
-        // reference file's one primary table. Existing aliases are never touched (chrome.html's
-        // hardcoded JS depends on them staying stable) -- only new columns get appended.
         var dataContract = manifest["dataContract"]?.AsObject();
         if (dataContract is not null && dataContract["rowFields"] is JsonArray rowFieldsArray)
         {
-            var existingNormalizedKeys = new HashSet<string>();
-            var existingAliases = new HashSet<string>(StringComparer.Ordinal);
-            foreach (var field in rowFieldsArray)
-            {
-                if (field?["column"]?.GetValue<string>() is { } column) existingNormalizedKeys.Add(NormalizeKey(column));
-                if (field?["alias"]?.GetValue<string>() is { } alias) existingAliases.Add(alias);
-            }
-
-            foreach (var col in profile.Columns)
-            {
-                var key = NormalizeKey(col.Name);
-                if (!existingNormalizedKeys.Add(key)) continue;
-
-                var alias = ToCamelAlias(col.Name);
-                var candidate = alias;
-                for (var suffix = 2; !existingAliases.Add(candidate); suffix++)
-                    candidate = $"{alias}{suffix}";
-
-                rowFieldsArray.Add(new JsonObject { ["column"] = col.Name, ["alias"] = candidate, ["role"] = col.Role });
-            }
+            // Single-table export (row_export.py) only ever reads from pick_primary_table()'s one
+            // table -- never the flat cross-sheet union -- so this must scope to just that table's
+            // columns, or we'd append rowFields entries for columns that will never actually be
+            // present in an exported report.
+            var primaryColumns = profile.Tables.TryGetValue(profile.PrimaryTable, out var pc) ? pc : profile.Columns;
+            MergeRowFields(rowFieldsArray, primaryColumns, warnings, tableLabel: null);
         }
-        else if (dataContract?["tables"] is JsonArray { Count: > 0 })
+        else if (dataContract?["tables"] is JsonArray tablesArray && tablesArray.Count > 0)
         {
-            warnings.Add(
-                "This template's dataContract uses a multi-table layout -- dataContract.rowFields " +
-                "could not be auto-derived (requiredColumns/requires were still updated). Review each " +
-                "table's rowFields manually.");
+            foreach (var tableNode in tablesArray)
+            {
+                var tableObj = tableNode?.AsObject();
+                var tableName = tableObj?["table"]?.GetValue<string>();
+                if (tableObj is null || string.IsNullOrWhiteSpace(tableName)) continue;
+
+                var sheetColumns = FindTableColumns(profile.Tables, tableName);
+                if (sheetColumns is null)
+                {
+                    warnings.Add($"dataContract.tables '{tableName}' has no matching sheet in the reference dataset -- its rowFields were not updated.");
+                    continue;
+                }
+
+                if (tableObj["rowFields"] is JsonArray tableRowFields)
+                    MergeRowFields(tableRowFields, sheetColumns, warnings, tableLabel: tableName);
+            }
         }
 
-        // Flag anything already in the manifest the reference dataset doesn't account for --
-        // surfaced for review, never auto-deleted (deleting could break a chrome.html alias
-        // reference the admin doesn't realize is still needed).
-        var fileNormalizedKeys = new HashSet<string>(fileColumnNames.Select(NormalizeKey));
+        // Flag anything the old manifest declared that the reference dataset doesn't account for
+        // anywhere -- requiredColumns/optionalColumns above already fully reflect the dataset, so
+        // this is purely informational about what moved.
         foreach (var name in existingRequired.Concat(existingOptional))
         {
             var key = NormalizeKey(name);
             if (key.Length > 0 && !fileNormalizedKeys.Contains(key))
-                warnings.Add($"'{name}' is in this template's manifest but was not found in the reference dataset -- verify it's still correct.");
-        }
-        if (dataContract?["rowFields"] is JsonArray rowFieldsCheck)
-        {
-            foreach (var field in rowFieldsCheck)
-            {
-                if (field?["column"]?.GetValue<string>() is { } column && !fileNormalizedKeys.Contains(NormalizeKey(column)))
-                    warnings.Add($"dataContract.rowFields column '{column}' was not found in the reference dataset -- verify it's still correct.");
-            }
+                warnings.Add($"'{name}' was in this template's manifest but was not found anywhere in the reference dataset -- moved to optionalColumns.");
         }
 
         return manifest.ToJsonString(PrettyPrint);
+    }
+
+    /// <summary>De-duplicates by normalized key, preserving first-seen original casing/spelling.
+    /// `seen` (if given) is treated as already-claimed keys to skip -- used to keep optionalColumns
+    /// from re-listing anything already in the new requiredColumns.</summary>
+    private static List<string> DedupeByNormalizedKey(IEnumerable<string> names, HashSet<string>? seen, out HashSet<string> keysOut)
+    {
+        var result = new List<string>();
+        keysOut = seen is null ? new HashSet<string>() : new HashSet<string>(seen);
+        foreach (var name in names)
+        {
+            var key = NormalizeKey(name);
+            if (key.Length == 0 || !keysOut.Add(key)) continue;
+            result.Add(name);
+        }
+        return result;
+    }
+
+    /// <summary>Append-only merge of one dataContract rowFields array against one table's profiled
+    /// columns -- never renames/removes an existing alias, only appends entries for genuinely new
+    /// columns, and warns (scoped to `tableLabel` when given) about any existing entry whose column
+    /// isn't in that table's profiled columns.</summary>
+    private static void MergeRowFields(JsonArray rowFieldsArray, IEnumerable<ProfiledColumnDto> tableColumns, List<string> warnings, string? tableLabel)
+    {
+        var existingNormalizedKeys = new HashSet<string>();
+        var existingAliases = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var field in rowFieldsArray)
+        {
+            if (field?["column"]?.GetValue<string>() is { } column) existingNormalizedKeys.Add(NormalizeKey(column));
+            if (field?["alias"]?.GetValue<string>() is { } alias) existingAliases.Add(alias);
+        }
+
+        var tableColumnKeys = new HashSet<string>();
+        foreach (var col in tableColumns)
+        {
+            var key = NormalizeKey(col.Name);
+            tableColumnKeys.Add(key);
+            if (!existingNormalizedKeys.Add(key)) continue;
+
+            var alias = ToCamelAlias(col.Name);
+            var candidate = alias;
+            for (var suffix = 2; !existingAliases.Add(candidate); suffix++)
+                candidate = $"{alias}{suffix}";
+
+            rowFieldsArray.Add(new JsonObject { ["column"] = col.Name, ["alias"] = candidate, ["role"] = col.Role });
+        }
+
+        var label = tableLabel is null ? "" : $"table '{tableLabel}' ";
+        foreach (var field in rowFieldsArray)
+        {
+            if (field?["column"]?.GetValue<string>() is not { } column) continue;
+            if (tableColumnKeys.Contains(NormalizeKey(column))) continue;
+            warnings.Add($"dataContract {label}rowFields column '{column}' was not found in the reference dataset -- verify it's still correct.");
+        }
+    }
+
+    private static List<ProfiledColumnDto>? FindTableColumns(Dictionary<string, List<ProfiledColumnDto>> tables, string tableName)
+    {
+        if (tables.TryGetValue(tableName, out var exact)) return exact;
+        var ciKey = tables.Keys.FirstOrDefault(k => string.Equals(k, tableName, StringComparison.OrdinalIgnoreCase));
+        return ciKey is not null ? tables[ciKey] : null;
     }
 
     private static string NormalizeKey(string? s) => string.IsNullOrEmpty(s) ? "" : NormalizeKeyRegex.Replace(s.Trim().ToLowerInvariant(), "");
