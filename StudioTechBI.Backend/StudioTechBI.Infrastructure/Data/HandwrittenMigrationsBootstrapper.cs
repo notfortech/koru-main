@@ -180,6 +180,12 @@ public static class HandwrittenMigrationsBootstrapper
                     CONSTRAINT [DF_Clients_HasReportValidationAddOn] DEFAULT (0);
         ", cancellationToken);
 
+        await ExecAsync(context, logger, "Clients.HasLimitedPortalAccess column", @"
+            IF COL_LENGTH('dbo.Clients', 'HasLimitedPortalAccess') IS NULL
+                ALTER TABLE [dbo].[Clients] ADD [HasLimitedPortalAccess] BIT NOT NULL
+                    CONSTRAINT [DF_Clients_HasLimitedPortalAccess] DEFAULT (0);
+        ", cancellationToken);
+
         await ExecAsync(context, logger, "ReportMatchDrafts", @"
             IF OBJECT_ID('dbo.ReportMatchDrafts', 'U') IS NULL
             BEGIN

@@ -12,6 +12,7 @@ public class ClientUpdateDto
     public string? TemplateVersion { get; set; }
     public bool IsPremiumSubscriber { get; set; }
     public bool HasReportValidationAddOn { get; set; }
+    public bool HasLimitedPortalAccess { get; set; }
     public bool IsActive { get; set; }
     public string? PowerBIWorkspaceId { get; set; }
     public string? PowerBIDatasetId { get; set; }

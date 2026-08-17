@@ -22,6 +22,10 @@ public class ClientDto
     /// subscription line item from IsPremiumSubscriber.</summary>
     public bool HasReportValidationAddOn { get; set; }
 
+    /// <summary>Admin-declared, temporary restriction -- reduces this client's portal to just the
+    /// "Reports Generated" dashboard card, hides all AI-credits UI, and hides Profile/Propositions.</summary>
+    public bool HasLimitedPortalAccess { get; set; }
+
     public bool IsActive { get; set; }
     public DateTime CreatedDate { get; set; }
     public string? PowerBIWorkspaceId { get; set; }

@@ -453,6 +453,7 @@ public class AuthService : BaseService, IAuthService
             CompanyName = logoUrl != null ? client?.ClientName : null,
             LogoUrl = logoUrl,
             HasReportValidationAddOn = client?.HasReportValidationAddOn ?? false,
+            HasLimitedPortalAccess = client?.HasLimitedPortalAccess ?? false,
             Roles = roles
         };
     }

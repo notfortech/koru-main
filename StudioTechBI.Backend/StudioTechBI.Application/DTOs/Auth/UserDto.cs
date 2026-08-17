@@ -36,6 +36,11 @@ public class UserDto
     /// the "Validate Report" button/screen on this plain boolean.</summary>
     [JsonPropertyName("hasReportValidationAddOn")]
     public bool HasReportValidationAddOn { get; set; }
+    /// <summary>Admin-declared, temporary restriction (Client.HasLimitedPortalAccess): when true,
+    /// the frontend reduces this client's portal to just the "Reports Generated" dashboard card,
+    /// hides all AI-credits UI, and hides Profile/Propositions.</summary>
+    [JsonPropertyName("hasLimitedPortalAccess")]
+    public bool HasLimitedPortalAccess { get; set; }
     [JsonPropertyName("roles")]
     public List<string> Roles { get; set; } = new();
 }
