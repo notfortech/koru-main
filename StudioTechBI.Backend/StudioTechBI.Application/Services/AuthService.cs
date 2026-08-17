@@ -453,7 +453,11 @@ public class AuthService : BaseService, IAuthService
             CompanyName = logoUrl != null ? client?.ClientName : null,
             LogoUrl = logoUrl,
             HasReportValidationAddOn = client?.HasReportValidationAddOn ?? false,
-            HasLimitedPortalAccess = client?.HasLimitedPortalAccess ?? false,
+            // No Client row yet (e.g. a self-registered user before an admin assigns one) --
+            // default to limited for anyone in the Client role, matching "new sign-ups start
+            // limited until an admin grants access." Admin/accountant users have no Client either,
+            // but this flag is never read outside the client-portal UI, so it's a no-op for them.
+            HasLimitedPortalAccess = client?.HasLimitedPortalAccess ?? roles.Contains("Client"),
             Roles = roles
         };
     }
