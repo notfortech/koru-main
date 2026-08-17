@@ -26,6 +26,15 @@ public class Client : BaseEntity
     /// the frontend can gate the "Validate Report" button/screen with a plain boolean.</summary>
     public bool HasReportValidationAddOn { get; set; } = false;
 
+    /// <summary>Admin-declared restriction (temporary, toggled per-client from the admin Client
+    /// Details screen): when true, this client's portal shows a reduced UI -- only the "Reports
+    /// Generated" dashboard card, no AI-credits UI anywhere, and the Profile/Propositions screens
+    /// are hidden from navigation and direct URL access. Defaults false for every client (existing
+    /// and newly created) -- an admin opts a specific client in explicitly, never automatic.
+    /// Projected onto UserDto.HasLimitedPortalAccess at login/refresh (see
+    /// AuthService.MapUserToDtoAsync).</summary>
+    public bool HasLimitedPortalAccess { get; set; } = false;
+
     public bool IsActive { get; set; } = true;
     public DateTime CreatedDate { get; set; } = DateTime.UtcNow;
 

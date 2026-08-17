@@ -136,6 +136,7 @@ public class ClientService : BaseService, IClientService
         client.TemplateVersion = dto.TemplateVersion?.Trim();
         client.IsPremiumSubscriber = dto.IsPremiumSubscriber;
         client.HasReportValidationAddOn = dto.HasReportValidationAddOn;
+        client.HasLimitedPortalAccess = dto.HasLimitedPortalAccess;
         client.IsActive = dto.IsActive;
         if (!string.IsNullOrEmpty(client.ClientCode))
             client.BlobFolderPath = client.ClientCode;
@@ -373,6 +374,7 @@ public class ClientService : BaseService, IClientService
             TemplateVersion = c.TemplateVersion,
             IsPremiumSubscriber = c.IsPremiumSubscriber,
             HasReportValidationAddOn = c.HasReportValidationAddOn,
+            HasLimitedPortalAccess = c.HasLimitedPortalAccess,
             IsActive = c.IsActive,
             CreatedDate = c.CreatedDate,
             PowerBIWorkspaceId = c.PowerBIWorkspaceId,
