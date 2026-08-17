@@ -26,14 +26,19 @@ public class Client : BaseEntity
     /// the frontend can gate the "Validate Report" button/screen with a plain boolean.</summary>
     public bool HasReportValidationAddOn { get; set; } = false;
 
-    /// <summary>Admin-declared restriction (temporary, toggled per-client from the admin Client
-    /// Details screen): when true, this client's portal shows a reduced UI -- only the "Reports
-    /// Generated" dashboard card, no AI-credits UI anywhere, and the Profile/Propositions screens
-    /// are hidden from navigation and direct URL access. Defaults false for every client (existing
-    /// and newly created) -- an admin opts a specific client in explicitly, never automatic.
-    /// Projected onto UserDto.HasLimitedPortalAccess at login/refresh (see
-    /// AuthService.MapUserToDtoAsync).</summary>
-    public bool HasLimitedPortalAccess { get; set; } = false;
+    /// <summary>Admin-declared restriction, toggled per-client from the admin Client Details
+    /// screen: when true, this client's portal shows a reduced UI -- only the "Reports Generated"
+    /// dashboard card, no AI-credits UI anywhere, and Reports/Report Generator/Generate
+    /// Blueprint/Propositions show a "this is a paid feature" message instead of their real
+    /// content (Profile stays fully visible). Defaults TRUE for every newly-created client (every
+    /// new sign-up starts limited until an admin grants full access after they email/pay --
+    /// currently a manual admin-panel toggle or direct script, self-service subscribing is a
+    /// planned follow-up, not built yet). Existing clients created before this default flipped
+    /// keep whatever value they already had (false, from the original migration backfill) --
+    /// EF only applies this C# default to a freshly-constructed Client, never to a row already
+    /// persisted in the database. Projected onto UserDto.HasLimitedPortalAccess at login/refresh
+    /// (see AuthService.MapUserToDtoAsync).</summary>
+    public bool HasLimitedPortalAccess { get; set; } = true;
 
     public bool IsActive { get; set; } = true;
     public DateTime CreatedDate { get; set; } = DateTime.UtcNow;
