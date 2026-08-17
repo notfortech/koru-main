@@ -80,9 +80,18 @@ public record ProfiledColumnDto(string Name, string Role);
 
 public record ColumnProfileCountsDto(int MinNumeric, int MinDate, int MinCategorical);
 
+/// <summary>Columns is the flat union across every table/sheet in the reference file; Counts is
+/// summed the same way (both mirror profile_tables()'s real, unfiltered output). Tables is the
+/// per-sheet breakdown, keyed by sheet name, used to reconcile a multi-table manifest's
+/// dataContract.tables[] against the correctly-named sheet instead of one blanket list.
+/// PrimaryTable is the one table pick_primary_table()/export_row_data() actually use for a
+/// SINGLE-table manifest's rowFields export -- that merge must scope to just this table's columns,
+/// never the flat cross-sheet union.</summary>
 public record ColumnProfileResultDto(
     List<ProfiledColumnDto> Columns,
-    ColumnProfileCountsDto Counts);
+    ColumnProfileCountsDto Counts,
+    Dictionary<string, List<ProfiledColumnDto>> Tables,
+    string PrimaryTable);
 
 public record ReportSlicerDto(
     string Column,
