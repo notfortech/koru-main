@@ -52,12 +52,12 @@ public interface IDashboardTemplateLogWriter
         CancellationToken cancellationToken = default);
 
     /// <summary>AI-assisted path found no confident match, but a closest role-gate-passing HTML
-    /// template WAS identified and blended with mock data for the gaps -- logs the original upload
-    /// (the client's real data) and the blended proposal's *schema* (declared columns, real-vs-
-    /// mocked provenance) so staff can build a template that natively fits this client's real
-    /// schema (EventType "HtmlTemplateClosestMatchBlended"). The blended file itself is never
-    /// persisted -- only its schema is logged; the file is returned inline to the caller for a
-    /// direct-to-browser download instead.</summary>
+    /// template WAS identified and blended with mock data for the gaps -- logs only the blended
+    /// proposal's *schema* (declared columns, real-vs-mocked provenance) so staff can build a
+    /// template that natively fits this client's real schema (EventType
+    /// "HtmlTemplateClosestMatchBlended"). Neither the client's original upload nor the blended
+    /// file itself is ever persisted -- schema only, matching this product's data policy; the
+    /// blended file is returned inline to the caller for a direct-to-browser download instead.</summary>
     Task LogClosestTemplateBlendAsync(
         Guid? clientId,
         string clientName,
@@ -65,6 +65,5 @@ public interface IDashboardTemplateLogWriter
         string closestTemplateId,
         string closestTemplateName,
         IReadOnlyList<ProvenanceEntryDto> provenance,
-        string originalUploadBlobPath,
         CancellationToken cancellationToken = default);
 }

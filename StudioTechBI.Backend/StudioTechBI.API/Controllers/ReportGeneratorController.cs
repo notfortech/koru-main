@@ -64,7 +64,6 @@ public class ReportGeneratorController : ControllerBase
     private readonly IReportGenerationJobQueue _jobQueue;
     private readonly IDataBlendService _blendService;
     private readonly IWorkbookWriter _workbookWriter;
-    private readonly IBlobStorageService _blobStorage;
 
     public ReportGeneratorController(
         IReportGeneratorClient reportGeneratorClient,
@@ -80,8 +79,7 @@ public class ReportGeneratorController : ControllerBase
         IBlobSasUriProvider sasUriProvider,
         IReportGenerationJobQueue jobQueue,
         IDataBlendService blendService,
-        IWorkbookWriter workbookWriter,
-        IBlobStorageService blobStorage)
+        IWorkbookWriter workbookWriter)
     {
         _reportGeneratorClient = reportGeneratorClient;
         _reportInsights = reportInsights;
@@ -97,7 +95,6 @@ public class ReportGeneratorController : ControllerBase
         _jobQueue = jobQueue;
         _blendService = blendService;
         _workbookWriter = workbookWriter;
-        _blobStorage = blobStorage;
     }
 
     /// <summary>Resolves the caller's own client from the client_code claim — same pattern as
@@ -117,14 +114,15 @@ public class ReportGeneratorController : ControllerBase
     /// the full ranked, role-gate-passed HTML template candidate list -- the same call
     /// VerifyHtmlMatchAsync already makes, just without the &gt;=0.85 filter -- and, if anything
     /// cleared the structural role gate, blends the client's real upload against that candidate's
-    /// declared schema (real values where present, deterministic mock values for the gaps),
-    /// uploads both the original upload and the blended proposal to blob for staff review, and
-    /// recomputes KPIs/charts from the blended data. Returns null (never throws) when no candidate
-    /// exists or anything in this pipeline fails -- the caller falls back to the plain no-match gap
-    /// log in that case, exactly today's behavior.</summary>
+    /// declared schema (real values where present, deterministic mock values for the gaps) and
+    /// recomputes KPIs/charts from the blended data. Neither the original upload nor the blended
+    /// workbook is ever persisted server-side -- only the blend's *schema* (declared columns,
+    /// real-vs-mocked provenance) is logged, matching this product's schema-only data policy; the
+    /// blended file itself goes straight back to the caller as an inline download. Returns null
+    /// (never throws) when no candidate exists or anything in this pipeline fails -- the caller
+    /// falls back to the plain no-match gap log in that case, exactly today's behavior.</summary>
     private async Task<GeneratedReportDto?> TryBuildClosestTemplateBlendAsync(
         IFormFile file,
-        string ext,
         ClientDto client,
         string correlationId,
         string? templateId,
@@ -174,15 +172,6 @@ public class ReportGeneratorController : ControllerBase
             await xlsxStream.CopyToAsync(xlsxBuffer, cancellationToken);
             var blendedDatasetBase64 = Convert.ToBase64String(xlsxBuffer.ToArray());
 
-            // The client's real, original upload IS persisted (unchanged) -- this is the actual
-            // business data staff need to build a real template against; the blend above is just a
-            // preview aid, not a data source worth keeping.
-            var originalBlobPath = $"{client.ClientId}/report-generator/{correlationId}/original-upload{ext}";
-            await using (var originalStream = file.OpenReadStream())
-            {
-                await _blobStorage.UploadClientBlobAsync(originalBlobPath, originalStream, file.ContentType, cancellationToken);
-            }
-
             xlsxBuffer.Position = 0;
             var blendedResult = await _reportGeneratorClient.GenerateReportAsync(
                 xlsxBuffer, "blended-dataset.xlsx", templateId, filters, htmlTemplateId: null,
@@ -191,7 +180,7 @@ public class ReportGeneratorController : ControllerBase
             await _templateLogWriter.LogClosestTemplateBlendAsync(
                 client.ClientId, client.ClientName, correlationId,
                 closest.TemplateId, closest.TemplateName, blend.Provenance,
-                originalBlobPath, cancellationToken);
+                cancellationToken);
 
             var realCount = blend.Provenance.Count(p => p.Source == ProvenanceSource.Uploaded);
             var blendNote =
@@ -437,6 +426,12 @@ public class ReportGeneratorController : ControllerBase
             return BadRequest(ApiResponse<object>.ErrorResponse(
                 $"Unsupported file type '{ext}'. Allowed: {string.Join(", ", AllowedExtensions)}"));
 
+        // AI-Assisted mode is disabled -- the frontend's mode toggle already hides it, but that's
+        // a UI-only restriction; anyone calling this endpoint directly with mode=ai would
+        // otherwise still reach it. Enforce the same restriction server-side, not just in the UI.
+        if (string.Equals(mode, "ai", StringComparison.OrdinalIgnoreCase))
+            return BadRequest(ApiResponse<object>.ErrorResponse("AI-Assisted mode is temporarily disabled."));
+
         var correlationId = Guid.NewGuid().ToString();
 
         try
@@ -464,10 +459,11 @@ public class ReportGeneratorController : ControllerBase
                 // (even below the confidence floor) and blend the client's upload against its
                 // declared schema, filling gaps with mock data -- gives the client a usable,
                 // as-representative-as-possible fallback report instead of a dead end. Strict
-                // mode is untouched: staff still just get the real, raw dataset logged below.
+                // mode is untouched: staff only ever get the observed column names logged below,
+                // never the raw file, same schema-only policy as this AI-assisted path.
                 GeneratedReportDto? blended = isAiAssisted && client is not null
                     ? await TryBuildClosestTemplateBlendAsync(
-                        file, ext, client, correlationId, templateId, filters, cancellationToken)
+                        file, client, correlationId, templateId, filters, cancellationToken)
                     : null;
 
                 if (blended is not null)
