@@ -10,7 +10,10 @@ namespace StudioTechBI.Domain.Entities;
 /// </summary>
 public class CustomReportRequest : BaseEntity
 {
-    public Guid ClientId { get; set; }
+    /// <summary>Null when the requester has no Client yet (e.g. a self-registered, not-yet-paying
+    /// user) -- the request is still filed and the schema still captured for staff to see; an
+    /// admin fills this in by assigning the requester to a Client before fulfilling.</summary>
+    public Guid? ClientId { get; set; }
     public string Status { get; set; } = CustomReportRequestStatuses.Pending;
     public string? RequestedByEmail { get; set; }
     public string? Notes { get; set; }

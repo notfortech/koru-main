@@ -536,6 +536,18 @@ public static class HandwrittenMigrationsBootstrapper
                 ALTER TABLE [dbo].[CustomReportRequests] ALTER COLUMN [RequestReason] NVARCHAR(50) NOT NULL;
         ", cancellationToken);
 
+        // A not-yet-a-client user (e.g. self-registered, limited-access) can now file a custom
+        // report request too -- the ticket and schema snapshot still get captured for staff, an
+        // admin fills in ClientId later by assigning the requester to a Client before fulfilling.
+        // FK_CustomReportRequests_Clients_ClientId still applies whenever a value IS present.
+        await ExecAsync(context, logger, "CustomReportRequests.ClientId column (nullable)", @"
+            IF EXISTS (
+                SELECT 1 FROM sys.columns
+                WHERE object_id = OBJECT_ID('dbo.CustomReportRequests') AND name = 'ClientId' AND is_nullable = 0
+            )
+                ALTER TABLE [dbo].[CustomReportRequests] ALTER COLUMN [ClientId] UNIQUEIDENTIFIER NULL;
+        ", cancellationToken);
+
         // ── Report generation events (Report Stats: deterministic vs. AI-assisted counts) ───────
         await ExecAsync(context, logger, "ReportGenerationEvents", @"
             IF OBJECT_ID('dbo.ReportGenerationEvents', 'U') IS NULL
