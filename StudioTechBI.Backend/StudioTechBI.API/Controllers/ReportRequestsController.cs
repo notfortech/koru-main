@@ -43,9 +43,10 @@ public class ReportRequestsController : ControllerBase
     [HttpPost]
     public async Task<IActionResult> CreateAsync([FromBody] CreateCustomReportRequestDto request, CancellationToken cancellationToken)
     {
+        // No client_code claim required -- filing a ticket and capturing the schema is meant to
+        // work even for a not-yet-a-client user (e.g. a self-registered, limited-access sign-up);
+        // an admin fills in the client association later, once one exists, before fulfilling.
         var client = await ResolveClientAsync(cancellationToken);
-        if (client is null)
-            return BadRequest(ApiResponse<object>.ErrorResponse("A resolvable client_code claim is required."));
 
         if (request?.Schema is null)
             return BadRequest(ApiResponse<object>.ErrorResponse("No schema supplied for this request."));
@@ -61,7 +62,7 @@ public class ReportRequestsController : ControllerBase
         var entity = new CustomReportRequest
         {
             Id = Guid.NewGuid(),
-            ClientId = client.ClientId,
+            ClientId = client?.ClientId,
             Status = CustomReportRequestStatuses.Pending,
             RequestReason = reason,
             RequestedByEmail = requestedByEmail,
@@ -74,7 +75,8 @@ public class ReportRequestsController : ControllerBase
         await _db.SaveChangesAsync(cancellationToken);
 
         _logger.LogInformation(
-            "CustomReportRequest.Created RequestId={RequestId} ClientId={ClientId}", entity.Id, client.ClientId);
+            "CustomReportRequest.Created RequestId={RequestId} ClientId={ClientId} Email={Email}",
+            entity.Id, client?.ClientId, requestedByEmail);
 
         return StatusCode(
             StatusCodes.Status201Created,

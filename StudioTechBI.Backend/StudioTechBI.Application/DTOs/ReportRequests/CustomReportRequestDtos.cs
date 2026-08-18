@@ -24,7 +24,7 @@ public record CustomReportRequestSummaryDto(
 
 public record CustomReportRequestDetailDto(
     Guid RequestId,
-    Guid ClientId,
+    Guid? ClientId,
     string Status,
     string RequestReason,
     string? RequestedByEmail,

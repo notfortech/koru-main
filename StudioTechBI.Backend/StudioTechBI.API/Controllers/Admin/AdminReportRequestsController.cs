@@ -100,7 +100,10 @@ public class AdminReportRequestsController : ControllerBase
         if (entity is null)
             return NotFound(ApiResponse<object>.ErrorResponse($"Report request {id} not found."));
 
-        var blobPath = $"{entity.ClientId}/custom-report-requests/{entity.Id}/schema-snapshot.json";
+        // "unassigned" when this request's requester has no Client yet -- still exportable, just
+        // not filed under a client-specific blob prefix.
+        var clientSegment = entity.ClientId?.ToString() ?? "unassigned";
+        var blobPath = $"{clientSegment}/custom-report-requests/{entity.Id}/schema-snapshot.json";
         try
         {
             await using var stream = new MemoryStream(Encoding.UTF8.GetBytes(entity.SchemaSnapshotJson));
@@ -138,6 +141,13 @@ public class AdminReportRequestsController : ControllerBase
         if (entity is null)
             return NotFound(ApiResponse<object>.ErrorResponse($"Report request {id} not found."));
 
+        // A fulfilled request always produces a client-visible SavedReport, which requires an
+        // actual Client -- this request's requester may not have one yet (e.g. filed while
+        // self-registered/limited). Assign them to a Client first, then fulfill.
+        if (entity.ClientId is null)
+            return BadRequest(ApiResponse<object>.ErrorResponse(
+                "This request's requester has no Client assigned yet. Assign them to a Client before fulfilling."));
+
         var asset = await _db.PowerBiAssets.FirstOrDefaultAsync(a => a.AssetId == body.PowerBiAssetId, cancellationToken);
         if (asset is null)
             return BadRequest(ApiResponse<object>.ErrorResponse("The specified Power BI asset was not found."));
@@ -146,7 +156,7 @@ public class AdminReportRequestsController : ControllerBase
         _db.SavedReports.Add(new SavedReport
         {
             Id = savedReportId,
-            ClientId = entity.ClientId,
+            ClientId = entity.ClientId.Value,
             Title = "Custom Power BI Report",
             SourceType = SavedReportSourceTypes.PowerBiRequestFulfilled,
             Status = "Active",
