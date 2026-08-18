@@ -21,4 +21,9 @@ public class RegisterRequestDto
     public string? LastName { get; set; }
 
     public string? PhoneNumber { get; set; }
+
+    /// <summary>Must be true or registration is rejected -- see AuthService.RegisterAsync. Not a
+    /// [Required] bool annotation (that only checks presence, not value) because a bare "false"
+    /// is a perfectly valid, deserializable value that still needs rejecting explicitly.</summary>
+    public bool TermsAccepted { get; set; }
 }

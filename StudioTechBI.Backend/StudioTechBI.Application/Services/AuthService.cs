@@ -136,6 +136,14 @@ public class AuthService : BaseService, IAuthService
                 throw new InvalidOperationException(attempt.FailureReason);
             }
 
+            if (!request.TermsAccepted)
+            {
+                attempt.FailureReason = "Terms not accepted";
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
+                _logger.LogInformation("Registration attempt recorded in DB: Failure. Email={Email}, Reason={Reason}", attempt.Email, attempt.FailureReason);
+                throw new InvalidOperationException("You must agree to the terms to create an account.");
+            }
+
             var passwordHash = HashPassword(request.Password);
 
             var user = new User
@@ -145,7 +153,9 @@ public class AuthService : BaseService, IAuthService
                 FirstName = string.IsNullOrWhiteSpace(request.FirstName) ? "User" : request.FirstName.Trim(),
                 LastName = (request.LastName ?? "").Trim(),
                 PasswordHash = passwordHash,
-                IsActive = true
+                IsActive = true,
+                TermsAcceptedAt = DateTime.UtcNow,
+                TermsVersion = TermsPolicy.CurrentVersion
             };
 
             await _userRepository.AddAsync(user, cancellationToken);

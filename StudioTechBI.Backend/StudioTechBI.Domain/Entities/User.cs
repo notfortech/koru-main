@@ -24,6 +24,15 @@ public class User : BaseEntity
     /// <summary>Tenant this user is assigned to (admin-assignable).</summary>
     public Guid? TenantId { get; set; }
 
+    /// <summary>When the user agreed to the sign-up data/terms disclaimer -- null for accounts
+    /// created before this existed. Set once, at registration; never re-prompted today even if
+    /// TermsPolicy.CurrentVersion later changes (no re-consent flow built yet).</summary>
+    public DateTime? TermsAcceptedAt { get; set; }
+
+    /// <summary>Which TermsPolicy.CurrentVersion the user actually agreed to -- kept even if the
+    /// terms text is later revised, so what a given user consented to stays a durable record.</summary>
+    public string? TermsVersion { get; set; }
+
     public Client? Client { get; set; }
     public Tenant? Tenant { get; set; }
     public ICollection<UserRole> UserRoles { get; set; } = new List<UserRole>();
