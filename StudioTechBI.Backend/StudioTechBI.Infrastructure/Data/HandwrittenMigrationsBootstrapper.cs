@@ -716,6 +716,16 @@ public static class HandwrittenMigrationsBootstrapper
                 CREATE INDEX [IX_SchemaModelMatches_Status] ON [dbo].[SchemaModelMatches] ([Status]);
             END
         ", cancellationToken);
+
+        // Sign-up data/terms disclaimer acceptance -- both nullable since existing accounts
+        // predate this and are never retroactively required to consent.
+        await ExecAsync(context, logger, "Users.TermsAcceptedAt/TermsVersion columns", @"
+            IF COL_LENGTH('dbo.Users', 'TermsAcceptedAt') IS NULL
+                ALTER TABLE [dbo].[Users] ADD [TermsAcceptedAt] DATETIME2 NULL;
+
+            IF COL_LENGTH('dbo.Users', 'TermsVersion') IS NULL
+                ALTER TABLE [dbo].[Users] ADD [TermsVersion] NVARCHAR(20) NULL;
+        ", cancellationToken);
     }
 
     private static async Task ExecAsync(ApplicationDbContext context, ILogger logger, string label, string sql, CancellationToken cancellationToken)
