@@ -424,7 +424,13 @@ if (!app.Environment.IsDevelopment())
 }
 app.UseHttpsRedirection();
 
-app.UseCors("AllowAll");
+// AllowAll only in Development, for local convenience across arbitrary dev ports/tools --
+// RestrictedCors (already fully wired above, and its origin list already required at startup by
+// ValidateRequiredSettings) is what actually runs in every deployed environment. Verify
+// Cors:AllowedOrigins (env var Cors__AllowedOrigins__0, ...__1, etc.) matches the real deployed
+// frontend origin(s) after this ships -- a stale/wrong value surfaces as CORS errors in the
+// browser, not a startup failure, so it's worth a quick manual check post-deploy.
+app.UseCors(app.Environment.IsDevelopment() ? "AllowAll" : "RestrictedCors");
 app.UseMiddleware<StudioTechBI.API.Middleware.DatabaseReadinessMiddleware>();
 
 app.UseAuthentication();
