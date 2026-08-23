@@ -4,6 +4,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using StudioTechBI.Application.DTOs.ReportGenerator;
+using StudioTechBI.Application.DTOs.VisualPlan;
 using StudioTechBI.Application.Interfaces;
 
 namespace StudioTechBI.Infrastructure.Clients;
@@ -319,6 +320,94 @@ public class ReportGeneratorClient : IReportGeneratorClient
                 "ReportGenerator.ProfileColumnsParseError CorrelationId={CorrelationId} Body={Body}",
                 correlationId, Truncate(body, 1000));
             throw new InvalidOperationException("Column profiling response could not be parsed.", ex);
+        }
+    }
+
+    public async Task<ChartFromSpecResultDto> GenerateChartsFromSpecAsync(
+        Stream fileStream,
+        string fileName,
+        List<VisualPlanChartSpecDto> chartSpecs,
+        string correlationId,
+        CancellationToken cancellationToken = default)
+    {
+        RequireBaseAddress();
+
+        // ── AI boundary log ────────────────────────────────────────────────
+        // Same intentional exception as GenerateReportAsync -- the real file goes to this
+        // no-AI, deterministic engine. Logged explicitly for the same auditability reason.
+        _logger.LogInformation(
+            "ReportGenerator.ChartFromSpecFileSentToEngine CorrelationId={CorrelationId} FileName={FileName} ChartSpecCount={ChartSpecCount}",
+            correlationId, fileName, chartSpecs.Count);
+
+        var wireSpecs = chartSpecs.Select(s => new ChartFromSpecRequestItemDto(
+            Id: s.Id,
+            Measure: s.Measure,
+            Dimension: s.Dimension,
+            ChartType: s.ChartType,
+            ValueKind: s.ValueKind,
+            DrillPath: s.DrillPath,
+            FilterField: s.FilterField,
+            PairId: s.PairId)).ToList();
+        var chartSpecsJson = JsonSerializer.Serialize(wireSpecs, JsonOptions);
+
+        using var content = new MultipartFormDataContent();
+        using var streamContent = new StreamContent(fileStream);
+        streamContent.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
+        content.Add(streamContent, "file", fileName);
+        content.Add(new StringContent(chartSpecsJson), "chartSpecs");
+
+        var request = new HttpRequestMessage(HttpMethod.Post, "api/reports/chart-from-spec") { Content = content };
+        request.Headers.Add("X-Correlation-Id", correlationId);
+
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        HttpResponseMessage response;
+        try
+        {
+            response = await _httpClient.SendAsync(request, cancellationToken);
+        }
+        catch (TaskCanceledException ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            sw.Stop();
+            _logger.LogError(
+                "ReportGenerator.ChartFromSpecTimeout DurationMs={DurationMs} CorrelationId={CorrelationId}",
+                sw.ElapsedMilliseconds, correlationId);
+            throw new HttpRequestException(
+                "Chart-from-spec request timed out.", ex, HttpStatusCode.RequestTimeout);
+        }
+
+        using (response)
+        {
+            sw.Stop();
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning(
+                    "ReportGenerator.ChartFromSpecFailed StatusCode={StatusCode} DurationMs={DurationMs} CorrelationId={CorrelationId}",
+                    (int)response.StatusCode, sw.ElapsedMilliseconds, correlationId);
+                throw new HttpRequestException(
+                    MapStatusCode(response.StatusCode, body), inner: null, statusCode: response.StatusCode);
+            }
+
+            ChartFromSpecResultDto result;
+            try
+            {
+                result = JsonSerializer.Deserialize<ChartFromSpecResultDto>(body, JsonOptions)
+                    ?? throw new InvalidOperationException("Chart-from-spec returned an empty response body.");
+            }
+            catch (JsonException ex)
+            {
+                _logger.LogError(ex,
+                    "ReportGenerator.ChartFromSpecParseError CorrelationId={CorrelationId} Body={Body}",
+                    correlationId, Truncate(body, 1000));
+                throw new InvalidOperationException("Chart-from-spec response could not be parsed.", ex);
+            }
+
+            _logger.LogInformation(
+                "ReportGenerator.ChartFromSpecSuccess ChartCount={ChartCount} DurationMs={DurationMs} CorrelationId={CorrelationId}",
+                result.Charts.Count, sw.ElapsedMilliseconds, correlationId);
+
+            return result;
         }
     }
 

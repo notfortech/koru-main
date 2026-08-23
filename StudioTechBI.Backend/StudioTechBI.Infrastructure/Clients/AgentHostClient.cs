@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using StudioTechBI.Application.DTOs.Blueprints;
 using StudioTechBI.Application.DTOs.Credits;
+using StudioTechBI.Application.DTOs.VisualPlan;
 using StudioTechBI.Application.Interfaces;
 using StudioTechBI.Application.Models;
 
@@ -81,6 +82,29 @@ public class AgentHostClient : IAgentHostClient
 
     return JsonSerializer.Deserialize<BlueprintGenerationResponse>(body, JsonOptions)!;
 }
+
+    public async Task<List<VisualPlanChartSpecDto>> GenerateVisualPlanAsync(
+        VisualPlanGenerationRequest request,
+        string correlationId,
+        CancellationToken cancellationToken = default)
+    {
+        var payload = JsonSerializer.Serialize(request, JsonOptions);
+
+        var httpRequest = new HttpRequestMessage(HttpMethod.Post, "api/visual-plan/generate");
+        httpRequest.Headers.Add("X-Correlation-Id", correlationId);
+        httpRequest.Content = new StringContent(payload, System.Text.Encoding.UTF8, "application/json");
+
+        var response = await _httpClient.SendAsync(httpRequest, cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+
+        _logger.LogInformation(
+            "AgentHost.VisualPlanResponse Status={StatusCode} CorrelationId={CorrelationId}",
+            (int)response.StatusCode, correlationId);
+
+        response.EnsureSuccessStatusCode();
+
+        return JsonSerializer.Deserialize<List<VisualPlanChartSpecDto>>(body, JsonOptions) ?? [];
+    }
 
     public async Task<bool> CheckHealthAsync(CancellationToken cancellationToken = default)
     {

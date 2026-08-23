@@ -9,7 +9,9 @@ using StudioTechBI.Application.Constants;
 using StudioTechBI.Application.DTOs.Common;
 using StudioTechBI.Application.DTOs.DashboardTemplate;
 using StudioTechBI.Application.DTOs.InsightsEngine;
+using StudioTechBI.Application.DTOs.ReportDesigner;
 using StudioTechBI.Application.DTOs.ReportGenerator;
+using StudioTechBI.Application.DTOs.VisualPlan;
 using StudioTechBI.Application.Interfaces;
 using StudioTechBI.Application.Options;
 using StudioTechBI.Application.Models;
@@ -50,7 +52,12 @@ public class ReportGeneratorController : ControllerBase
     private const int AiSummaryCreditCost = 1;
     private const string AiSummaryFeature = "report-ai-summary";
 
+    // Sample rows sent to AgentHost's visual-plan generator (POST /generate-preview only) --
+    // "1-3 sample rows per table (never full data)" per that integration's contract.
+    private const int VisualPlanSampleRowsPerTable = 3;
+
     private readonly IReportGeneratorClient _reportGeneratorClient;
+    private readonly IAgentHostClient _agentHostClient;
     private readonly IInsightsEngineReportInsightsClient _reportInsights;
     private readonly IOptionsMonitor<InsightsEngineOptions> _insightsEngineOptions;
     private readonly IHtmlReportAssemblyService _htmlAssembly;
@@ -67,6 +74,7 @@ public class ReportGeneratorController : ControllerBase
 
     public ReportGeneratorController(
         IReportGeneratorClient reportGeneratorClient,
+        IAgentHostClient agentHostClient,
         IInsightsEngineReportInsightsClient reportInsights,
         IOptionsMonitor<InsightsEngineOptions> insightsEngineOptions,
         IHtmlReportAssemblyService htmlAssembly,
@@ -82,6 +90,7 @@ public class ReportGeneratorController : ControllerBase
         IWorkbookWriter workbookWriter)
     {
         _reportGeneratorClient = reportGeneratorClient;
+        _agentHostClient = agentHostClient;
         _reportInsights = reportInsights;
         _insightsEngineOptions = insightsEngineOptions;
         _htmlAssembly = htmlAssembly;
@@ -521,6 +530,155 @@ public class ReportGeneratorController : ControllerBase
             }
 
             return Ok(ApiResponse<GeneratedReportDto>.SuccessResponse(result, "Report generated successfully."));
+        }
+        catch (HttpRequestException ex)
+        {
+            return StatusCode(
+                (int)(ex.StatusCode ?? System.Net.HttpStatusCode.BadGateway),
+                ApiResponse<object>.ErrorResponse(ex.Message));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ApiResponse<object>.ErrorResponse(ex.Message));
+        }
+    }
+
+    /// <summary>
+    /// POST /api/report-generator/generate-preview
+    /// Additive, internal/QA-only endpoint — separate from, and never reachable through, the
+    /// disabled mode=ai path on /generate above, and does not touch anything
+    /// ReportDesignerController already does. Not wired into the frontend's existing AI-mode
+    /// toggle or route; a sibling frontend task calls this directly by URL for now.
+    ///
+    /// Given the uploaded file and a reference to an already-completed "Data Model" generation
+    /// (see ReportDesignerController.GenerateReportModelAsync's generate-model/{generationId}
+    /// step, reused here rather than re-deriving a star schema), this:
+    ///  1. Profiles the file's columns via the same ProfileColumnsAsync call used elsewhere in
+    ///     this controller, and samples up to VisualPlanSampleRowsPerTable rows of the primary
+    ///     table (never full data).
+    ///  2. Asks AgentHost's visual-plan generator for a proposed chart spec array from that
+    ///     structure/samples plus the star schema.
+    ///  3. Asks the deterministic ReportAgent.Api engine (no AI anywhere in it — see
+    ///     IReportGeneratorClient's class remarks) to compute real chart values from those specs
+    ///     against the actual file.
+    ///
+    /// The uploaded file is never persisted anywhere by this endpoint — only ever forwarded
+    /// in-memory to the two downstream services for computation and column-structure/sample
+    /// extraction to AgentHost — matching the exact data-policy reason AI-Assisted mode above was
+    /// disabled server-side.
+    /// </summary>
+    [HttpPost("generate-preview")]
+    [RequestSizeLimit(UploadLimits.MaxUploadBytes)]
+    public async Task<IActionResult> GeneratePreviewAsync(
+        IFormFile file,
+        [FromForm] Guid reportModelGenerationId,
+        CancellationToken cancellationToken)
+    {
+        if (file is null || file.Length == 0)
+            return BadRequest(ApiResponse<object>.ErrorResponse("No file uploaded."));
+
+        if (file.Length > _uploadLimits.Value.MaxUploadBytes)
+            return BadRequest(ApiResponse<object>.ErrorResponse(
+                $"File exceeds the {_uploadLimits.Value.MaxUploadBytes / (1024 * 1024)} MB limit."));
+
+        var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+        if (!AllowedExtensions.Contains(ext))
+            return BadRequest(ApiResponse<object>.ErrorResponse(
+                $"Unsupported file type '{ext}'. Allowed: {string.Join(", ", AllowedExtensions)}"));
+
+        if (reportModelGenerationId == Guid.Empty)
+            return BadRequest(ApiResponse<object>.ErrorResponse("reportModelGenerationId is required."));
+
+        var generation = await _db.ReportModelGenerations.FirstOrDefaultAsync(
+            g => g.Id == reportModelGenerationId, cancellationToken);
+        if (generation is null)
+            return NotFound(ApiResponse<object>.ErrorResponse(
+                $"Report model generation {reportModelGenerationId} not found."));
+
+        if (generation.Status != ReportModelGenerationStatuses.Completed || string.IsNullOrWhiteSpace(generation.ResponseJson))
+            return BadRequest(ApiResponse<object>.ErrorResponse(
+                $"Report model generation {reportModelGenerationId} has not completed yet (status: {generation.Status})."));
+
+        var modelResponse = JsonSerializer.Deserialize<GenerateReportModelResponse>(
+            generation.ResponseJson,
+            new JsonSerializerOptions { PropertyNameCaseInsensitive = true, PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+        var starSchema = modelResponse?.StarSchema;
+        if (starSchema is null)
+            return BadRequest(ApiResponse<object>.ErrorResponse(
+                $"Report model generation {reportModelGenerationId} has no star schema to build a visual plan from."));
+
+        var correlationId = Guid.NewGuid().ToString();
+
+        try
+        {
+            ColumnProfileResultDto profile;
+            await using (var profileStream = file.OpenReadStream())
+            {
+                profile = await _reportGeneratorClient.ProfileColumnsAsync(
+                    profileStream, file.FileName, correlationId, cancellationToken);
+            }
+
+            // Sample rows only -- column structure/roles above already came from
+            // ProfileColumnsAsync, not re-derived here. Same single-table sampling convention as
+            // every other CsvSampleExtractor/ExcelSampleExtractor call site in this codebase: the
+            // sample covers the primary table (first sheet for Excel) only.
+            List<Dictionary<string, string>> sampleRows;
+            await using (var sampleStream = file.OpenReadStream())
+            {
+                sampleRows = ext == ".csv"
+                    ? (await CsvSampleExtractor.ExtractAsync(sampleStream, VisualPlanSampleRowsPerTable, cancellationToken)).Rows
+                    : (await ExcelSampleExtractor.ExtractAsync(sampleStream, VisualPlanSampleRowsPerTable, cancellationToken)).Rows;
+            }
+
+            var tables = profile.Tables.Select(kvp => new VisualPlanTableDto(
+                TableName: kvp.Key,
+                Columns: kvp.Value.Select(c => new VisualPlanColumnDto(c.Name, c.Role)).ToList(),
+                SampleRows: string.Equals(kvp.Key, profile.PrimaryTable, StringComparison.OrdinalIgnoreCase)
+                    ? sampleRows
+                    : new List<Dictionary<string, string>>())).ToList();
+
+            var chartSpecs = await _agentHostClient.GenerateVisualPlanAsync(
+                new VisualPlanGenerationRequest(tables, starSchema), correlationId, cancellationToken);
+
+            if (chartSpecs.Count == 0)
+            {
+                var emptyResult = new GeneratedReportDto(
+                    TemplateId: null,
+                    TemplateName: null,
+                    PrimaryTable: profile.PrimaryTable,
+                    Kpis: new List<ReportKpiDto>(),
+                    Charts: new List<ReportChartDto>(),
+                    Slicers: new List<ReportSlicerDto>(),
+                    AppliedFilters: new Dictionary<string, string>(),
+                    Warnings: new List<string> { "AgentHost proposed no charts for this dataset." },
+                    ChartPlan: new List<VisualPlanChartSpecDto>());
+                return Ok(ApiResponse<GeneratedReportDto>.SuccessResponse(emptyResult, "Preview generated — no charts proposed."));
+            }
+
+            ChartFromSpecResultDto computed;
+            await using (var chartStream = file.OpenReadStream())
+            {
+                computed = await _reportGeneratorClient.GenerateChartsFromSpecAsync(
+                    chartStream, file.FileName, chartSpecs, correlationId, cancellationToken);
+            }
+
+            var charts = computed.Charts
+                .Select(c => new ReportChartDto(c.Type, c.Title, c.X, c.Categories, c.Series))
+                .ToList();
+
+            var result = new GeneratedReportDto(
+                TemplateId: null,
+                TemplateName: null,
+                PrimaryTable: profile.PrimaryTable,
+                Kpis: new List<ReportKpiDto>(),
+                Charts: charts,
+                Slicers: new List<ReportSlicerDto>(),
+                AppliedFilters: new Dictionary<string, string>(),
+                Warnings: computed.Warnings,
+                RowData: computed.RowData,
+                ChartPlan: chartSpecs);
+
+            return Ok(ApiResponse<GeneratedReportDto>.SuccessResponse(result, "Preview generated successfully."));
         }
         catch (HttpRequestException ex)
         {

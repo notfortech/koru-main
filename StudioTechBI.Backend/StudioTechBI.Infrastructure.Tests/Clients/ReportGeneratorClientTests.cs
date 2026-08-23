@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text;
 using Microsoft.Extensions.Logging.Abstractions;
+using StudioTechBI.Application.DTOs.VisualPlan;
 using StudioTechBI.Infrastructure.Clients;
 using Xunit;
 
@@ -116,5 +117,88 @@ public class ReportGeneratorClientTests
         using var stream = new MemoryStream(Encoding.UTF8.GetBytes("OrderId,Amount\n1,120.5\n"));
         await Assert.ThrowsAsync<HttpRequestException>(
             () => client.GenerateReportAsync(stream, "sales.csv", templateId: null, filtersJson: null, htmlTemplateId: null, correlationId: "corr-1"));
+    }
+
+    // ── GenerateChartsFromSpecAsync ──────────────────────────────────────
+
+    private static List<VisualPlanChartSpecDto> OneChartSpec() => new()
+    {
+        new VisualPlanChartSpecDto(
+            Id: "chart-1",
+            Title: "Amount by Region",
+            ChartType: "bar",
+            Measure: "Amount",
+            Dimension: "Region",
+            DrillPath: new List<string> { "Region" },
+            FilterField: "Region",
+            ValueKind: "absolute",
+            PairId: null)
+    };
+
+    private const string ChartFromSpecResponseJson = """
+        {
+          "charts": [
+            {
+              "type": "bar",
+              "title": "Amount by Region",
+              "x": ["North", "South"],
+              "categories": null,
+              "series": [ { "name": "Amount", "values": [120.5, 90.0] } ],
+              "id": "chart-1",
+              "filterField": "Region",
+              "drillPath": ["Region"],
+              "valueKind": "absolute",
+              "pairId": null
+            }
+          ],
+          "rowData": [ { "Region": "North", "Amount": 120.5 } ],
+          "warnings": []
+        }
+        """;
+
+    [Fact]
+    public async Task GenerateChartsFromSpecAsync_Success_ParsesResult()
+    {
+        var handler = new FakeHttpMessageHandler(HttpStatusCode.OK, ChartFromSpecResponseJson);
+        var client = CreateClient(handler);
+
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes("Region,Amount\nNorth,120.5\n"));
+        var result = await client.GenerateChartsFromSpecAsync(stream, "sales.csv", OneChartSpec(), correlationId: "corr-1");
+
+        Assert.Single(result.Charts);
+        Assert.Equal("bar", result.Charts[0].Type);
+        Assert.Equal("chart-1", result.Charts[0].Id);
+        Assert.Equal("Region", result.Charts[0].FilterField);
+        Assert.NotNull(result.RowData);
+        Assert.Empty(result.Warnings);
+    }
+
+    [Fact]
+    public async Task GenerateChartsFromSpecAsync_SendsMultipartWithFileAndCamelCaseChartSpecs()
+    {
+        var handler = new FakeHttpMessageHandler(HttpStatusCode.OK, ChartFromSpecResponseJson);
+        var client = CreateClient(handler);
+
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes("Region,Amount\nNorth,120.5\n"));
+        await client.GenerateChartsFromSpecAsync(stream, "sales.csv", OneChartSpec(), correlationId: "corr-1");
+
+        Assert.NotNull(handler.LastRequestBody);
+        Assert.Contains("sales.csv", handler.LastRequestBody);
+        Assert.Contains("name=\"chartSpecs\"", handler.LastRequestBody);
+        Assert.Contains("\"chartType\":\"bar\"", handler.LastRequestBody);
+        Assert.Contains("\"measure\":\"Amount\"", handler.LastRequestBody);
+        Assert.DoesNotContain("\"title\"", handler.LastRequestBody);
+        Assert.DoesNotContain("\"Title\"", handler.LastRequestBody);
+    }
+
+    [Fact]
+    public async Task GenerateChartsFromSpecAsync_Failure_ThrowsHttpRequestException()
+    {
+        var handler = new FakeHttpMessageHandler(HttpStatusCode.BadGateway, """{ "error": "engine failed" }""");
+        var client = CreateClient(handler);
+
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes("Region,Amount\nNorth,120.5\n"));
+        await Assert.ThrowsAsync<HttpRequestException>(
+            () => client.GenerateChartsFromSpecAsync(stream, "sales.csv", OneChartSpec(), correlationId: "corr-1"));
     }
 }
