@@ -1,5 +1,6 @@
 using System.Text.Json;
 using StudioTechBI.Application.DTOs.DashboardTemplate;
+using StudioTechBI.Application.DTOs.VisualPlan;
 
 namespace StudioTechBI.Application.DTOs.ReportGenerator;
 
@@ -41,7 +42,12 @@ public record GeneratedReportDto(
     // file is never persisted server-side (only its schema is, via LogClosestTemplateBlendAsync).
     // The frontend decodes this directly into a Blob and downloads it with no extra network hop.
     string? BlendedDatasetFileBase64 = null,
-    string? BlendNote = null);
+    string? BlendNote = null,
+    // POST /api/report-generator/generate-preview only (see ReportGeneratorController): the
+    // AgentHost-proposed chart spec per chart in Charts above (chart type, measure/dimension,
+    // drill path, filter field, value kind, pairing) -- everything the frontend needs to build
+    // cross-filter/drill-down UI. Stays null on every other path (unchanged behavior).
+    List<VisualPlanChartSpecDto>? ChartPlan = null);
 
 /// <summary>Optional brand-color override for an HTML report's chrome.html, resolved from the
 /// frontend's existing theme picker (reportThemes.tsx). Hex strings or null per slot; null means
@@ -92,6 +98,49 @@ public record ColumnProfileResultDto(
     ColumnProfileCountsDto Counts,
     Dictionary<string, List<ProfiledColumnDto>> Tables,
     string PrimaryTable);
+
+// ── POST /api/reports/chart-from-spec (ReportAgent.Api) ─────────────────────────────────────────
+// Computes real chart values from an AgentHost-proposed chart spec against the uploaded file.
+// Backs ReportGeneratorController's internal/QA-only "generate-preview" endpoint.
+
+/// <summary>Multipart "chartSpecs" field shape ReportAgent.Api's /api/reports/chart-from-spec
+/// expects -- camelCase, and (unlike VisualPlanChartSpecDto) no Title, since the compute engine
+/// doesn't need a display label. ReportGeneratorClient.GenerateChartsFromSpecAsync maps each
+/// AgentHost-returned VisualPlanChartSpecDto into one of these before sending.</summary>
+public record ChartFromSpecRequestItemDto(
+    string Id,
+    string Measure,
+    string Dimension,
+    string ChartType,
+    string ValueKind,
+    List<string>? DrillPath,
+    string? FilterField,
+    string? PairId,
+    List<string>? DrillFilters = null);
+
+/// <summary>One computed chart from /api/reports/chart-from-spec -- the same shape as
+/// ReportChartDto (Type/Title/X/Categories/Series) plus pass-through spec metadata so the caller
+/// can line each computed chart back up with its originating chart spec.</summary>
+public record ReportChartFromSpecDto(
+    string Type,
+    string Title,
+    List<string>? X,
+    List<string>? Categories,
+    List<ReportChartSeriesDto> Series,
+    string? Id = null,
+    string? FilterField = null,
+    List<string>? DrillPath = null,
+    string? ValueKind = null,
+    string? PairId = null);
+
+/// <summary>Response body of /api/reports/chart-from-spec. RowData mirrors GeneratedReportDto's
+/// own RowData field (raw passthrough JsonElement -- flat array or per-table object, see that
+/// field's remarks) and is always populated here (capped/nullable exactly as this response already
+/// provides it), unlike the HTML-template-matched /generate path where it's only sometimes set.</summary>
+public record ChartFromSpecResultDto(
+    List<ReportChartFromSpecDto> Charts,
+    JsonElement? RowData,
+    List<string> Warnings);
 
 public record ReportSlicerDto(
     string Column,

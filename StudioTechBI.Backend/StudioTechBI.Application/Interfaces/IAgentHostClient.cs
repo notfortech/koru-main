@@ -1,5 +1,6 @@
 using StudioTechBI.Application.DTOs.Blueprints;
 using StudioTechBI.Application.DTOs.Credits;
+using StudioTechBI.Application.DTOs.VisualPlan;
 
 namespace StudioTechBI.Application.Interfaces;
 
@@ -11,6 +12,20 @@ public interface IAgentHostClient
 {
     Task<BlueprintGenerationResponse> GenerateBlueprintAsync(
         GenerateBlueprintRequest request,
+        string correlationId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Calls AgentHost's visual-plan generator (POST /api/visual-plan/generate, aliased
+    /// /api/visual-plans): given column structure + a few sample rows per table (never full data)
+    /// plus an already-generated star schema, returns a proposed chart spec array. Sibling to
+    /// GenerateBlueprintAsync — same auth/timeout conventions via the shared HttpClient, same
+    /// correlation-id header, same "koru-main has no AI logic of its own" boundary. Backs
+    /// ReportGeneratorController's internal/QA-only "generate-preview" endpoint — never reachable
+    /// through the disabled mode=ai toggle on /api/report-generator/generate.
+    /// </summary>
+    Task<List<VisualPlanChartSpecDto>> GenerateVisualPlanAsync(
+        VisualPlanGenerationRequest request,
         string correlationId,
         CancellationToken cancellationToken = default);
 

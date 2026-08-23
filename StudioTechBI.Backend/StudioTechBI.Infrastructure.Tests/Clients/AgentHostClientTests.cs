@@ -2,6 +2,8 @@ using System.Net;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using StudioTechBI.Application.DTOs.Blueprints;
+using StudioTechBI.Application.DTOs.ReportDesigner;
+using StudioTechBI.Application.DTOs.VisualPlan;
 using StudioTechBI.Application.Models;
 using StudioTechBI.Infrastructure.Clients;
 using Xunit;
@@ -147,6 +149,86 @@ public class AgentHostClientTests
 
         await Assert.ThrowsAsync<HttpRequestException>(
             () => client.GenerateBlueprintAsync(ValidRequest(Guid.NewGuid()), correlationId: "corr-1"));
+    }
+
+    // ── GenerateVisualPlanAsync ─────────────────────────────────────────
+
+    private static VisualPlanGenerationRequest ValidVisualPlanRequest() => new(
+        Tables: new List<VisualPlanTableDto>
+        {
+            new(
+                TableName: "sales",
+                Columns: new List<VisualPlanColumnDto> { new("Amount", "numeric"), new("Region", "categorical") },
+                SampleRows: new List<Dictionary<string, string>> { new() { ["Amount"] = "120.5", ["Region"] = "North" } })
+        },
+        StarSchema: new StarSchemaDto("sales", new List<string> { "region" }, new List<RelationshipDto>()));
+
+    private const string ValidVisualPlanResponseJson = """
+        [
+          {
+            "Id": "chart-1",
+            "Title": "Amount by Region",
+            "ChartType": "bar",
+            "Measure": "Amount",
+            "Dimension": "Region",
+            "DrillPath": ["Region"],
+            "FilterField": "Region",
+            "ValueKind": "absolute",
+            "PairId": null
+          }
+        ]
+        """;
+
+    [Fact]
+    public async Task GenerateVisualPlanAsync_Success_ReturnsChartSpecs()
+    {
+        var handler = new FakeHttpMessageHandler(HttpStatusCode.OK, ValidVisualPlanResponseJson);
+        var client = CreateClient(handler, new Uri("https://agenthost.example.com/"));
+
+        var specs = await client.GenerateVisualPlanAsync(ValidVisualPlanRequest(), correlationId: "corr-1");
+
+        Assert.Single(specs);
+        Assert.Equal("chart-1", specs[0].Id);
+        Assert.Equal("bar", specs[0].ChartType);
+        Assert.Equal("Amount", specs[0].Measure);
+        Assert.Equal("Region", specs[0].Dimension);
+        Assert.Equal("absolute", specs[0].ValueKind);
+        Assert.Null(specs[0].PairId);
+    }
+
+    [Fact]
+    public async Task GenerateVisualPlanAsync_SendsCorrelationIdHeaderAndCorrectPath()
+    {
+        var handler = new FakeHttpMessageHandler(HttpStatusCode.OK, ValidVisualPlanResponseJson);
+        var client = CreateClient(handler, new Uri("https://agenthost.example.com/"));
+
+        await client.GenerateVisualPlanAsync(ValidVisualPlanRequest(), correlationId: "corr-42");
+
+        Assert.NotNull(handler.LastRequest);
+        Assert.Equal("https://agenthost.example.com/api/visual-plan/generate", handler.LastRequest!.RequestUri!.ToString());
+        Assert.True(handler.LastRequest.Headers.TryGetValues("X-Correlation-Id", out var values));
+        Assert.Equal("corr-42", values!.Single());
+    }
+
+    [Fact]
+    public async Task GenerateVisualPlanAsync_NonSuccessStatusCode_ThrowsHttpRequestException()
+    {
+        var handler = new FakeHttpMessageHandler(HttpStatusCode.BadRequest, "{\"error\":\"bad request\"}");
+        var client = CreateClient(handler, new Uri("https://agenthost.example.com/"));
+
+        await Assert.ThrowsAsync<HttpRequestException>(
+            () => client.GenerateVisualPlanAsync(ValidVisualPlanRequest(), correlationId: "corr-1"));
+    }
+
+    [Fact]
+    public async Task GenerateVisualPlanAsync_EmptyArrayResponse_ReturnsEmptyList()
+    {
+        var handler = new FakeHttpMessageHandler(HttpStatusCode.OK, "[]");
+        var client = CreateClient(handler, new Uri("https://agenthost.example.com/"));
+
+        var specs = await client.GenerateVisualPlanAsync(ValidVisualPlanRequest(), correlationId: "corr-1");
+
+        Assert.Empty(specs);
     }
 
     // ── DownloadPdfAsync ──────────────────────────────────────────────────

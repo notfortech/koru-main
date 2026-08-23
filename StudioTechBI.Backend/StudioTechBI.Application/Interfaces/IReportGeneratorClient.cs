@@ -1,4 +1,5 @@
 using StudioTechBI.Application.DTOs.ReportGenerator;
+using StudioTechBI.Application.DTOs.VisualPlan;
 
 namespace StudioTechBI.Application.Interfaces;
 
@@ -57,6 +58,19 @@ public interface IReportGeneratorClient
     Task<ColumnProfileResultDto> ProfileColumnsAsync(
         Stream fileStream,
         string fileName,
+        string correlationId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>Computes real chart values from an AgentHost-proposed chart spec array against
+    /// the uploaded file (POST /api/reports/chart-from-spec) -- same "sends the real file to a
+    /// no-AI engine" boundary as GenerateReportAsync (see this interface's class remarks). Chart
+    /// specs are supplied in AgentHost's PascalCase VisualPlanChartSpecDto shape and mapped here
+    /// to ReportAgent.Api's camelCase chart-from-spec contract. Backs ReportGeneratorController's
+    /// internal/QA-only "generate-preview" endpoint.</summary>
+    Task<ChartFromSpecResultDto> GenerateChartsFromSpecAsync(
+        Stream fileStream,
+        string fileName,
+        List<VisualPlanChartSpecDto> chartSpecs,
         string correlationId,
         CancellationToken cancellationToken = default);
 }
