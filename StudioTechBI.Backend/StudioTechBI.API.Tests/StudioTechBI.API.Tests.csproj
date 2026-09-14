@@ -32,4 +32,13 @@
     <ProjectReference Include="..\StudioTechBI.Infrastructure\StudioTechBI.Infrastructure.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Load the real API appsettings files so EnvironmentConfigurationTests exercises the exact
+         config a running service would load for a given ASPNETCORE_ENVIRONMENT, not a hand-copied
+         fixture that could drift from the real files. -->
+    <Content Include="..\StudioTechBI.API\appsettings.json" Link="appsettings.json" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\StudioTechBI.API\appsettings.Development.json" Link="appsettings.Development.json" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\StudioTechBI.API\appsettings.Staging.json" Link="appsettings.Staging.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>
