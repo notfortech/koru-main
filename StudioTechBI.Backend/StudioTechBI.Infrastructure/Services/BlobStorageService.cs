@@ -6,13 +6,13 @@ namespace StudioTechBI.Infrastructure.Services;
 
 public class BlobStorageService : IBlobStorageService
 {
-    private const string ContainerName = "clients";
     private readonly Azure.Storage.Blobs.BlobContainerClient? _containerClient;
     private readonly ILogger<BlobStorageService> _logger;
 
     public BlobStorageService(IConfiguration configuration, ILogger<BlobStorageService> logger)
     {
         _logger = logger;
+        var containerName = configuration["BlobStorage:ClientsContainer"] ?? "clients";
         var connectionString = configuration["AzureBlob:ConnectionString"];
         if (string.IsNullOrEmpty(connectionString))
         {
@@ -21,7 +21,7 @@ public class BlobStorageService : IBlobStorageService
             return;
         }
         var blobServiceClient = new Azure.Storage.Blobs.BlobServiceClient(connectionString);
-        _containerClient = blobServiceClient.GetBlobContainerClient(ContainerName);
+        _containerClient = blobServiceClient.GetBlobContainerClient(containerName);
     }
 
     public async Task CreateClientFolderStructureAsync(string clientId, CancellationToken cancellationToken = default)

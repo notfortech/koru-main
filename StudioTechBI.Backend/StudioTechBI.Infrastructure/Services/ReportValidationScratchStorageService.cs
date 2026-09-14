@@ -14,8 +14,6 @@ namespace StudioTechBI.Infrastructure.Services;
 /// </summary>
 public class ReportValidationScratchStorageService : IReportValidationScratchStorageService
 {
-    private const string ContainerName = "report-validation-scratch";
-
     private readonly BlobContainerClient? _containerClient;
     private readonly string _localBasePath;
     private readonly ILogger<ReportValidationScratchStorageService> _logger;
@@ -27,11 +25,12 @@ public class ReportValidationScratchStorageService : IReportValidationScratchSto
         _localBasePath = configuration["LocalStorage:ReportValidationScratchPath"]
             ?? Path.Combine(Path.GetTempPath(), "koru-report-validation-scratch");
 
+        var containerName = configuration["BlobStorage:ReportValidationScratchContainer"] ?? "report-validation-scratch";
         var connectionString = configuration["AzureBlob:ConnectionString"];
         if (!string.IsNullOrWhiteSpace(connectionString))
         {
             var serviceClient = new BlobServiceClient(connectionString);
-            _containerClient = serviceClient.GetBlobContainerClient(ContainerName);
+            _containerClient = serviceClient.GetBlobContainerClient(containerName);
         }
         else
         {

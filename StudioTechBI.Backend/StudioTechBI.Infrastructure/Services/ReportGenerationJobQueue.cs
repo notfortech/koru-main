@@ -15,13 +15,13 @@ namespace StudioTechBI.Infrastructure.Services;
 /// </summary>
 public class ReportGenerationJobQueue : IReportGenerationJobQueue
 {
-    private const string QueueName = "report-generation-jobs";
     private readonly QueueClient? _queueClient;
     private readonly ILogger<ReportGenerationJobQueue> _logger;
 
     public ReportGenerationJobQueue(IConfiguration configuration, ILogger<ReportGenerationJobQueue> logger)
     {
         _logger = logger;
+        var queueName = configuration["BlobStorage:ReportGenerationJobsQueue"] ?? "report-generation-jobs";
         var connectionString = configuration["AzureBlob:ConnectionString"];
         if (string.IsNullOrEmpty(connectionString))
         {
@@ -30,7 +30,7 @@ public class ReportGenerationJobQueue : IReportGenerationJobQueue
             return;
         }
 
-        _queueClient = new QueueClient(connectionString, QueueName);
+        _queueClient = new QueueClient(connectionString, queueName);
         try
         {
             // Best-effort, synchronous by necessity (constructors can't be async) -- a transient
@@ -41,7 +41,7 @@ public class ReportGenerationJobQueue : IReportGenerationJobQueue
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "ReportGenerationJobQueue: failed to ensure queue '{QueueName}' exists.", QueueName);
+            _logger.LogWarning(ex, "ReportGenerationJobQueue: failed to ensure queue '{QueueName}' exists.", queueName);
         }
     }
 
