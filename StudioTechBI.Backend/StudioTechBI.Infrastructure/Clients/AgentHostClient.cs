@@ -204,10 +204,16 @@ public class AgentHostClient : IAgentHostClient
 
             if (!response.IsSuccessStatusCode)
             {
-                _logger.LogWarning(
-                    "AgentHost.CreditsCheck failed — {StatusCode} for tenant {TenantId}. Failing open.",
+                _logger.LogError(
+                    "AgentHost.CreditsCheck failed — {StatusCode} for tenant {TenantId}. Failing closed.",
                     (int)response.StatusCode, tenantId);
-                return new CreditCheckResult(true, null, null, false, null, null);
+                return new CreditCheckResult(
+                    Allowed: false,
+                    Plan: null,
+                    CreditsRemaining: null,
+                    IsUnlimited: false,
+                    NextResetDate: null,
+                    DenialReason: "Could not verify credit balance. Please try again shortly.");
             }
 
             var dto = JsonSerializer.Deserialize<CreditCheckResponseDto>(body, JsonOptions);
@@ -221,9 +227,15 @@ public class AgentHostClient : IAgentHostClient
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            _logger.LogWarning(ex,
-                "AgentHost.CreditsCheck could not reach AgentHost for tenant {TenantId}. Failing open.", tenantId);
-            return new CreditCheckResult(true, null, null, false, null, null);
+            _logger.LogError(ex,
+                "AgentHost.CreditsCheck could not reach AgentHost for tenant {TenantId}. Failing closed.", tenantId);
+            return new CreditCheckResult(
+                Allowed: false,
+                Plan: null,
+                CreditsRemaining: null,
+                IsUnlimited: false,
+                NextResetDate: null,
+                DenialReason: "Could not verify credit balance. Please try again shortly.");
         }
     }
 
