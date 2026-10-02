@@ -140,6 +140,7 @@ public sealed class BlueprintGenerationBackgroundService : BackgroundService
                     blueprint.Id, newVersionNumber, response.BlueprintJson, ct);
             }
 
+            string? pdfWarning = null;
             if (!string.IsNullOrWhiteSpace(response.PdfDownloadUrl))
             {
                 try
@@ -155,15 +156,19 @@ public sealed class BlueprintGenerationBackgroundService : BackgroundService
                         _logger.LogWarning(
                             "BlueprintGeneration.PdfFetchEmpty GenerationId={GenerationId} PdfUrl={PdfUrl}",
                             generationId, response.PdfDownloadUrl);
+                        pdfWarning = "PDF could not be generated for this version — the JSON blueprint is still available. Try regenerating if you need a PDF.";
                     }
                 }
                 catch (Exception ex)
                 {
                     // PDF is a nice-to-have — the JSON contract is the primary artefact.
-                    // Don't fail the whole generation if AgentHost's PDF can't be fetched.
+                    // Don't fail the whole generation if AgentHost's PDF can't be fetched, but
+                    // surface it as a warning so "Completed" doesn't silently mean "no PDF, no
+                    // explanation" — this was previously invisible to the user.
                     _logger.LogWarning(ex,
                         "BlueprintGeneration.PdfFetchFailed GenerationId={GenerationId} PdfUrl={PdfUrl}",
                         generationId, response.PdfDownloadUrl);
+                    pdfWarning = "PDF could not be generated for this version — the JSON blueprint is still available. Try regenerating if you need a PDF.";
                 }
             }
 
@@ -176,9 +181,11 @@ public sealed class BlueprintGenerationBackgroundService : BackgroundService
             generation.BlueprintVersionId = version.Id;
             generation.CompletedAt = DateTime.UtcNow;
             generation.ConfidenceScore = response.ConfidenceFraction;
-            generation.Warnings = response.Warnings is { Count: > 0 }
-                ? string.Join(";", response.Warnings)
-                : null;
+
+            var warnings = new List<string>();
+            if (response.Warnings is { Count: > 0 }) warnings.AddRange(response.Warnings);
+            if (pdfWarning is not null) warnings.Add(pdfWarning);
+            generation.Warnings = warnings.Count > 0 ? string.Join(";", warnings) : null;
 
             await repo.UpdateGenerationAsync(generation, ct);
             await repo.SaveChangesAsync(ct);
