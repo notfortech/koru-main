@@ -435,12 +435,6 @@ public class ReportGeneratorController : ControllerBase
             return BadRequest(ApiResponse<object>.ErrorResponse(
                 $"Unsupported file type '{ext}'. Allowed: {string.Join(", ", AllowedExtensions)}"));
 
-        // AI-Assisted mode is disabled -- the frontend's mode toggle already hides it, but that's
-        // a UI-only restriction; anyone calling this endpoint directly with mode=ai would
-        // otherwise still reach it. Enforce the same restriction server-side, not just in the UI.
-        if (string.Equals(mode, "ai", StringComparison.OrdinalIgnoreCase))
-            return BadRequest(ApiResponse<object>.ErrorResponse("AI-Assisted mode is temporarily disabled."));
-
         var correlationId = Guid.NewGuid().ToString();
 
         try
@@ -546,7 +540,7 @@ public class ReportGeneratorController : ControllerBase
     /// <summary>
     /// POST /api/report-generator/generate-preview
     /// Additive, internal/QA-only endpoint — separate from, and never reachable through, the
-    /// disabled mode=ai path on /generate above, and does not touch anything
+    /// mode=ai path on /generate above, and does not touch anything
     /// ReportDesignerController already does. Not wired into the frontend's existing AI-mode
     /// toggle or route; a sibling frontend task calls this directly by URL for now.
     ///
@@ -564,8 +558,8 @@ public class ReportGeneratorController : ControllerBase
     ///
     /// The uploaded file is never persisted anywhere by this endpoint — only ever forwarded
     /// in-memory to the two downstream services for computation and column-structure/sample
-    /// extraction to AgentHost — matching the exact data-policy reason AI-Assisted mode above was
-    /// disabled server-side.
+    /// extraction to AgentHost — the same schema-only data policy enforced everywhere else in
+    /// this controller (see TryBuildClosestTemplateBlendAsync's own comment on this).
     /// </summary>
     [HttpPost("generate-preview")]
     [RequestSizeLimit(UploadLimits.MaxUploadBytes)]
