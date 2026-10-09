@@ -29,6 +29,7 @@ public class BlueprintsController : BaseApiController
 
     private readonly IAiGateway _gateway;
     private readonly IClientService _clientService;
+    private readonly IClientAccessGuard _accessGuard;
     private readonly IInsightsEngineReportInsightsClient _reportInsights;
     private readonly IOptionsMonitor<InsightsEngineOptions> _insightsEngineOptions;
     private readonly ILocalCreditLedgerService _localCredits;
@@ -37,6 +38,7 @@ public class BlueprintsController : BaseApiController
     public BlueprintsController(
         IAiGateway gateway,
         IClientService clientService,
+        IClientAccessGuard accessGuard,
         IInsightsEngineReportInsightsClient reportInsights,
         IOptionsMonitor<InsightsEngineOptions> insightsEngineOptions,
         ILocalCreditLedgerService localCredits,
@@ -44,10 +46,23 @@ public class BlueprintsController : BaseApiController
     {
         _gateway = gateway;
         _clientService = clientService;
+        _accessGuard = accessGuard;
         _reportInsights = reportInsights;
         _insightsEngineOptions = insightsEngineOptions;
         _localCredits = localCredits;
         _logger = logger;
+    }
+
+    /// <summary>Returns a 403 result if the current user cannot access <paramref name="clientId"/>;
+    /// otherwise null. Callers must check this BEFORE returning/downloading/deleting/processing
+    /// anything tied to that client — see IClientAccessGuard for why this exists as a shared check.</summary>
+    private async Task<IActionResult?> ForbidIfNoAccessAsync(Guid clientId, CancellationToken cancellationToken)
+    {
+        if (await _accessGuard.CanAccessClientAsync(User, clientId, cancellationToken))
+            return null;
+
+        return StatusCode(StatusCodes.Status403Forbidden,
+            ApiResponse<object>.ErrorResponse("You do not have access to this blueprint."));
     }
 
     // ── Generate ───────────────────────────────────────────────────────────────
@@ -179,6 +194,9 @@ public class BlueprintsController : BaseApiController
         if (blueprint is null)
             return NotFound(ApiResponse<object>.ErrorResponse($"Blueprint {id} not found."));
 
+        if (await ForbidIfNoAccessAsync(blueprint.ClientId, cancellationToken) is { } forbidden)
+            return forbidden;
+
         return Ok(ApiResponse<BlueprintDto>.SuccessResponse(blueprint));
     }
 
@@ -193,6 +211,13 @@ public class BlueprintsController : BaseApiController
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetPdf(Guid id, CancellationToken cancellationToken)
     {
+        var blueprint = await _gateway.GetBlueprintAsync(id, cancellationToken);
+        if (blueprint is null)
+            return NotFound(ApiResponse<object>.ErrorResponse($"Blueprint {id} not found."));
+
+        if (await ForbidIfNoAccessAsync(blueprint.ClientId, cancellationToken) is { } forbidden)
+            return forbidden;
+
         var stream = await _gateway.GetBlueprintPdfAsync(id, cancellationToken);
         if (stream is null)
             return NotFound(ApiResponse<object>.ErrorResponse($"PDF not found for Blueprint {id}."));
@@ -209,6 +234,13 @@ public class BlueprintsController : BaseApiController
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetJson(Guid id, CancellationToken cancellationToken)
     {
+        var blueprint = await _gateway.GetBlueprintAsync(id, cancellationToken);
+        if (blueprint is null)
+            return NotFound(ApiResponse<object>.ErrorResponse($"Blueprint {id} not found."));
+
+        if (await ForbidIfNoAccessAsync(blueprint.ClientId, cancellationToken) is { } forbidden)
+            return forbidden;
+
         var json = await _gateway.GetBlueprintJsonAsync(id, cancellationToken);
         if (json is null)
             return NotFound(ApiResponse<object>.ErrorResponse($"Analytics contract not found for Blueprint {id}."));
@@ -233,6 +265,9 @@ public class BlueprintsController : BaseApiController
         var blueprint = await _gateway.GetBlueprintAsync(id, cancellationToken);
         if (blueprint is null)
             return NotFound(ApiResponse<object>.ErrorResponse($"Blueprint {id} not found."));
+
+        if (await ForbidIfNoAccessAsync(blueprint.ClientId, cancellationToken) is { } forbidden)
+            return forbidden;
 
         var creditCheck = await _localCredits.CheckAsync(blueprint.ClientId, AiSummaryCreditCost, cancellationToken);
         if (!creditCheck.Allowed)
@@ -391,6 +426,9 @@ public class BlueprintsController : BaseApiController
         var blueprint = await _gateway.GetBlueprintAsync(id, cancellationToken);
         if (blueprint is null)
             return NotFound(ApiResponse<object>.ErrorResponse($"Blueprint {id} not found."));
+
+        if (await ForbidIfNoAccessAsync(blueprint.ClientId, cancellationToken) is { } forbidden)
+            return forbidden;
 
         await _gateway.DeleteBlueprintAsync(id, cancellationToken);
 

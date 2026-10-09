@@ -8,13 +8,14 @@ namespace StudioTechBI.Infrastructure.Services;
 
 public class BlobSasUriProvider : IBlobSasUriProvider
 {
-    private const string ContainerName = "clients";
+    private readonly string _containerName;
     private readonly BlobContainerClient? _containerClient;
     private readonly ILogger<BlobSasUriProvider> _logger;
 
     public BlobSasUriProvider(IConfiguration configuration, ILogger<BlobSasUriProvider> logger)
     {
         _logger = logger;
+        _containerName = configuration["BlobStorage:ClientsContainer"] ?? "clients";
         var connectionString = configuration["AzureBlob:ConnectionString"];
         if (string.IsNullOrEmpty(connectionString))
         {
@@ -23,7 +24,7 @@ public class BlobSasUriProvider : IBlobSasUriProvider
             return;
         }
         var blobServiceClient = new BlobServiceClient(connectionString);
-        _containerClient = blobServiceClient.GetBlobContainerClient(ContainerName);
+        _containerClient = blobServiceClient.GetBlobContainerClient(_containerName);
     }
 
     public Task<string?> GetReadSasUriAsync(string blobPath, TimeSpan validFor, CancellationToken cancellationToken = default)
@@ -40,7 +41,7 @@ public class BlobSasUriProvider : IBlobSasUriProvider
 
         var sasBuilder = new BlobSasBuilder
         {
-            BlobContainerName = ContainerName,
+            BlobContainerName = _containerName,
             BlobName = blobPath,
             Resource = "b",
             ExpiresOn = DateTimeOffset.UtcNow.Add(validFor),
@@ -65,7 +66,7 @@ public class BlobSasUriProvider : IBlobSasUriProvider
 
         var sasBuilder = new BlobSasBuilder
         {
-            BlobContainerName = ContainerName,
+            BlobContainerName = _containerName,
             BlobName = blobPath,
             Resource = "b",
             ExpiresOn = DateTimeOffset.UtcNow.Add(validFor),

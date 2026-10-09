@@ -52,6 +52,7 @@ public static class DependencyInjection
         services.AddScoped<IAuditLogService, AuditLogService>();
         services.AddScoped<IAdminDashboardService, AdminDashboardService>();
         services.AddScoped<IClientByCompanyQuery, ClientByCompanyQuery>();
+        services.AddScoped<IClientAccessGuard, ClientAccessGuard>();
         services.AddScoped<IDatasetRefreshLogWriter, DatasetRefreshLogWriter>();
         services.AddScoped<IReportingProcessingJobWriter, ReportingProcessingJobWriter>();
         services.AddScoped<IReportingTechnicalLogWriter, ReportingTechnicalLogWriter>();

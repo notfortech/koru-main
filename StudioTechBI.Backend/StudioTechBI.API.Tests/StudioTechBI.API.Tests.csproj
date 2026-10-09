@@ -1,0 +1,44 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="coverlet.collector" Version="6.0.2">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <!-- Moq only (not used elsewhere in this repo's tests): the controllers under test here have
+         far more collaborators than the HTTP-client tests in StudioTechBI.Infrastructure.Tests, so
+         hand-written fakes for every dependency would be more code and more error-prone than a
+         mocking library for this specific project. Scoped to this test project only. -->
+    <PackageReference Include="Moq" Version="4.20.72" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\StudioTechBI.API\StudioTechBI.API.csproj" />
+    <ProjectReference Include="..\StudioTechBI.Application\StudioTechBI.Application.csproj" />
+    <ProjectReference Include="..\StudioTechBI.Infrastructure\StudioTechBI.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Load the real API appsettings files so EnvironmentConfigurationTests exercises the exact
+         config a running service would load for a given ASPNETCORE_ENVIRONMENT, not a hand-copied
+         fixture that could drift from the real files. -->
+    <Content Include="..\StudioTechBI.API\appsettings.json" Link="appsettings.json" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\StudioTechBI.API\appsettings.Development.json" Link="appsettings.Development.json" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\StudioTechBI.API\appsettings.Staging.json" Link="appsettings.Staging.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

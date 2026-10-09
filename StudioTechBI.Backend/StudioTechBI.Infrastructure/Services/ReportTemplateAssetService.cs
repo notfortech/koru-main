@@ -7,13 +7,13 @@ namespace StudioTechBI.Infrastructure.Services;
 
 public sealed class ReportTemplateAssetService : IReportTemplateAssetService
 {
-    private const string ContainerName = "report-templates";
     private readonly BlobContainerClient? _containerClient;
     private readonly ILogger<ReportTemplateAssetService> _logger;
 
     public ReportTemplateAssetService(IConfiguration configuration, ILogger<ReportTemplateAssetService> logger)
     {
         _logger = logger;
+        var containerName = configuration["BlobStorage:ReportTemplatesContainer"] ?? "report-templates";
         var connectionString = configuration["AzureBlob:ConnectionString"];
         if (string.IsNullOrEmpty(connectionString))
         {
@@ -23,7 +23,7 @@ public sealed class ReportTemplateAssetService : IReportTemplateAssetService
         }
 
         var blobServiceClient = new BlobServiceClient(connectionString);
-        _containerClient = blobServiceClient.GetBlobContainerClient(ContainerName);
+        _containerClient = blobServiceClient.GetBlobContainerClient(containerName);
     }
 
     public async Task<(Stream stream, string contentType)?> DownloadTemplateScreenshotAsync(

@@ -72,6 +72,20 @@ public sealed class InsightsEngineController : ControllerBase
         return fromClaim != null && fromClaim.ClientId == clientId;
     }
 
+    /// <summary>True if <paramref name="blobPath"/> falls under <paramref name="client"/>'s own top-level
+    /// blob folder (e.g. "AU-001/..."), so a caller who already owns <paramref name="client"/> cannot
+    /// supply a different client's folder to read their files. Exact-segment match (not a bare
+    /// StartsWith) so "AU-1" can never match a path actually under "AU-10/...".</summary>
+    private static bool BlobPathBelongsToClient(Client client, string blobPath)
+    {
+        var folder = (client.BlobFolderPath ?? client.ClientCode ?? client.Id.ToString()).Trim().TrimEnd('/');
+        if (folder.Length == 0) return false;
+
+        var normalizedPath = blobPath.Trim().TrimStart('/');
+        return normalizedPath.Equals(folder, StringComparison.OrdinalIgnoreCase)
+            || normalizedPath.StartsWith(folder + "/", StringComparison.OrdinalIgnoreCase);
+    }
+
     /// <summary>
     /// Resolves the target client: either from JWT <c>client_code</c> (when <paramref name="useSelectedClient"/>) or from <paramref name="clientCodeOrId"/>.
     /// </summary>
@@ -334,6 +348,13 @@ public sealed class InsightsEngineController : ControllerBase
         if (!Guid.TryParse(body.ClientId.Trim(), out var clientId))
             return BadRequest(ApiResponse<object>.ErrorResponse("ClientId must be a GUID for blob sampling."));
 
+        var (client, resolveError) = await ResolveTargetClientAsync(clientId.ToString(), useSelectedClient: false, ct);
+        if (resolveError != null) return resolveError;
+        if (client == null) return NotFound();
+
+        if (!BlobPathBelongsToClient(client, body.BlobPath))
+            return StatusCode(StatusCodes.Status403Forbidden, ApiResponse<object>.ErrorResponse("You do not have access to this file."));
+
         var sample = await _sampling.CreateSampleAsync(body.BlobPath, clientId, maxRows, ct);
         var element = JsonSerializer.SerializeToElement(sample.SampleRows);
 
@@ -457,6 +478,13 @@ public sealed class InsightsEngineController : ControllerBase
             if (string.IsNullOrWhiteSpace(blobPath))
                 return NotFound(ApiResponse<object>.ErrorResponse($"No .xlsx or .csv found under '{prefix}'."));
         }
+
+        // blobPath may have come straight from the caller above (not just derived from the client's
+        // own folder) -- verify it actually belongs to this client before reading it. The derived
+        // path always passes this trivially; this only ever rejects an explicitly-supplied path
+        // that points at a different client's folder.
+        if (!BlobPathBelongsToClient(client, blobPath))
+            return StatusCode(StatusCodes.Status403Forbidden, ApiResponse<object>.ErrorResponse("You do not have access to this file."));
 
         var sample = await _sampling.CreateSampleAsync(blobPath, client.Id, maxRows, ct);
         var element = JsonSerializer.SerializeToElement(sample.SampleRows);

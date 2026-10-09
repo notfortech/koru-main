@@ -14,8 +14,6 @@ namespace StudioTechBI.Infrastructure.Services;
 /// </summary>
 public class BlueprintStorageService : IBlueprintStorageService
 {
-    private const string ContainerName = "blueprints";
-
     private readonly BlobContainerClient? _containerClient;
     private readonly string _localBasePath;
     private readonly ILogger<BlueprintStorageService> _logger;
@@ -27,11 +25,12 @@ public class BlueprintStorageService : IBlueprintStorageService
         _localBasePath = configuration["LocalStorage:BlueprintsPath"]
             ?? Path.Combine(Path.GetTempPath(), "koru-blueprints");
 
+        var containerName = configuration["BlobStorage:BlueprintsContainer"] ?? "blueprints";
         var connectionString = configuration["AzureBlob:ConnectionString"];
         if (!string.IsNullOrWhiteSpace(connectionString))
         {
             var serviceClient = new BlobServiceClient(connectionString);
-            _containerClient = serviceClient.GetBlobContainerClient(ContainerName);
+            _containerClient = serviceClient.GetBlobContainerClient(containerName);
         }
         else
         {

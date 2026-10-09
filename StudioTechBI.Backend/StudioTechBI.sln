@@ -1,4 +1,4 @@
-
+﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.0.31903.59
@@ -12,6 +12,8 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "StudioTechBI.Infrastructure", "StudioTechBI.Infrastructure\StudioTechBI.Infrastructure.csproj", "{D4E4F4A4-B4C4-4D8E-1F2A-4B5C6D7E8F9A}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "StudioTechBI.Infrastructure.Tests", "StudioTechBI.Infrastructure.Tests\StudioTechBI.Infrastructure.Tests.csproj", "{E5F5A5B5-C5D5-4E9F-2A3B-5C6D7E8F9A0B}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "StudioTechBI.API.Tests", "StudioTechBI.API.Tests\StudioTechBI.API.Tests.csproj", "{CFB8F520-6A55-4809-B8C0-1E846E61E832}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -39,5 +41,9 @@ Global
 		{E5F5A5B5-C5D5-4E9F-2A3B-5C6D7E8F9A0B}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{E5F5A5B5-C5D5-4E9F-2A3B-5C6D7E8F9A0B}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{E5F5A5B5-C5D5-4E9F-2A3B-5C6D7E8F9A0B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{CFB8F520-6A55-4809-B8C0-1E846E61E832}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{CFB8F520-6A55-4809-B8C0-1E846E61E832}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{CFB8F520-6A55-4809-B8C0-1E846E61E832}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{CFB8F520-6A55-4809-B8C0-1E846E61E832}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

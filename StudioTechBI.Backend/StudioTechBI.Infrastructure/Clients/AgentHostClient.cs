@@ -27,17 +27,20 @@ public class AgentHostClient : IAgentHostClient
     private readonly ILogger<AgentHostClient> _logger;
     private readonly AgentHostOptions _opts;
     private readonly CreditsOptions _creditsOpts;
+    private readonly IReportingTechnicalLogWriter _technicalLogWriter;
 
     public AgentHostClient(
         HttpClient httpClient,
         ILogger<AgentHostClient> logger,
         IOptions<AgentHostOptions> options,
-        IOptions<CreditsOptions> creditsOptions)
+        IOptions<CreditsOptions> creditsOptions,
+        IReportingTechnicalLogWriter technicalLogWriter)
     {
         _httpClient = httpClient;
         _logger = logger;
         _opts = options.Value;
         _creditsOpts = creditsOptions.Value;
+        _technicalLogWriter = technicalLogWriter;
     }
 
     public async Task<BlueprintGenerationResponse> GenerateBlueprintAsync(
@@ -204,9 +207,19 @@ public class AgentHostClient : IAgentHostClient
 
             if (!response.IsSuccessStatusCode)
             {
+                // The user-facing DenialReason below is deliberately generic (never leak AgentHost's
+                // raw response to an end client) -- but the real status/body is exactly what's needed
+                // to diagnose a fail-closed denial, so capture it in both the structured log (for
+                // direct log-stream access) and the in-app Technical Logs screen (for anyone without
+                // Azure CLI/portal access to this service's logs).
                 _logger.LogError(
-                    "AgentHost.CreditsCheck failed — {StatusCode} for tenant {TenantId}. Failing closed.",
-                    (int)response.StatusCode, tenantId);
+                    "AgentHost.CreditsCheck failed — {StatusCode} for tenant {TenantId}. Body: {Body}. Failing closed.",
+                    (int)response.StatusCode, tenantId, body);
+                await _technicalLogWriter.LogAsync(
+                    "AgentHostClient.CheckCreditsAsync",
+                    "Error",
+                    $"AgentHost returned {(int)response.StatusCode} for tenant {tenantId} -- request denied (fail-closed). Response body: {body}",
+                    cancellationToken: cancellationToken);
                 return new CreditCheckResult(
                     Allowed: false,
                     Plan: null,
@@ -229,6 +242,12 @@ public class AgentHostClient : IAgentHostClient
         {
             _logger.LogError(ex,
                 "AgentHost.CreditsCheck could not reach AgentHost for tenant {TenantId}. Failing closed.", tenantId);
+            await _technicalLogWriter.LogAsync(
+                "AgentHostClient.CheckCreditsAsync",
+                "Error",
+                $"Could not reach AgentHost for tenant {tenantId} -- request denied (fail-closed). {ex.GetType().Name}: {ex.Message}",
+                ex.ToString(),
+                cancellationToken);
             return new CreditCheckResult(
                 Allowed: false,
                 Plan: null,

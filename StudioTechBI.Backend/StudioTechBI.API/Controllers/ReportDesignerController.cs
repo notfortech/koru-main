@@ -39,6 +39,7 @@ public class ReportDesignerController : ControllerBase
     private readonly IReportDesignerConsentService _consentService;
     private readonly IReportDataUsageConsentService _dataUsageConsentService;
     private readonly IClientResolver _clientResolver;
+    private readonly IClientAccessGuard _accessGuard;
     private readonly ITemplateRefreshService _templateRefresh;
     private readonly ITemplateService _templates;
     private readonly IPowerBiAssetWriter _powerBiAssetWriter;
@@ -58,6 +59,7 @@ public class ReportDesignerController : ControllerBase
         IReportDesignerConsentService consentService,
         IReportDataUsageConsentService dataUsageConsentService,
         IClientResolver clientResolver,
+        IClientAccessGuard accessGuard,
         ITemplateRefreshService templateRefresh,
         ITemplateService templates,
         IPowerBiAssetWriter powerBiAssetWriter,
@@ -76,6 +78,7 @@ public class ReportDesignerController : ControllerBase
         _consentService = consentService;
         _dataUsageConsentService = dataUsageConsentService;
         _clientResolver = clientResolver;
+        _accessGuard = accessGuard;
         _templateRefresh = templateRefresh;
         _templates = templates;
         _reportModelQueue = reportModelQueue;
@@ -85,6 +88,18 @@ public class ReportDesignerController : ControllerBase
         _localCredits = localCredits;
         _logger = logger;
         _uploadLimits = uploadLimits;
+    }
+
+    /// <summary>Returns a 403 result if the current user cannot access <paramref name="clientId"/>;
+    /// otherwise null. Must be checked immediately after resolving a caller-supplied ClientId, and
+    /// before any consent check, credit charge, queue enqueue, or Power BI/BindDeploy call.</summary>
+    private async Task<IActionResult?> ForbidIfNoAccessAsync(Guid clientId, CancellationToken cancellationToken)
+    {
+        if (await _accessGuard.CanAccessClientAsync(User, clientId, cancellationToken))
+            return null;
+
+        return StatusCode(StatusCodes.Status403Forbidden,
+            ApiResponse<object>.ErrorResponse("You do not have access to this client."));
     }
 
     /// <summary>
@@ -266,6 +281,8 @@ public class ReportDesignerController : ControllerBase
         var client = await _clientResolver.ResolveAsync(request.ClientId, cancellationToken);
         if (client is null)
             return NotFound(ApiResponse<object>.ErrorResponse("Client not found."));
+        if (await ForbidIfNoAccessAsync(client.Id, cancellationToken) is { } forbidden)
+            return forbidden;
 
         var decidedAt = DateTimeOffset.UtcNow;
 
@@ -319,6 +336,8 @@ public class ReportDesignerController : ControllerBase
         var client = await _clientResolver.ResolveAsync(request.ClientId, cancellationToken);
         if (client is null)
             return NotFound(ApiResponse<object>.ErrorResponse("Client not found."));
+        if (await ForbidIfNoAccessAsync(client.Id, cancellationToken) is { } forbidden)
+            return forbidden;
 
         var hasConsent = await _consentService.HasConsentAsync(client.Id, request.Schema.SchemaHash, cancellationToken);
         if (!hasConsent)
@@ -335,12 +354,18 @@ public class ReportDesignerController : ControllerBase
         var creditCheck = await _agentHostClient.CheckCreditsAsync(client.Id, client.ClientName, cancellationToken);
         if (!creditCheck.Allowed)
         {
+            // AgentHostClient already logs the real status/body/exception behind this denial (both
+            // structured logs and reporting.TechnicalLogs) -- this just correlates it to the
+            // specific client/request for anyone triaging from this end of the call.
+            _logger.LogWarning(
+                "ReportDesigner.GenerateModelBlockedByAgentHost ClientId={ClientId} DenialReason={DenialReason}",
+                client.Id, creditCheck.DenialReason);
             return StatusCode(StatusCodes.Status402PaymentRequired, ApiResponse<object>.ErrorResponse(
                 creditCheck.DenialReason ?? "Insufficient AI credits to generate a report model."));
         }
 
-        // Local interim gate (see LocalCreditLedgerService) -- AgentHost's own check above is
-        // currently bypassed (always Allowed), so this is what actually enforces anything today.
+        // Local interim gate (see LocalCreditLedgerService) -- AgentHost's own check above now
+        // enforces for real (credit bypass was removed/disabled by default), so both gates are live.
         var localCheck = await _localCredits.CheckAsync(client.Id, ReportModelGenerationConstants.CreditCost, cancellationToken);
         if (!localCheck.Allowed)
         {
@@ -439,6 +464,8 @@ public class ReportDesignerController : ControllerBase
         var client = await _clientResolver.ResolveAsync(request.ClientId, cancellationToken);
         if (client is null)
             return NotFound(ApiResponse<object>.ErrorResponse("Client not found."));
+        if (await ForbidIfNoAccessAsync(client.Id, cancellationToken) is { } forbidden)
+            return forbidden;
 
         var correlationId = Guid.NewGuid().ToString();
 
@@ -619,6 +646,8 @@ public class ReportDesignerController : ControllerBase
         var client = await _clientResolver.ResolveAsync(request.ClientId, cancellationToken);
         if (client is null)
             return NotFound(ApiResponse<object>.ErrorResponse("Client not found."));
+        if (await ForbidIfNoAccessAsync(client.Id, cancellationToken) is { } forbidden)
+            return forbidden;
 
         var hasConsent = await _consentService.HasConsentAsync(client.Id, request.Schema.SchemaHash, cancellationToken);
         if (!hasConsent)
@@ -710,6 +739,8 @@ public class ReportDesignerController : ControllerBase
         var client = await _clientResolver.ResolveAsync(request.ClientId, cancellationToken);
         if (client is null)
             return NotFound(ApiResponse<object>.ErrorResponse("Client not found."));
+        if (await ForbidIfNoAccessAsync(client.Id, cancellationToken) is { } forbidden)
+            return forbidden;
 
         var approvedBy = User.FindFirstValue(ClaimTypes.Email) ?? "unknown";
 
