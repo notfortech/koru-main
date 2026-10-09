@@ -4,6 +4,7 @@ using Microsoft.Extensions.Options;
 using StudioTechBI.Application.DTOs.Blueprints;
 using StudioTechBI.Application.DTOs.ReportDesigner;
 using StudioTechBI.Application.DTOs.VisualPlan;
+using StudioTechBI.Application.Interfaces;
 using StudioTechBI.Application.Models;
 using StudioTechBI.Infrastructure.Clients;
 using Xunit;
@@ -12,6 +13,12 @@ namespace StudioTechBI.Infrastructure.Tests.Clients;
 
 public class AgentHostClientTests
 {
+    private sealed class NoOpTechnicalLogWriter : IReportingTechnicalLogWriter
+    {
+        public Task LogAsync(string service, string level, string message, string? stackTrace = null, CancellationToken cancellationToken = default)
+            => Task.CompletedTask;
+    }
+
     private static AgentHostClient CreateClient(
         FakeHttpMessageHandler handler,
         Uri? baseAddress,
@@ -27,7 +34,8 @@ public class AgentHostClientTests
             httpClient,
             NullLogger<AgentHostClient>.Instance,
             Options.Create(options ?? new AgentHostOptions()),
-            Options.Create(creditsOptions ?? new CreditsOptions()));
+            Options.Create(creditsOptions ?? new CreditsOptions()),
+            new NoOpTechnicalLogWriter());
     }
 
     private static GenerateBlueprintRequest ValidRequest(Guid? tenantId) => new()

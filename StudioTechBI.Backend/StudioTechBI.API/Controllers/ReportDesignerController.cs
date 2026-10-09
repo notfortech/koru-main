@@ -354,12 +354,18 @@ public class ReportDesignerController : ControllerBase
         var creditCheck = await _agentHostClient.CheckCreditsAsync(client.Id, client.ClientName, cancellationToken);
         if (!creditCheck.Allowed)
         {
+            // AgentHostClient already logs the real status/body/exception behind this denial (both
+            // structured logs and reporting.TechnicalLogs) -- this just correlates it to the
+            // specific client/request for anyone triaging from this end of the call.
+            _logger.LogWarning(
+                "ReportDesigner.GenerateModelBlockedByAgentHost ClientId={ClientId} DenialReason={DenialReason}",
+                client.Id, creditCheck.DenialReason);
             return StatusCode(StatusCodes.Status402PaymentRequired, ApiResponse<object>.ErrorResponse(
                 creditCheck.DenialReason ?? "Insufficient AI credits to generate a report model."));
         }
 
-        // Local interim gate (see LocalCreditLedgerService) -- AgentHost's own check above is
-        // currently bypassed (always Allowed), so this is what actually enforces anything today.
+        // Local interim gate (see LocalCreditLedgerService) -- AgentHost's own check above now
+        // enforces for real (credit bypass was removed/disabled by default), so both gates are live.
         var localCheck = await _localCredits.CheckAsync(client.Id, ReportModelGenerationConstants.CreditCost, cancellationToken);
         if (!localCheck.Allowed)
         {
