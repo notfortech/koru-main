@@ -186,6 +186,21 @@ public static class HandwrittenMigrationsBootstrapper
                     CONSTRAINT [DF_Clients_HasLimitedPortalAccess] DEFAULT (0);
         ", cancellationToken);
 
+        await ExecAsync(context, logger, "Clients.BrandPrimaryColor column", @"
+            IF COL_LENGTH('dbo.Clients', 'BrandPrimaryColor') IS NULL
+                ALTER TABLE [dbo].[Clients] ADD [BrandPrimaryColor] NVARCHAR(9) NULL;
+        ", cancellationToken);
+
+        await ExecAsync(context, logger, "Clients.BrandSecondaryColor column", @"
+            IF COL_LENGTH('dbo.Clients', 'BrandSecondaryColor') IS NULL
+                ALTER TABLE [dbo].[Clients] ADD [BrandSecondaryColor] NVARCHAR(9) NULL;
+        ", cancellationToken);
+
+        await ExecAsync(context, logger, "Clients.FaviconBlobPath column", @"
+            IF COL_LENGTH('dbo.Clients', 'FaviconBlobPath') IS NULL
+                ALTER TABLE [dbo].[Clients] ADD [FaviconBlobPath] NVARCHAR(500) NULL;
+        ", cancellationToken);
+
         await ExecAsync(context, logger, "ReportMatchDrafts", @"
             IF OBJECT_ID('dbo.ReportMatchDrafts', 'U') IS NULL
             BEGIN

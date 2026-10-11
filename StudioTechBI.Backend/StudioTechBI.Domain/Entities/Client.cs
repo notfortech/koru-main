@@ -14,6 +14,21 @@ public class Client : BaseEntity
     /// Set/cleared via AdminClientsController's logo upload/delete endpoints.</summary>
     public string? LogoBlobPath { get; set; }
 
+    /// <summary>Hex colors (e.g. "#1A2B3C") for this client's whitelabel theme, additive on top of
+    /// the logo above -- only actually rendered when IsPremiumSubscriber and a logo are both set
+    /// (see AuthService.MapUserToDtoAsync), same gate as CompanyName/LogoUrl. Never replaces
+    /// StudioTechBI's own branding, only recolors the client portal's chrome (AppBar/sidebar/
+    /// focus states) alongside it -- see studiotechbi-ui-main's theme.ts buildTheme().</summary>
+    public string? BrandPrimaryColor { get; set; }
+    public string? BrandSecondaryColor { get; set; }
+
+    /// <summary>Blob path to this client's uploaded white-label favicon (e.g.
+    /// "{clientId}/branding/favicon.png"), null when the client uses the default StudioTechBI
+    /// favicon. Set/cleared via AdminClientsController's favicon upload/delete endpoints. Gated on
+    /// its own presence only (not tied to LogoBlobPath) -- a client can have a logo but no favicon
+    /// uploaded yet.</summary>
+    public string? FaviconBlobPath { get; set; }
+
     /// <summary>Admin-declared entitlement: white-label branding only renders for this client's
     /// users when this is true AND LogoBlobPath is set (see AuthService.MapUserToDtoAsync). Not
     /// derived from the live subscription/credit system — an admin sets this explicitly when they
