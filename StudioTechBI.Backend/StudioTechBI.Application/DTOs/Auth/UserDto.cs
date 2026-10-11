@@ -31,6 +31,18 @@ public class UserDto
     /// none is configured. Refreshed on every login/token refresh.</summary>
     [JsonPropertyName("logoUrl")]
     public string? LogoUrl { get; set; }
+    /// <summary>Whitelabel theme colors (Client.BrandPrimaryColor/BrandSecondaryColor), additive
+    /// on top of the logo above -- both null when no logo is configured, same gate as
+    /// CompanyName/LogoUrl (see AuthService.MapUserToDtoAsync).</summary>
+    [JsonPropertyName("primaryColor")]
+    public string? PrimaryColor { get; set; }
+    [JsonPropertyName("secondaryColor")]
+    public string? SecondaryColor { get; set; }
+    /// <summary>Short-lived read SAS URL for the client's uploaded white-label favicon, null when
+    /// none is configured. Gated on its own presence only, not tied to the logo/premium gate above
+    /// -- a client can have a logo but no favicon uploaded yet.</summary>
+    [JsonPropertyName("faviconUrl")]
+    public string? FaviconUrl { get; set; }
     /// <summary>Admin-declared entitlement for the paid Report Validation add-on (Client.
     /// HasReportValidationAddOn), a separate subscription line item from branding. Frontend gates
     /// the "Validate Report" button/screen on this plain boolean.</summary>

@@ -21,7 +21,9 @@ public class ClientService : BaseService, IClientService
     private readonly IClientByCompanyQuery _clientByCompanyQuery;
 
     private static readonly string[] AllowedLogoExtensions = { ".png", ".jpg", ".jpeg", ".svg" };
+    private static readonly string[] AllowedFaviconExtensions = { ".ico", ".png", ".svg" };
     private static readonly TimeSpan LogoSasValidFor = TimeSpan.FromHours(24);
+    private static readonly TimeSpan FaviconSasValidFor = TimeSpan.FromHours(24);
 
     public ClientService(
         IUnitOfWork unitOfWork,
@@ -83,7 +85,7 @@ public class ClientService : BaseService, IClientService
         }
 
         _logger.LogInformation("Created client {ClientId}", client.Id);
-        return await MapToDtoWithLogoAsync(client, cancellationToken);
+        return await MapToDtoWithAssetsAsync(client, cancellationToken);
     }
 
     public async Task<IReadOnlyList<ClientDto>> GetAllAsync(CancellationToken cancellationToken = default)
@@ -92,14 +94,14 @@ public class ClientService : BaseService, IClientService
         var active = list.Where(c => !c.IsDeleted).ToList();
         var dtos = new List<ClientDto>(active.Count);
         foreach (var client in active)
-            dtos.Add(await MapToDtoWithLogoAsync(client, cancellationToken));
+            dtos.Add(await MapToDtoWithAssetsAsync(client, cancellationToken));
         return dtos;
     }
 
     public async Task<ClientDto?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
     {
         var client = await _clientRepository.GetByIdAsync(id, cancellationToken);
-        return client == null || client.IsDeleted ? null : await MapToDtoWithLogoAsync(client, cancellationToken);
+        return client == null || client.IsDeleted ? null : await MapToDtoWithAssetsAsync(client, cancellationToken);
     }
 
     public async Task<ClientDto?> GetByClientCodeAsync(string clientCode, CancellationToken cancellationToken = default)
@@ -109,7 +111,7 @@ public class ClientService : BaseService, IClientService
         var codeLower = code.ToLowerInvariant();
         var clients = await _clientRepository.FindAsync(c => !c.IsDeleted && c.ClientCode != null && c.ClientCode.ToLower() == codeLower, cancellationToken);
         var client = clients.FirstOrDefault();
-        return client == null ? null : await MapToDtoWithLogoAsync(client, cancellationToken);
+        return client == null ? null : await MapToDtoWithAssetsAsync(client, cancellationToken);
     }
 
     public async Task<ClientDto?> GetByClientCodeOrIdAsync(string clientCodeOrId, CancellationToken cancellationToken = default)
@@ -137,6 +139,8 @@ public class ClientService : BaseService, IClientService
         client.IsPremiumSubscriber = dto.IsPremiumSubscriber;
         client.HasReportValidationAddOn = dto.HasReportValidationAddOn;
         client.HasLimitedPortalAccess = dto.HasLimitedPortalAccess;
+        client.BrandPrimaryColor = dto.BrandPrimaryColor;
+        client.BrandSecondaryColor = dto.BrandSecondaryColor;
         client.IsActive = dto.IsActive;
         if (!string.IsNullOrEmpty(client.ClientCode))
             client.BlobFolderPath = client.ClientCode;
@@ -146,7 +150,7 @@ public class ClientService : BaseService, IClientService
         await _clientRepository.UpdateAsync(client, cancellationToken);
         await UnitOfWork.SaveChangesAsync(cancellationToken);
         _logger.LogInformation("Updated client {ClientId}", id);
-        return await MapToDtoWithLogoAsync(client, cancellationToken);
+        return await MapToDtoWithAssetsAsync(client, cancellationToken);
     }
 
     public async Task<ClientDto?> SetLogoAsync(Guid id, Stream content, string fileName, string? contentType, CancellationToken cancellationToken = default)
@@ -167,7 +171,7 @@ public class ClientService : BaseService, IClientService
         await UnitOfWork.SaveChangesAsync(cancellationToken);
         _logger.LogInformation("Set logo for client {ClientId}", id);
 
-        return await MapToDtoWithLogoAsync(client, cancellationToken);
+        return await MapToDtoWithAssetsAsync(client, cancellationToken);
     }
 
     public async Task<ClientDto?> ClearLogoAsync(Guid id, CancellationToken cancellationToken = default)
@@ -183,6 +187,41 @@ public class ClientService : BaseService, IClientService
         await _clientRepository.UpdateAsync(client, cancellationToken);
         await UnitOfWork.SaveChangesAsync(cancellationToken);
         _logger.LogInformation("Cleared logo for client {ClientId}", id);
+
+        return MapToDto(client);
+    }
+
+    public async Task<ClientDto?> SetFaviconAsync(Guid id, Stream content, string fileName, string? contentType, CancellationToken cancellationToken = default)
+    {
+        var client = await _clientRepository.GetByIdAsync(id, cancellationToken);
+        if (client == null || client.IsDeleted) return null;
+
+        var ext = Path.GetExtension(fileName).ToLowerInvariant();
+        if (!AllowedFaviconExtensions.Contains(ext))
+            throw new InvalidOperationException(
+                $"Unsupported favicon file type '{ext}'. Allowed: {string.Join(", ", AllowedFaviconExtensions)}");
+
+        var blobPath = $"{client.Id}/branding/favicon{ext}";
+        await _blobStorage.UploadClientBlobAsync(blobPath, content, contentType, cancellationToken);
+
+        client.FaviconBlobPath = blobPath;
+        await _clientRepository.UpdateAsync(client, cancellationToken);
+        await UnitOfWork.SaveChangesAsync(cancellationToken);
+        _logger.LogInformation("Set favicon for client {ClientId}", id);
+
+        return await MapToDtoWithAssetsAsync(client, cancellationToken);
+    }
+
+    public async Task<ClientDto?> ClearFaviconAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        var client = await _clientRepository.GetByIdAsync(id, cancellationToken);
+        if (client == null || client.IsDeleted) return null;
+
+        // Same "leave the blob, just clear the pointer" approach as ClearLogoAsync.
+        client.FaviconBlobPath = null;
+        await _clientRepository.UpdateAsync(client, cancellationToken);
+        await UnitOfWork.SaveChangesAsync(cancellationToken);
+        _logger.LogInformation("Cleared favicon for client {ClientId}", id);
 
         return MapToDto(client);
     }
@@ -375,6 +414,8 @@ public class ClientService : BaseService, IClientService
             IsPremiumSubscriber = c.IsPremiumSubscriber,
             HasReportValidationAddOn = c.HasReportValidationAddOn,
             HasLimitedPortalAccess = c.HasLimitedPortalAccess,
+            BrandPrimaryColor = c.BrandPrimaryColor,
+            BrandSecondaryColor = c.BrandSecondaryColor,
             IsActive = c.IsActive,
             CreatedDate = c.CreatedDate,
             PowerBIWorkspaceId = c.PowerBIWorkspaceId,
@@ -383,13 +424,16 @@ public class ClientService : BaseService, IClientService
         };
     }
 
-    /// <summary>Same as MapToDto, plus a freshly-signed LogoUrl when the client has a logo set.
-    /// SAS generation is a local signing operation (no network call), so doing this per-DTO is cheap.</summary>
-    private async Task<ClientDto> MapToDtoWithLogoAsync(Client c, CancellationToken cancellationToken)
+    /// <summary>Same as MapToDto, plus freshly-signed LogoUrl/FaviconUrl when the client has those
+    /// assets set. SAS generation is a local signing operation (no network call), so doing this
+    /// per-DTO is cheap.</summary>
+    private async Task<ClientDto> MapToDtoWithAssetsAsync(Client c, CancellationToken cancellationToken)
     {
         var dto = MapToDto(c);
         if (!string.IsNullOrEmpty(c.LogoBlobPath))
             dto.LogoUrl = await _sasUriProvider.GetReadSasUriAsync(c.LogoBlobPath, LogoSasValidFor, cancellationToken);
+        if (!string.IsNullOrEmpty(c.FaviconBlobPath))
+            dto.FaviconUrl = await _sasUriProvider.GetReadSasUriAsync(c.FaviconBlobPath, FaviconSasValidFor, cancellationToken);
         return dto;
     }
 }

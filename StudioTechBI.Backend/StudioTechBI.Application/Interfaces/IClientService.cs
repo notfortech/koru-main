@@ -20,6 +20,14 @@ public interface IClientService
     /// <summary>Clears the client's logo — reverts to default StudioTechBI branding. Returns null
     /// if the client doesn't exist.</summary>
     Task<ClientDto?> ClearLogoAsync(Guid id, CancellationToken cancellationToken = default);
+
+    /// <summary>Uploads (overwriting any existing) white-label favicon for this client. Throws
+    /// InvalidOperationException for an unsupported file type. Returns null if the client doesn't exist.</summary>
+    Task<ClientDto?> SetFaviconAsync(Guid id, Stream content, string fileName, string? contentType, CancellationToken cancellationToken = default);
+
+    /// <summary>Clears the client's favicon — reverts to the default StudioTechBI favicon. Returns
+    /// null if the client doesn't exist.</summary>
+    Task<ClientDto?> ClearFaviconAsync(Guid id, CancellationToken cancellationToken = default);
     /// <summary>Assigns a user to a client so they can access that client's reports. Admin only.</summary>
     Task<bool> AssignUserToClientAsync(Guid userId, Guid clientId, CancellationToken cancellationToken = default);
 

@@ -26,6 +26,16 @@ public class ClientDto
     /// "Reports Generated" dashboard card, hides all AI-credits UI, and hides Profile/Propositions.</summary>
     public bool HasLimitedPortalAccess { get; set; }
 
+    /// <summary>Whitelabel theme colors, additive on top of the logo above (same
+    /// IsPremiumSubscriber + logo gate applies when rendering, see AuthService.MapUserToDtoAsync).</summary>
+    public string? BrandPrimaryColor { get; set; }
+    public string? BrandSecondaryColor { get; set; }
+
+    /// <summary>Short-lived read SAS URL for the client's uploaded white-label favicon, null when
+    /// no favicon is set (default StudioTechBI favicon applies). Gated on its own presence only,
+    /// not tied to the logo/premium gate above.</summary>
+    public string? FaviconUrl { get; set; }
+
     public bool IsActive { get; set; }
     public DateTime CreatedDate { get; set; }
     public string? PowerBIWorkspaceId { get; set; }

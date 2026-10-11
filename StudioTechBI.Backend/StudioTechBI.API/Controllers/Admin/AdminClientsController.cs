@@ -109,6 +109,43 @@ public class AdminClientsController : BaseApiController
         return HandleResult(ApiResponse<ClientDto>.SuccessResponse(client, "Logo removed."));
     }
 
+    private const long MaxFaviconSizeBytes = 1 * 1024 * 1024; // 1 MB
+
+    /// <summary>Upload (or replace) a client's white-label favicon.</summary>
+    [HttpPost("{id:guid}/favicon")]
+    [RequestSizeLimit(MaxFaviconSizeBytes)]
+    public async Task<IActionResult> UploadFavicon(Guid id, IFormFile file, CancellationToken cancellationToken)
+    {
+        if (file is null || file.Length == 0)
+            return BadRequest(ApiResponse<object>.ErrorResponse("No file uploaded."));
+        if (file.Length > MaxFaviconSizeBytes)
+            return BadRequest(ApiResponse<object>.ErrorResponse("Favicon file exceeds the 1 MB limit."));
+
+        try
+        {
+            await using var stream = file.OpenReadStream();
+            var client = await _clientService.SetFaviconAsync(id, stream, file.FileName, file.ContentType, cancellationToken);
+            if (client == null)
+                return NotFound();
+            return HandleResult(ApiResponse<ClientDto>.SuccessResponse(client, "Favicon uploaded."));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ApiResponse<object>.ErrorResponse(ex.Message));
+        }
+    }
+
+    /// <summary>Remove a client's white-label favicon — reverts that client's portal to the
+    /// default StudioTechBI favicon.</summary>
+    [HttpDelete("{id:guid}/favicon")]
+    public async Task<IActionResult> DeleteFavicon(Guid id, CancellationToken cancellationToken)
+    {
+        var client = await _clientService.ClearFaviconAsync(id, cancellationToken);
+        if (client == null)
+            return NotFound();
+        return HandleResult(ApiResponse<ClientDto>.SuccessResponse(client, "Favicon removed."));
+    }
+
     /// <summary>
     /// Phase 1 onboarding: creates the client (and blob folders), activates the portal user, assigns them to this client,
     /// and ensures the Client role. Does not configure Power BI report/workspace/dataset IDs (phase 2).

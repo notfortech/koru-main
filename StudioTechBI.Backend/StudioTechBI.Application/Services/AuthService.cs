@@ -447,6 +447,12 @@ public class AuthService : BaseService, IAuthService
         if (client?.IsPremiumSubscriber == true && !string.IsNullOrEmpty(client.LogoBlobPath))
             logoUrl = await _sasUriProvider.GetReadSasUriAsync(client.LogoBlobPath, LogoSasValidFor);
 
+        // Favicon is gated on its own presence only (not tied to IsPremiumSubscriber/LogoBlobPath)
+        // -- a client can have a logo but no favicon uploaded yet.
+        string? faviconUrl = null;
+        if (!string.IsNullOrEmpty(client?.FaviconBlobPath))
+            faviconUrl = await _sasUriProvider.GetReadSasUriAsync(client.FaviconBlobPath, LogoSasValidFor);
+
         return new UserDto
         {
             Id = user.Id,
@@ -462,6 +468,11 @@ public class AuthService : BaseService, IAuthService
             // special-casing needed downstream.
             CompanyName = logoUrl != null ? client?.ClientName : null,
             LogoUrl = logoUrl,
+            // Colors are additive on top of the logo entitlement -- same logoUrl != null gate, so
+            // they can never surface independently of (or disagree with) the logo/company name.
+            PrimaryColor = logoUrl != null ? client?.BrandPrimaryColor : null,
+            SecondaryColor = logoUrl != null ? client?.BrandSecondaryColor : null,
+            FaviconUrl = faviconUrl,
             HasReportValidationAddOn = client?.HasReportValidationAddOn ?? false,
             // No Client row yet (e.g. a self-registered user before an admin assigns one) --
             // default to limited for anyone in the Client role, matching "new sign-ups start
