@@ -1,0 +1,1237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Stats_NZ — Annual Enterprise Survey</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<style>
+/* ── CSS Variables ────────────────────────────────────────────────────── */
+:root {
+  --brand:       #005B99;
+  --brand-mid:   #0077CC;
+  --brand-light: #E8F4FD;
+  --brand-dark:  #003D6B;
+  --accent:      #00A86B;
+  --accent-mid:  #00CC85;
+  --accent-light:#E6F9F3;
+  --n50:  #F8FAFC;
+  --n100: #F0F4F8;
+  --n200: #E2E8F0;
+  --n700: #334155;
+  --n900: #0F172A;
+  --text: #0F172A;
+  --muted:#64748B;
+  --surf: #FFFFFF;
+  --danger:#DC2626;
+  --warn:  #D97706;
+  --chip-bg:#EFF6FF;
+  --chip-border:#BFDBFE;
+  --chip-text:#1D4ED8;
+  --chip-x:#93C5FD;
+}
+
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--n100);color:var(--text);min-height:100vh}
+
+/* ── Header ──────────────────────────────────────────────────────────── */
+.header{background:linear-gradient(135deg,var(--brand-dark) 0%,var(--brand) 60%,var(--brand-mid) 100%);color:#fff;padding:20px 28px 16px;display:flex;align-items:center;gap:16px}
+.header-logo{width:48px;height:48px;background:#fff;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.header-logo svg{width:30px;height:30px}
+.header-title{flex:1}
+.header-title h1{font-size:1.25rem;font-weight:700;letter-spacing:-.01em}
+.header-title p{font-size:.78rem;opacity:.8;margin-top:2px}
+.header-badge{background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.25);border-radius:6px;padding:4px 10px;font-size:.7rem;font-weight:600;letter-spacing:.05em;text-transform:uppercase}
+
+/* ── Cross-filter bar ────────────────────────────────────────────────── */
+#filterbar{background:var(--surf);border-bottom:1px solid var(--n200);padding:8px 28px;display:flex;flex-wrap:wrap;align-items:center;gap:6px;min-height:44px}
+#filterbar:empty::before{content:'Click any bar, segment or row to filter · Ctrl+click for multi-select · Esc to clear';font-size:.72rem;color:var(--muted)}
+.chip{display:inline-flex;align-items:center;gap:4px;background:var(--chip-bg);border:1px solid var(--chip-border);border-radius:20px;padding:3px 8px 3px 10px;font-size:.72rem;color:var(--chip-text);font-weight:600;cursor:default}
+.chip-x{background:none;border:none;color:var(--chip-x);cursor:pointer;font-size:.85rem;line-height:1;padding:0 1px}
+.chip-x:hover{color:var(--chip-text)}
+.chip-clear{background:none;border:1px solid var(--n200);border-radius:20px;padding:3px 10px;font-size:.72rem;color:var(--muted);cursor:pointer;font-weight:600}
+.chip-clear:hover{background:var(--n100)}
+.filter-count{font-size:.72rem;color:var(--muted);margin-left:auto}
+.filter-hint{font-size:.7rem;color:var(--muted);margin-left:4px}
+
+/* ── Tab Bar ─────────────────────────────────────────────────────────── */
+.tabs{background:var(--surf);border-bottom:2px solid var(--n200);padding:0 28px;display:flex;gap:0;overflow-x:auto}
+.tab{padding:12px 18px;font-size:.82rem;font-weight:600;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;white-space:nowrap;transition:color .2s,border-color .2s}
+.tab:hover{color:var(--brand)}
+.tab.active{color:var(--brand);border-bottom-color:var(--brand)}
+
+/* ── Main Layout ─────────────────────────────────────────────────────── */
+.main{padding:20px 28px;display:flex;flex-direction:column;gap:18px}
+.panel{display:none}
+.panel.active{display:flex;flex-direction:column;gap:18px}
+
+/* ── KPI Grid ─────────────────────────────────────────────────────────── */
+.kpi-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px}
+.kpi{background:var(--surf);border:1px solid var(--n200);border-radius:12px;padding:16px 18px;display:flex;flex-direction:column;gap:4px;position:relative;overflow:hidden}
+.kpi::before{content:'';position:absolute;top:0;left:0;width:4px;height:100%;background:var(--brand)}
+.kpi.accent::before{background:var(--accent)}
+.kpi.warn::before{background:var(--warn)}
+.kpi.danger::before{background:var(--danger)}
+.kpi-label{font-size:.7rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.kpi-value{font-size:1.45rem;font-weight:800;color:var(--text);line-height:1.1}
+.kpi-sub{font-size:.72rem;color:var(--muted)}
+.kpi-delta{font-size:.72rem;font-weight:600;display:inline-flex;align-items:center;gap:3px}
+.kpi-delta.up{color:var(--accent)}
+.kpi-delta.dn{color:var(--danger)}
+
+/* ── Chart Cards ─────────────────────────────────────────────────────── */
+.row-2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.row-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px}
+.row-full{display:grid;grid-template-columns:1fr;gap:14px}
+@media(max-width:900px){.row-2,.row-3{grid-template-columns:1fr}}
+.card{background:var(--surf);border:1px solid var(--n200);border-radius:12px;padding:18px;display:flex;flex-direction:column;gap:10px}
+.card-title{font-size:.82rem;font-weight:700;color:var(--text)}
+.card-sub{font-size:.72rem;color:var(--muted)}
+.chart-wrap{position:relative;height:260px}
+.chart-wrap.tall{height:340px}
+.chart-wrap.slim{height:200px}
+canvas{max-height:100%;cursor:pointer}
+canvas:hover{opacity:.9}
+
+/* ── Table ─────────────────────────────────────────────────────────── */
+.tbl-wrap{overflow-x:auto;border-radius:8px;border:1px solid var(--n200)}
+table{width:100%;border-collapse:collapse;font-size:.78rem}
+th{background:var(--n100);padding:9px 12px;text-align:left;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;font-size:.68rem;border-bottom:1px solid var(--n200)}
+td{padding:9px 12px;border-bottom:1px solid var(--n100);color:var(--text)}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:var(--brand-light);cursor:pointer}
+tr.selected-row td{background:var(--brand-light)!important;font-weight:600}
+.td-right{text-align:right;font-variant-numeric:tabular-nums}
+.td-badge{display:inline-flex;align-items:center;padding:2px 8px;border-radius:20px;font-size:.68rem;font-weight:700}
+.badge-blue{background:var(--brand-light);color:var(--brand)}
+.badge-green{background:var(--accent-light);color:var(--accent)}
+
+/* ── Loading overlay ─────────────────────────────────────────────────── */
+#loading{position:fixed;inset:0;background:rgba(255,255,255,.9);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;z-index:9999}
+.spinner{width:40px;height:40px;border:4px solid var(--n200);border-top-color:var(--brand);border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+#loading p{font-size:.85rem;color:var(--muted)}
+
+/* ── Footer ─────────────────────────────────────────────────────────── */
+.footer{background:var(--surf);border-top:1px solid var(--n200);padding:12px 28px;display:flex;justify-content:space-between;align-items:center;font-size:.72rem;color:var(--muted)}
+.footer a{color:var(--brand);text-decoration:none}
+
+/* ── Fallback notice ─────────────────────────────────────────────────── */
+.notice{background:var(--brand-light);border:1px solid var(--brand-mid);border-radius:8px;padding:10px 14px;font-size:.78rem;color:var(--brand-dark);display:flex;align-items:center;gap:8px}
+</style>
+</head>
+<body>
+
+<div id="loading"><div class="spinner"></div><p>Loading enterprise data…</p></div>
+
+<!-- ═══════════════════════════════════════════════════════════════ HEADER -->
+<div class="header">
+  <div class="header-logo">
+    <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect width="32" height="32" rx="6" fill="#005B99"/>
+      <path d="M6 22L12 10l5 8 4-6 5 10" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="24" cy="8" r="3" fill="#00A86B"/>
+    </svg>
+  </div>
+  <div class="header-title">
+    <h1>Stats_NZ — Annual Enterprise Survey</h1>
+    <p>Stats NZ · Financial Year (Provisional) · NZSIOC Industry Classifications</p>
+  </div>
+  <div class="header-badge">FY 2025 · Provisional</div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════ CROSS-FILTER BAR -->
+<div id="filterbar"></div>
+
+<!-- ═════════════════════════════════════════════════════════════ TAB BAR -->
+<div class="tabs">
+  <div class="tab active" data-tab="overview"     onclick="showTab('overview')">Overview</div>
+  <div class="tab"        data-tab="income"        onclick="showTab('income')">Income &amp; Revenue</div>
+  <div class="tab"        data-tab="expenditure"   onclick="showTab('expenditure')">Expenditure</div>
+  <div class="tab"        data-tab="employment"    onclick="showTab('employment')">Employment</div>
+  <div class="tab"        data-tab="industry"      onclick="showTab('industry')">Industry Breakdown</div>
+  <div class="tab"        data-tab="trends"        onclick="showTab('trends')">Trends Over Time</div>
+  <div class="tab"        data-tab="data"          onclick="showTab('data')">Data Explorer</div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════ MAIN PANELS -->
+<div class="main">
+
+  <!-- hidden sentinel: set by JS once data is rendered -->
+  <span id="results-loaded" data-testid="results-loaded" style="display:none"></span>
+
+  <!-- ── OVERVIEW ─────────────────────────────────────────────────────── -->
+  <div class="panel active" id="panel-overview">
+    <div id="notice-overview"></div>
+    <div class="kpi-grid">
+      <div class="kpi"          data-testid="kpi-tile-k-total-income">
+        <div class="kpi-label">Total Income</div>
+        <div class="kpi-value"  id="k-total-income">—</div>
+        <div class="kpi-sub"    id="k-total-income-units">$NZD millions</div>
+      </div>
+      <div class="kpi accent"   data-testid="kpi-tile-k-total-expenditure">
+        <div class="kpi-label">Total Expenditure</div>
+        <div class="kpi-value"  id="k-total-expenditure">—</div>
+        <div class="kpi-sub"    id="k-total-expenditure-units">$NZD millions</div>
+      </div>
+      <div class="kpi"          data-testid="kpi-tile-k-operating-profit">
+        <div class="kpi-label">Operating Profit</div>
+        <div class="kpi-value"  id="k-operating-profit">—</div>
+        <div class="kpi-sub">Surplus before tax</div>
+      </div>
+      <div class="kpi warn"     data-testid="kpi-tile-k-profit-margin">
+        <div class="kpi-label">Profit Margin</div>
+        <div class="kpi-value"  id="k-profit-margin">—</div>
+        <div class="kpi-sub">Profit / Total Income</div>
+      </div>
+      <div class="kpi"          data-testid="kpi-tile-k-total-wages">
+        <div class="kpi-label">Total Wages &amp; Salaries</div>
+        <div class="kpi-value"  id="k-total-wages">—</div>
+        <div class="kpi-sub"    id="k-total-wages-units">$NZD millions</div>
+      </div>
+      <div class="kpi accent"   data-testid="kpi-tile-k-industries-count">
+        <div class="kpi-label">Industries Tracked</div>
+        <div class="kpi-value"  id="k-industries-count">—</div>
+        <div class="kpi-sub">NZSIOC industries</div>
+      </div>
+      <div class="kpi"          data-testid="kpi-tile-k-years-covered">
+        <div class="kpi-label">Years Covered</div>
+        <div class="kpi-value"  id="k-years-covered">—</div>
+        <div class="kpi-sub">Survey periods</div>
+      </div>
+      <div class="kpi warn"     data-testid="kpi-tile-k-var-count">
+        <div class="kpi-label">Variables Tracked</div>
+        <div class="kpi-value"  id="k-var-count">—</div>
+        <div class="kpi-sub">Unique survey variables</div>
+      </div>
+    </div>
+
+    <div class="row-2">
+      <div class="card">
+        <div class="card-title">Top Industries by Total Income</div>
+        <div class="card-sub">Click a bar to filter · Ctrl+click multi · $NZD millions</div>
+        <div class="chart-wrap"><canvas id="b-income-by-industry" data-testid="chart-b-income-by-industry"></canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Income vs Expenditure by Industry</div>
+        <div class="card-sub">Click a bar to filter by industry</div>
+        <div class="chart-wrap"><canvas id="b-income-vs-exp" data-testid="chart-b-income-vs-exp"></canvas></div>
+      </div>
+    </div>
+    <div class="row-2">
+      <div class="card">
+        <div class="card-title">Variable Category Distribution</div>
+        <div class="card-sub">Click a segment to filter by category</div>
+        <div class="chart-wrap slim"><canvas id="b-category-dist" data-testid="chart-b-category-dist"></canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Industry Aggregation Level Mix</div>
+        <div class="card-sub">Click a segment to filter by level</div>
+        <div class="chart-wrap slim"><canvas id="b-agg-level-mix" data-testid="chart-b-agg-level-mix"></canvas></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── INCOME & REVENUE ──────────────────────────────────────────────── -->
+  <div class="panel" id="panel-income">
+    <div class="kpi-grid">
+      <div class="kpi"        data-testid="kpi-tile-k-sales-income">
+        <div class="kpi-label">Sales &amp; Services Income</div>
+        <div class="kpi-value" id="k-sales-income">—</div>
+        <div class="kpi-sub">$NZD millions</div>
+      </div>
+      <div class="kpi accent" data-testid="kpi-tile-k-other-income">
+        <div class="kpi-label">Other Income</div>
+        <div class="kpi-value" id="k-other-income">—</div>
+        <div class="kpi-sub">$NZD millions</div>
+      </div>
+      <div class="kpi"        data-testid="kpi-tile-k-income-per-industry">
+        <div class="kpi-label">Avg Income / Industry</div>
+        <div class="kpi-value" id="k-income-per-industry">—</div>
+        <div class="kpi-sub">$NZD millions</div>
+      </div>
+    </div>
+    <div class="row-full">
+      <div class="card">
+        <div class="card-title">Income Breakdown by Variable</div>
+        <div class="card-sub">All income-related variables in the filtered set</div>
+        <div class="chart-wrap tall"><canvas id="b-income-vars" data-testid="chart-b-income-vars"></canvas></div>
+      </div>
+    </div>
+    <div class="row-2">
+      <div class="card">
+        <div class="card-title">Sales Income by Industry (Top 15)</div>
+        <div class="card-sub">Click a bar to filter · $NZD millions</div>
+        <div class="chart-wrap tall"><canvas id="b-sales-by-industry" data-testid="chart-b-sales-by-industry"></canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Income Trend Over Years</div>
+        <div class="card-sub">Click a point to filter by year</div>
+        <div class="chart-wrap tall"><canvas id="b-income-trend" data-testid="chart-b-income-trend"></canvas></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── EXPENDITURE ───────────────────────────────────────────────────── -->
+  <div class="panel" id="panel-expenditure">
+    <div class="kpi-grid">
+      <div class="kpi danger"  data-testid="kpi-tile-k-purchases">
+        <div class="kpi-label">Purchases &amp; Direct Costs</div>
+        <div class="kpi-value" id="k-purchases">—</div>
+        <div class="kpi-sub">$NZD millions</div>
+      </div>
+      <div class="kpi warn"    data-testid="kpi-tile-k-depreciation">
+        <div class="kpi-label">Depreciation</div>
+        <div class="kpi-value" id="k-depreciation">—</div>
+        <div class="kpi-sub">$NZD millions</div>
+      </div>
+      <div class="kpi"         data-testid="kpi-tile-k-other-exp">
+        <div class="kpi-label">Other Expenditure</div>
+        <div class="kpi-value" id="k-other-exp">—</div>
+        <div class="kpi-sub">$NZD millions</div>
+      </div>
+    </div>
+    <div class="row-2">
+      <div class="card">
+        <div class="card-title">Expenditure Breakdown by Variable</div>
+        <div class="card-sub">All expenditure variables</div>
+        <div class="chart-wrap tall"><canvas id="b-exp-vars" data-testid="chart-b-exp-vars"></canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Expenditure Trend Over Years</div>
+        <div class="card-sub">Click a point to filter by year</div>
+        <div class="chart-wrap tall"><canvas id="b-exp-trend" data-testid="chart-b-exp-trend"></canvas></div>
+      </div>
+    </div>
+    <div class="row-full">
+      <div class="card">
+        <div class="card-title">Expenditure by Industry (Top 15)</div>
+        <div class="card-sub">Click a bar to filter by industry · $NZD millions</div>
+        <div class="chart-wrap tall"><canvas id="b-exp-industry" data-testid="chart-b-exp-industry"></canvas></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── EMPLOYMENT ────────────────────────────────────────────────────── -->
+  <div class="panel" id="panel-employment">
+    <div class="kpi-grid">
+      <div class="kpi"        data-testid="kpi-tile-k-emp-wages">
+        <div class="kpi-label">Wages &amp; Salaries</div>
+        <div class="kpi-value" id="k-emp-wages">—</div>
+        <div class="kpi-sub">$NZD millions</div>
+      </div>
+      <div class="kpi accent" data-testid="kpi-tile-k-emp-count">
+        <div class="kpi-label">Paid Employees</div>
+        <div class="kpi-value" id="k-emp-count">—</div>
+        <div class="kpi-sub">FTE thousands</div>
+      </div>
+      <div class="kpi"        data-testid="kpi-tile-k-avg-wage">
+        <div class="kpi-label">Avg Wage / Employee</div>
+        <div class="kpi-value" id="k-avg-wage">—</div>
+        <div class="kpi-sub">$NZD thousands</div>
+      </div>
+    </div>
+    <div class="row-2">
+      <div class="card">
+        <div class="card-title">Wages by Industry (Top 15)</div>
+        <div class="card-sub">Click a bar to filter · $NZD millions</div>
+        <div class="chart-wrap tall"><canvas id="b-wages-industry" data-testid="chart-b-wages-industry"></canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Wages Trend Over Years</div>
+        <div class="card-sub">Click a point to filter by year</div>
+        <div class="chart-wrap tall"><canvas id="b-wages-trend" data-testid="chart-b-wages-trend"></canvas></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── INDUSTRY BREAKDOWN ────────────────────────────────────────────── -->
+  <div class="panel" id="panel-industry">
+    <div class="row-full">
+      <div class="card">
+        <div class="card-title">All Industries — Key Financial Metrics</div>
+        <div class="card-sub">Click a bar to filter by industry · ranked by total income · $NZD millions</div>
+        <div class="chart-wrap tall"><canvas id="b-industry-matrix" data-testid="chart-b-industry-matrix"></canvas></div>
+      </div>
+    </div>
+    <div class="row-2">
+      <div class="card">
+        <div class="card-title">Profit Margin by Industry</div>
+        <div class="card-sub">Click a bar to filter · %</div>
+        <div class="chart-wrap tall"><canvas id="b-margin-industry" data-testid="chart-b-margin-industry"></canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Wages Share of Income by Industry</div>
+        <div class="card-sub">Click a bar to filter · Wages / Total Income %</div>
+        <div class="chart-wrap tall"><canvas id="b-wages-share" data-testid="chart-b-wages-share"></canvas></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">Industry Summary Table</div>
+      <div class="card-sub">Click a row to filter · all industries in the filtered selection</div>
+      <div class="tbl-wrap">
+        <table id="industry-table">
+          <thead><tr><th>Industry</th><th>Level</th><th class="td-right">Total Income ($M)</th><th class="td-right">Total Exp ($M)</th><th class="td-right">Profit ($M)</th><th class="td-right">Margin %</th></tr></thead>
+          <tbody id="industry-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── TRENDS ────────────────────────────────────────────────────────── -->
+  <div class="panel" id="panel-trends">
+    <div class="kpi-grid">
+      <div class="kpi"        data-testid="kpi-tile-k-latest-year">
+        <div class="kpi-label">Latest Survey Year</div>
+        <div class="kpi-value" id="k-latest-year">—</div>
+        <div class="kpi-sub">Most recent data</div>
+      </div>
+      <div class="kpi accent" data-testid="kpi-tile-k-income-yoy">
+        <div class="kpi-label">Income YoY Change</div>
+        <div class="kpi-value" id="k-income-yoy">—</div>
+        <div class="kpi-sub">Latest vs prior year</div>
+      </div>
+      <div class="kpi warn"   data-testid="kpi-tile-k-exp-yoy">
+        <div class="kpi-label">Expenditure YoY Change</div>
+        <div class="kpi-value" id="k-exp-yoy">—</div>
+        <div class="kpi-sub">Latest vs prior year</div>
+      </div>
+    </div>
+    <div class="row-full">
+      <div class="card">
+        <div class="card-title">Income, Expenditure &amp; Profit — All Years</div>
+        <div class="card-sub">Click a point to filter by year · $NZD millions · across all industries in filtered selection</div>
+        <div class="chart-wrap tall"><canvas id="b-all-trends" data-testid="chart-b-all-trends"></canvas></div>
+      </div>
+    </div>
+    <div class="row-2">
+      <div class="card">
+        <div class="card-title">Profit Margin Trend</div>
+        <div class="card-sub">Click a point to filter by year · %</div>
+        <div class="chart-wrap"><canvas id="b-margin-trend" data-testid="chart-b-margin-trend"></canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Wages Growth Over Years</div>
+        <div class="card-sub">Click a point to filter by year · $NZD millions</div>
+        <div class="chart-wrap"><canvas id="b-wages-growth" data-testid="chart-b-wages-growth"></canvas></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── DATA EXPLORER ─────────────────────────────────────────────────── -->
+  <div class="panel" id="panel-data">
+    <div class="notice" id="data-notice">
+      Showing all rows matching active cross-filters. Click any row to filter by industry. Long-format: each row = one variable × one industry × one year.
+    </div>
+    <div class="card" style="padding:0">
+      <div class="tbl-wrap">
+        <table id="data-table">
+          <thead><tr>
+            <th>Year</th>
+            <th>Industry</th>
+            <th>Aggregation</th>
+            <th>Variable Name</th>
+            <th>Variable Category</th>
+            <th>Units</th>
+            <th class="td-right">Value</th>
+            <th>Variable Code</th>
+          </tr></thead>
+          <tbody id="data-tbody"></tbody>
+        </table>
+      </div>
+      <div style="padding:10px 14px;font-size:.72rem;color:var(--muted)" id="data-pager"></div>
+    </div>
+  </div>
+
+</div><!-- /main -->
+
+<div class="footer">
+  <span>Source: Stats Stats_NZ — Annual Enterprise Survey · Financial Year (Provisional)</span>
+  <span>NZSIOC v5 &amp; ANZSIC 2006 classifications · <a href="https://www.stats.govt.nz" target="_blank">stats.govt.nz</a></span>
+</div>
+
+<!--STBI_REPORT_DATA-->
+<!-- ══════════════════════════════════════════════════════════════ SCRIPT -->
+<script>
+// ── 1. DATA INJECTION ────────────────────────────────────────────────────
+const STBI_DATA=(function(){try{var el=document.getElementById('stbi-report-data');return el?JSON.parse(el.textContent):null;}catch(e){return null;}})();
+
+// ── 2. FALLBACK MOCK DATA ─────────────────────────────────────────────────
+// [Year, Aggregation, Code, Industry, Units, VarCode, VarName, VarCategory, Value, ANZSIC]
+const MOCK_DATA = [
+  ["Year ended March 2025","Level 1","ZZ","All industries","Dollars (millions)","H01","Total income","Financial performance","395210",""],
+  ["Year ended March 2025","Level 1","ZZ","All industries","Dollars (millions)","H02","Sales, fees, rental and leasing income","Financial performance","359140",""],
+  ["Year ended March 2025","Level 1","ZZ","All industries","Dollars (millions)","H03","Other income","Financial performance","36070",""],
+  ["Year ended March 2025","Level 1","ZZ","All industries","Dollars (millions)","H04","Total expenditure","Financial performance","363890",""],
+  ["Year ended March 2025","Level 1","ZZ","All industries","Dollars (millions)","H05","Salaries and wages paid","Financial performance","101630",""],
+  ["Year ended March 2025","Level 1","ZZ","All industries","Dollars (millions)","H07","Surplus before income tax","Financial performance","31320",""],
+  ["Year ended March 2025","Level 1","ZZ","All industries","Dollars (millions)","H10","Purchases and other direct costs","Financial performance","167450",""],
+  ["Year ended March 2025","Level 1","ZZ","All industries","Dollars (millions)","H11","Depreciation","Financial performance","29870",""],
+  ["Year ended March 2025","Level 1","ZZ","All industries","Dollars (millions)","H12","Other expenditure","Financial performance","166570",""],
+  ["Year ended March 2025","Level 1","ZZ","All industries","Filled jobs (thousands)","H14","Paid employees","Employment","2095",""],
+  ["Year ended March 2024","Level 1","ZZ","All industries","Dollars (millions)","H01","Total income","Financial performance","375940",""],
+  ["Year ended March 2024","Level 1","ZZ","All industries","Dollars (millions)","H04","Total expenditure","Financial performance","348620",""],
+  ["Year ended March 2024","Level 1","ZZ","All industries","Dollars (millions)","H05","Salaries and wages paid","Financial performance","96480",""],
+  ["Year ended March 2024","Level 1","ZZ","All industries","Dollars (millions)","H07","Surplus before income tax","Financial performance","27320",""],
+  ["Year ended March 2024","Level 1","ZZ","All industries","Filled jobs (thousands)","H14","Paid employees","Employment","2058",""],
+  ["Year ended March 2023","Level 1","ZZ","All industries","Dollars (millions)","H01","Total income","Financial performance","354820",""],
+  ["Year ended March 2023","Level 1","ZZ","All industries","Dollars (millions)","H04","Total expenditure","Financial performance","328490",""],
+  ["Year ended March 2023","Level 1","ZZ","All industries","Dollars (millions)","H05","Salaries and wages paid","Financial performance","89240",""],
+  ["Year ended March 2023","Level 1","ZZ","All industries","Dollars (millions)","H07","Surplus before income tax","Financial performance","26330",""],
+  ["Year ended March 2023","Level 1","ZZ","All industries","Filled jobs (thousands)","H14","Paid employees","Employment","1998",""],
+  ["Year ended March 2022","Level 1","ZZ","All industries","Dollars (millions)","H01","Total income","Financial performance","319460",""],
+  ["Year ended March 2022","Level 1","ZZ","All industries","Dollars (millions)","H04","Total expenditure","Financial performance","295820",""],
+  ["Year ended March 2022","Level 1","ZZ","All industries","Dollars (millions)","H05","Salaries and wages paid","Financial performance","80410",""],
+  ["Year ended March 2022","Level 1","ZZ","All industries","Dollars (millions)","H07","Surplus before income tax","Financial performance","23640",""],
+  ["Year ended March 2022","Level 1","ZZ","All industries","Filled jobs (thousands)","H14","Paid employees","Employment","1932",""],
+  ["Year ended March 2021","Level 1","ZZ","All industries","Dollars (millions)","H01","Total income","Financial performance","288340",""],
+  ["Year ended March 2021","Level 1","ZZ","All industries","Dollars (millions)","H04","Total expenditure","Financial performance","267890",""],
+  ["Year ended March 2021","Level 1","ZZ","All industries","Dollars (millions)","H05","Salaries and wages paid","Financial performance","74920",""],
+  ["Year ended March 2021","Level 1","ZZ","All industries","Dollars (millions)","H07","Surplus before income tax","Financial performance","20450",""],
+  ["Year ended March 2021","Level 1","ZZ","All industries","Filled jobs (thousands)","H14","Paid employees","Employment","1879",""],
+  ["Year ended March 2025","Level 2","AA","Agriculture","Dollars (millions)","H01","Total income","Financial performance","18730","A"],
+  ["Year ended March 2025","Level 2","AA","Agriculture","Dollars (millions)","H02","Sales, fees, rental and leasing income","Financial performance","17880","A"],
+  ["Year ended March 2025","Level 2","AA","Agriculture","Dollars (millions)","H04","Total expenditure","Financial performance","16240","A"],
+  ["Year ended March 2025","Level 2","AA","Agriculture","Dollars (millions)","H05","Salaries and wages paid","Financial performance","2130","A"],
+  ["Year ended March 2025","Level 2","AA","Agriculture","Dollars (millions)","H07","Surplus before income tax","Financial performance","2490","A"],
+  ["Year ended March 2025","Level 2","AA","Agriculture","Dollars (millions)","H10","Purchases and other direct costs","Financial performance","9450","A"],
+  ["Year ended March 2025","Level 2","AA","Agriculture","Dollars (millions)","H11","Depreciation","Financial performance","1840","A"],
+  ["Year ended March 2025","Level 2","AA","Agriculture","Filled jobs (thousands)","H14","Paid employees","Employment","65","A"],
+  ["Year ended March 2025","Level 2","BB","Forestry and Logging","Dollars (millions)","H01","Total income","Financial performance","4180","A"],
+  ["Year ended March 2025","Level 2","BB","Forestry and Logging","Dollars (millions)","H04","Total expenditure","Financial performance","3650","A"],
+  ["Year ended March 2025","Level 2","BB","Forestry and Logging","Dollars (millions)","H05","Salaries and wages paid","Financial performance","580","A"],
+  ["Year ended March 2025","Level 2","BB","Forestry and Logging","Dollars (millions)","H07","Surplus before income tax","Financial performance","530","A"],
+  ["Year ended March 2025","Level 2","BB","Forestry and Logging","Filled jobs (thousands)","H14","Paid employees","Employment","14","A"],
+  ["Year ended March 2025","Level 2","CC","Mining","Dollars (millions)","H01","Total income","Financial performance","2870","B"],
+  ["Year ended March 2025","Level 2","CC","Mining","Dollars (millions)","H04","Total expenditure","Financial performance","2490","B"],
+  ["Year ended March 2025","Level 2","CC","Mining","Dollars (millions)","H05","Salaries and wages paid","Financial performance","490","B"],
+  ["Year ended March 2025","Level 2","CC","Mining","Dollars (millions)","H07","Surplus before income tax","Financial performance","380","B"],
+  ["Year ended March 2025","Level 2","CC","Mining","Filled jobs (thousands)","H14","Paid employees","Employment","8","B"],
+  ["Year ended March 2025","Level 2","DD","Manufacturing","Dollars (millions)","H01","Total income","Financial performance","44820","C"],
+  ["Year ended March 2025","Level 2","DD","Manufacturing","Dollars (millions)","H02","Sales, fees, rental and leasing income","Financial performance","43960","C"],
+  ["Year ended March 2025","Level 2","DD","Manufacturing","Dollars (millions)","H04","Total expenditure","Financial performance","41370","C"],
+  ["Year ended March 2025","Level 2","DD","Manufacturing","Dollars (millions)","H05","Salaries and wages paid","Financial performance","9840","C"],
+  ["Year ended March 2025","Level 2","DD","Manufacturing","Dollars (millions)","H07","Surplus before income tax","Financial performance","3450","C"],
+  ["Year ended March 2025","Level 2","DD","Manufacturing","Dollars (millions)","H10","Purchases and other direct costs","Financial performance","22780","C"],
+  ["Year ended March 2025","Level 2","DD","Manufacturing","Dollars (millions)","H11","Depreciation","Financial performance","2890","C"],
+  ["Year ended March 2025","Level 2","DD","Manufacturing","Filled jobs (thousands)","H14","Paid employees","Employment","248","C"],
+  ["Year ended March 2025","Level 2","EE","Construction","Dollars (millions)","H01","Total income","Financial performance","28450","E"],
+  ["Year ended March 2025","Level 2","EE","Construction","Dollars (millions)","H04","Total expenditure","Financial performance","26320","E"],
+  ["Year ended March 2025","Level 2","EE","Construction","Dollars (millions)","H05","Salaries and wages paid","Financial performance","6780","E"],
+  ["Year ended March 2025","Level 2","EE","Construction","Dollars (millions)","H07","Surplus before income tax","Financial performance","2130","E"],
+  ["Year ended March 2025","Level 2","EE","Construction","Filled jobs (thousands)","H14","Paid employees","Employment","178","E"],
+  ["Year ended March 2025","Level 2","FF","Wholesale Trade","Dollars (millions)","H01","Total income","Financial performance","38750","F"],
+  ["Year ended March 2025","Level 2","FF","Wholesale Trade","Dollars (millions)","H04","Total expenditure","Financial performance","36470","F"],
+  ["Year ended March 2025","Level 2","FF","Wholesale Trade","Dollars (millions)","H05","Salaries and wages paid","Financial performance","4180","F"],
+  ["Year ended March 2025","Level 2","FF","Wholesale Trade","Dollars (millions)","H07","Surplus before income tax","Financial performance","2280","F"],
+  ["Year ended March 2025","Level 2","FF","Wholesale Trade","Filled jobs (thousands)","H14","Paid employees","Employment","88","F"],
+  ["Year ended March 2025","Level 2","GG","Retail Trade","Dollars (millions)","H01","Total income","Financial performance","31870","G"],
+  ["Year ended March 2025","Level 2","GG","Retail Trade","Dollars (millions)","H04","Total expenditure","Financial performance","30240","G"],
+  ["Year ended March 2025","Level 2","GG","Retail Trade","Dollars (millions)","H05","Salaries and wages paid","Financial performance","7240","G"],
+  ["Year ended March 2025","Level 2","GG","Retail Trade","Dollars (millions)","H07","Surplus before income tax","Financial performance","1630","G"],
+  ["Year ended March 2025","Level 2","GG","Retail Trade","Filled jobs (thousands)","H14","Paid employees","Employment","229","G"],
+  ["Year ended March 2025","Level 2","HH","Accommodation and Food Services","Dollars (millions)","H01","Total income","Financial performance","13280","H"],
+  ["Year ended March 2025","Level 2","HH","Accommodation and Food Services","Dollars (millions)","H04","Total expenditure","Financial performance","12640","H"],
+  ["Year ended March 2025","Level 2","HH","Accommodation and Food Services","Dollars (millions)","H05","Salaries and wages paid","Financial performance","4580","H"],
+  ["Year ended March 2025","Level 2","HH","Accommodation and Food Services","Dollars (millions)","H07","Surplus before income tax","Financial performance","640","H"],
+  ["Year ended March 2025","Level 2","HH","Accommodation and Food Services","Filled jobs (thousands)","H14","Paid employees","Employment","196","H"],
+  ["Year ended March 2025","Level 2","II","Transport, Postal and Warehousing","Dollars (millions)","H01","Total income","Financial performance","21450","I"],
+  ["Year ended March 2025","Level 2","II","Transport, Postal and Warehousing","Dollars (millions)","H04","Total expenditure","Financial performance","19870","I"],
+  ["Year ended March 2025","Level 2","II","Transport, Postal and Warehousing","Dollars (millions)","H05","Salaries and wages paid","Financial performance","5830","I"],
+  ["Year ended March 2025","Level 2","II","Transport, Postal and Warehousing","Dollars (millions)","H07","Surplus before income tax","Financial performance","1580","I"],
+  ["Year ended March 2025","Level 2","II","Transport, Postal and Warehousing","Filled jobs (thousands)","H14","Paid employees","Employment","101","I"],
+  ["Year ended March 2025","Level 2","JJ","Information Media and Telecommunications","Dollars (millions)","H01","Total income","Financial performance","11920","J"],
+  ["Year ended March 2025","Level 2","JJ","Information Media and Telecommunications","Dollars (millions)","H04","Total expenditure","Financial performance","10480","J"],
+  ["Year ended March 2025","Level 2","JJ","Information Media and Telecommunications","Dollars (millions)","H05","Salaries and wages paid","Financial performance","3980","J"],
+  ["Year ended March 2025","Level 2","JJ","Information Media and Telecommunications","Dollars (millions)","H07","Surplus before income tax","Financial performance","1440","J"],
+  ["Year ended March 2025","Level 2","JJ","Information Media and Telecommunications","Filled jobs (thousands)","H14","Paid employees","Employment","58","J"],
+  ["Year ended March 2025","Level 2","KK","Finance and Insurance Services","Dollars (millions)","H01","Total income","Financial performance","29870","K"],
+  ["Year ended March 2025","Level 2","KK","Finance and Insurance Services","Dollars (millions)","H04","Total expenditure","Financial performance","23640","K"],
+  ["Year ended March 2025","Level 2","KK","Finance and Insurance Services","Dollars (millions)","H05","Salaries and wages paid","Financial performance","5410","K"],
+  ["Year ended March 2025","Level 2","KK","Finance and Insurance Services","Dollars (millions)","H07","Surplus before income tax","Financial performance","6230","K"],
+  ["Year ended March 2025","Level 2","KK","Finance and Insurance Services","Filled jobs (thousands)","H14","Paid employees","Employment","65","K"],
+  ["Year ended March 2025","Level 2","LL","Rental, Hiring and Real Estate Services","Dollars (millions)","H01","Total income","Financial performance","24590","L"],
+  ["Year ended March 2025","Level 2","LL","Rental, Hiring and Real Estate Services","Dollars (millions)","H04","Total expenditure","Financial performance","18740","L"],
+  ["Year ended March 2025","Level 2","LL","Rental, Hiring and Real Estate Services","Dollars (millions)","H05","Salaries and wages paid","Financial performance","2180","L"],
+  ["Year ended March 2025","Level 2","LL","Rental, Hiring and Real Estate Services","Dollars (millions)","H07","Surplus before income tax","Financial performance","5850","L"],
+  ["Year ended March 2025","Level 2","LL","Rental, Hiring and Real Estate Services","Filled jobs (thousands)","H14","Paid employees","Employment","28","L"],
+  ["Year ended March 2025","Level 2","MM","Professional, Scientific and Technical Services","Dollars (millions)","H01","Total income","Financial performance","27430","M"],
+  ["Year ended March 2025","Level 2","MM","Professional, Scientific and Technical Services","Dollars (millions)","H04","Total expenditure","Financial performance","23780","M"],
+  ["Year ended March 2025","Level 2","MM","Professional, Scientific and Technical Services","Dollars (millions)","H05","Salaries and wages paid","Financial performance","11280","M"],
+  ["Year ended March 2025","Level 2","MM","Professional, Scientific and Technical Services","Dollars (millions)","H07","Surplus before income tax","Financial performance","3650","M"],
+  ["Year ended March 2025","Level 2","MM","Professional, Scientific and Technical Services","Filled jobs (thousands)","H14","Paid employees","Employment","168","M"],
+  ["Year ended March 2025","Level 2","NN","Administrative and Support Services","Dollars (millions)","H01","Total income","Financial performance","12480","N"],
+  ["Year ended March 2025","Level 2","NN","Administrative and Support Services","Dollars (millions)","H04","Total expenditure","Financial performance","11690","N"],
+  ["Year ended March 2025","Level 2","NN","Administrative and Support Services","Dollars (millions)","H05","Salaries and wages paid","Financial performance","5790","N"],
+  ["Year ended March 2025","Level 2","NN","Administrative and Support Services","Dollars (millions)","H07","Surplus before income tax","Financial performance","790","N"],
+  ["Year ended March 2025","Level 2","NN","Administrative and Support Services","Filled jobs (thousands)","H14","Paid employees","Employment","112","N"],
+  ["Year ended March 2025","Level 2","PP","Education and Training","Dollars (millions)","H01","Total income","Financial performance","14830","P"],
+  ["Year ended March 2025","Level 2","PP","Education and Training","Dollars (millions)","H04","Total expenditure","Financial performance","14290","P"],
+  ["Year ended March 2025","Level 2","PP","Education and Training","Dollars (millions)","H05","Salaries and wages paid","Financial performance","8870","P"],
+  ["Year ended March 2025","Level 2","PP","Education and Training","Dollars (millions)","H07","Surplus before income tax","Financial performance","540","P"],
+  ["Year ended March 2025","Level 2","PP","Education and Training","Filled jobs (thousands)","H14","Paid employees","Employment","142","P"],
+  ["Year ended March 2025","Level 2","QQ","Health Care and Social Assistance","Dollars (millions)","H01","Total income","Financial performance","29870","Q"],
+  ["Year ended March 2025","Level 2","QQ","Health Care and Social Assistance","Dollars (millions)","H04","Total expenditure","Financial performance","28430","Q"],
+  ["Year ended March 2025","Level 2","QQ","Health Care and Social Assistance","Dollars (millions)","H05","Salaries and wages paid","Financial performance","14320","Q"],
+  ["Year ended March 2025","Level 2","QQ","Health Care and Social Assistance","Dollars (millions)","H07","Surplus before income tax","Financial performance","1440","Q"],
+  ["Year ended March 2025","Level 2","QQ","Health Care and Social Assistance","Filled jobs (thousands)","H14","Paid employees","Employment","194","Q"],
+  ["Year ended March 2025","Level 2","RR","Arts and Recreation Services","Dollars (millions)","H01","Total income","Financial performance","6540","R"],
+  ["Year ended March 2025","Level 2","RR","Arts and Recreation Services","Dollars (millions)","H04","Total expenditure","Financial performance","6180","R"],
+  ["Year ended March 2025","Level 2","RR","Arts and Recreation Services","Dollars (millions)","H05","Salaries and wages paid","Financial performance","2340","R"],
+  ["Year ended March 2025","Level 2","RR","Arts and Recreation Services","Dollars (millions)","H07","Surplus before income tax","Financial performance","360","R"],
+  ["Year ended March 2025","Level 2","RR","Arts and Recreation Services","Filled jobs (thousands)","H14","Paid employees","Employment","42","R"],
+  ["Year ended March 2025","Level 2","SS","Other Services","Dollars (millions)","H01","Total income","Financial performance","8690","S"],
+  ["Year ended March 2025","Level 2","SS","Other Services","Dollars (millions)","H04","Total expenditure","Financial performance","8020","S"],
+  ["Year ended March 2025","Level 2","SS","Other Services","Dollars (millions)","H05","Salaries and wages paid","Financial performance","3280","S"],
+  ["Year ended March 2025","Level 2","SS","Other Services","Dollars (millions)","H07","Surplus before income tax","Financial performance","670","S"],
+  ["Year ended March 2025","Level 2","SS","Other Services","Filled jobs (thousands)","H14","Paid employees","Employment","87","S"]
+];
+
+// ── 3. PARSE & NORMALIZE ─────────────────────────────────────────────────
+function parseRows(src){
+  if(!src) return [];
+  let raw = null;
+  if(Array.isArray(src)) raw = src;
+  else if(src.annualEnterpriseSurvey) raw = src.annualEnterpriseSurvey; // manifest alias (spec injection shape)
+  else if(src.tables) raw = src.tables['annual-enterprise-survey-2025-financial-year-provisional'] || Object.values(src.tables)[0];
+  if(!Array.isArray(raw)){ const vals = Object.values(src).filter(Array.isArray); raw = vals.length ? vals[0] : null; }
+  if(!Array.isArray(raw)) return [];
+  return raw.map(r => ({
+    Year:                        String(r.Year||''),
+    Industry_aggregation_NZSIOC: String(r.Industry_aggregation_NZSIOC||''),
+    Industry_code_NZSIOC:        String(r.Industry_code_NZSIOC||''),
+    Industry_name_NZSIOC:        String(r.Industry_name_NZSIOC||''),
+    Units:                       String(r.Units||''),
+    Variable_code:               String(r.Variable_code||''),
+    Variable_name:               String(r.Variable_name||''),
+    Variable_category:           String(r.Variable_category||''),
+    Value:                       parseFloat(r.Value||0)||0,
+    Industry_code_ANZSIC06:      String(r.Industry_code_ANZSIC06||''),
+  }));
+}
+
+function parseMock(){
+  return MOCK_DATA.map(r => ({
+    Year:r[0], Industry_aggregation_NZSIOC:r[1], Industry_code_NZSIOC:r[2],
+    Industry_name_NZSIOC:r[3], Units:r[4], Variable_code:r[5],
+    Variable_name:r[6], Variable_category:r[7],
+    Value:parseFloat(r[8])||0, Industry_code_ANZSIC06:r[9],
+  }));
+}
+
+let ALL_ROWS = [];
+let FILTERED = [];
+let IS_MOCK  = false;
+
+// ── 4. CROSS-FILTER STATE ─────────────────────────────────────────────────
+const SEL = {
+  industry: new Set(),   // Industry_name_NZSIOC
+  year:     new Set(),   // Year
+  agg:      new Set(),   // Industry_aggregation_NZSIOC
+  varcat:   new Set(),   // Variable_category
+};
+
+function tog(key, val, multi){
+  const s = SEL[key];
+  if(!multi){ const was = s.has(val); s.clear(); if(!was) s.add(val); }
+  else { s.has(val) ? s.delete(val) : s.add(val); }
+  render();
+}
+
+function clearAll(){
+  Object.values(SEL).forEach(s=>s.clear());
+  render();
+}
+
+document.addEventListener('keydown', e=>{ if(e.key==='Escape') clearAll(); });
+
+function applyFilters(){
+  FILTERED = ALL_ROWS.filter(r =>
+    (!SEL.industry.size || SEL.industry.has(r.Industry_name_NZSIOC)) &&
+    (!SEL.year.size     || SEL.year.has(r.Year))                     &&
+    (!SEL.agg.size      || SEL.agg.has(r.Industry_aggregation_NZSIOC)) &&
+    (!SEL.varcat.size   || SEL.varcat.has(r.Variable_category))
+  );
+}
+
+// ── 5. FILTER BAR RENDER ──────────────────────────────────────────────────
+const DIM_LABELS = { industry:'Industry', year:'Year', agg:'Agg. Level', varcat:'Category' };
+
+function renderFilterBar(){
+  const bar = document.getElementById('filterbar');
+  bar.innerHTML = '';
+  let any = false;
+  for(const [key, s] of Object.entries(SEL)){
+    s.forEach(val => {
+      any = true;
+      const chip = document.createElement('span');
+      chip.className = 'chip';
+      chip.innerHTML = `<b>${DIM_LABELS[key]}:</b>&nbsp;${val}<button class="chip-x" title="Remove filter">&times;</button>`;
+      chip.querySelector('.chip-x').onclick = ()=>{ s.delete(val); render(); };
+      bar.appendChild(chip);
+    });
+  }
+  if(any){
+    const cl = document.createElement('button');
+    cl.className = 'chip-clear'; cl.textContent = 'Clear all';
+    cl.onclick = clearAll;
+    bar.appendChild(cl);
+    const cnt = document.createElement('span');
+    cnt.className = 'filter-count';
+    cnt.textContent = `${FILTERED.length.toLocaleString()} / ${ALL_ROWS.length.toLocaleString()} rows`;
+    bar.appendChild(cnt);
+    const hint = document.createElement('span');
+    hint.className = 'filter-hint';
+    hint.textContent = '· Esc to clear';
+    bar.appendChild(hint);
+  }
+}
+
+// ── 6. HELPERS ───────────────────────────────────────────────────────────
+const INCOME_VARS  = ['Total income','Sales, fees, rental and leasing income','Other income'];
+const EXP_VARS     = ['Total expenditure','Purchases and other direct costs','Depreciation','Other expenditure'];
+const WAGE_VARS    = ['Salaries and wages paid'];
+const PROFIT_VARS  = ['Surplus before income tax'];
+const EMP_VARS     = ['Paid employees'];
+
+// ── Level-safe aggregation (prevents cross-aggregation-level double counting) ──
+function latestYear(rows){
+  let best=null, bestN=-1;
+  rows.forEach(r=>{ const m=/(\d{4})/.exec(r.Year||''); const n=m?+m[1]:-1; if(n>bestN){bestN=n;best=r.Year;} });
+  return best;
+}
+// Rows to use for ADDITIVE totals — never mix aggregation levels:
+//   industries selected -> sum those (mutually exclusive) industry rows
+//   otherwise           -> use the published 'All industries' aggregate rows
+function levelBase(rows){
+  const industrySelected = SEL.industry.size > 0;
+  const agg = rows.filter(r=>r.Industry_name_NZSIOC==='All industries');
+  const ind = rows.filter(r=>r.Industry_name_NZSIOC!=='All industries');
+  if(industrySelected) return ind;
+  return agg.length ? agg : ind;
+}
+// KPI base: level-safe AND year-scoped (default to the latest year when none picked).
+function kpiBase(rows){
+  let base = levelBase(rows);
+  if(SEL.year.size===0){ const ly=latestYear(base); base = base.filter(r=>r.Year===ly); }
+  return base;
+}
+
+function pivot(rows, filterVars){
+  const map = {};
+  rows.filter(r=>filterVars.includes(r.Variable_name))
+    .forEach(r=>{ map[r.Industry_name_NZSIOC]=(map[r.Industry_name_NZSIOC]||0)+r.Value; });
+  return map;
+}
+
+function pivotYear(rows, filterVars){
+  const map = {};
+  rows.filter(r=>filterVars.includes(r.Variable_name))
+    .forEach(r=>{ map[r.Year]=(map[r.Year]||0)+r.Value; });
+  return map;
+}
+
+function sumVar(rows, vars){
+  return rows.filter(r=>vars.includes(r.Variable_name)).reduce((a,r)=>a+r.Value,0);
+}
+
+function fmt(v,decimals=0){
+  if(isNaN(v)||v===null) return '—';
+  if(Math.abs(v)>=1000) return '$'+v.toLocaleString('en-NZ',{maximumFractionDigits:decimals})+'M';
+  return '$'+v.toLocaleString('en-NZ',{maximumFractionDigits:1})+'M';
+}
+
+function fmtNum(v){ return isNaN(v)?'—':v.toLocaleString('en-NZ',{maximumFractionDigits:0}); }
+function fmtPct(v){ return isNaN(v)||!isFinite(v)?'—':(v*100).toFixed(1)+'%'; }
+
+function topN(map,n){ return Object.entries(map).sort((a,b)=>b[1]-a[1]).slice(0,n); }
+
+function shorten(s){ return s.length>28 ? s.slice(0,26)+'…' : s; }
+
+function labelYear(y){ return y.replace('Year ended March ',''); }
+
+function setText(id,val){ const el=document.getElementById(id); if(el) el.textContent=val; }
+
+// ── 7. TAB SWITCHING ─────────────────────────────────────────────────────
+function showTab(id){
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById('panel-'+id).classList.add('active');
+  document.querySelector('.tab[data-tab="'+id+'"]').classList.add('active');
+}
+
+// ── 8. CHART REGISTRY ────────────────────────────────────────────────────
+const _charts = {};
+function mkChart(id, cfg){
+  if(_charts[id]){ _charts[id].destroy(); delete _charts[id]; }
+  const el = document.getElementById(id);
+  if(!el) return;
+  _charts[id] = new Chart(el.getContext('2d'), cfg);
+}
+
+const BRAND_PALETTE = [
+  '#005B99','#0077CC','#00A86B','#D97706','#DC2626',
+  '#7C3AED','#0891B2','#BE185D','#059669','#92400E',
+  '#1D4ED8','#065F46','#9D174D','#1E40AF','#064E3B',
+];
+
+function barClickHandler(key, labelsArr){
+  return {
+    id:'click-handler',
+    afterInit(chart){
+      chart.canvas.addEventListener('click', evt=>{
+        const pts = chart.getElementsAtEventForMode(evt,'nearest',{intersect:true},false);
+        if(!pts.length) return;
+        const label = labelsArr[pts[0].index];
+        tog(key, label, evt.ctrlKey||evt.metaKey);
+      });
+    }
+  };
+}
+
+function lineClickHandler(key, labelsArr){
+  return {
+    id:'line-click-handler',
+    afterInit(chart){
+      chart.canvas.addEventListener('click', evt=>{
+        const pts = chart.getElementsAtEventForMode(evt,'nearest',{intersect:false},false);
+        if(!pts.length) return;
+        const label = labelsArr[pts[0].index];
+        tog(key, label, evt.ctrlKey||evt.metaKey);
+      });
+    }
+  };
+}
+
+function doughnutClickHandler(key, labelsArr){
+  return {
+    id:'donut-click-handler',
+    afterInit(chart){
+      chart.canvas.addEventListener('click', evt=>{
+        const pts = chart.getElementsAtEventForMode(evt,'nearest',{intersect:true},false);
+        if(!pts.length) return;
+        const label = labelsArr[pts[0].index];
+        tog(key, label, evt.ctrlKey||evt.metaKey);
+      });
+    }
+  };
+}
+
+function activeColor(labels, selSet, base){
+  return labels.map((l,i)=> selSet.size && !selSet.has(l) ? base+'55' : (BRAND_PALETTE[i%BRAND_PALETTE.length]));
+}
+
+function barCfg(labels, datasets, opts={}){
+  return {
+    type:'bar',
+    data:{labels, datasets},
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{display:datasets.length>1,position:'top',labels:{boxWidth:12,font:{size:11}}},
+               tooltip:{callbacks:{label:ctx=>' '+fmt(ctx.raw)}}},
+      scales:{
+        x:{ticks:{font:{size:10},maxRotation:45},grid:{display:false}},
+        y:{ticks:{callback:v=>fmt(v),font:{size:10}},grid:{color:'#E2E8F0'}},
+        ...opts.scales
+      }
+    }
+  };
+}
+
+function lineCfg(labels, datasets){
+  return {
+    type:'line',
+    data:{labels, datasets},
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{position:'top',labels:{boxWidth:12,font:{size:11}}}},
+      scales:{
+        x:{ticks:{font:{size:10}},grid:{display:false}},
+        y:{ticks:{callback:v=>fmt(v),font:{size:10}},grid:{color:'#E2E8F0'}}
+      }
+    }
+  };
+}
+
+function doughnutCfg(labels, data, selSet){
+  const colors = labels.map((l,i)=> selSet&&selSet.size&&!selSet.has(l)
+    ? BRAND_PALETTE[i%BRAND_PALETTE.length]+'55'
+    : BRAND_PALETTE[i%BRAND_PALETTE.length]);
+  return {
+    type:'doughnut',
+    data:{labels, datasets:[{data, backgroundColor:colors, borderWidth:2, borderColor:'#fff'}]},
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{position:'right',labels:{boxWidth:12,font:{size:10}}},
+               tooltip:{callbacks:{label:ctx=>` ${ctx.label}: ${fmtNum(ctx.raw)}`}}}
+    }
+  };
+}
+
+// ── 9. RENDER FUNCTIONS ───────────────────────────────────────────────────
+function render(){
+  applyFilters();
+  renderFilterBar();
+  renderOverview();
+  renderIncome();
+  renderExpenditure();
+  renderEmployment();
+  renderIndustry();
+  renderTrends();
+  renderDataExplorer();
+}
+
+function renderOverview(){
+  const rows   = FILTERED;
+  const kb     = kpiBase(rows);
+  const income = sumVar(kb, ['Total income']);
+  const exp    = sumVar(kb, ['Total expenditure']);
+  const profit = sumVar(kb, PROFIT_VARS);
+  const wages  = sumVar(kb, WAGE_VARS);
+  const indSet  = new Set(rows.filter(r=>r.Industry_name_NZSIOC!=='All industries').map(r=>r.Industry_name_NZSIOC));
+  const yearSet = new Set(rows.map(r=>r.Year));
+  const varSet  = new Set(rows.map(r=>r.Variable_name));
+
+  setText('k-total-income',     fmt(income));
+  setText('k-total-expenditure',fmt(exp));
+  setText('k-operating-profit', fmt(profit));
+  setText('k-profit-margin',    fmtPct(income?profit/income:NaN));
+  setText('k-total-wages',      fmt(wages));
+  setText('k-industries-count', indSet.size||'—');
+  setText('k-years-covered',    yearSet.size||'—');
+  setText('k-var-count',        varSet.size||'—');
+
+  // Bar: Top industries by income
+  const incByInd = pivot(rows.filter(r=>r.Industry_name_NZSIOC!=='All industries'),['Total income']);
+  const top10inc = topN(incByInd,10);
+  const incLabels = top10inc.map(x=>x[0]);
+  const incColors = incLabels.map((l,i)=>SEL.industry.size&&!SEL.industry.has(l)?BRAND_PALETTE[i%15]+'55':BRAND_PALETTE[i%15]);
+  const incCfg = barCfg(incLabels.map(shorten),[{label:'Total Income ($M)',data:top10inc.map(x=>x[1]),backgroundColor:incColors,borderRadius:4}]);
+  mkChart('b-income-by-industry', {...incCfg, plugins:[barClickHandler('industry',incLabels)]});
+
+  // Bar: Income vs Expenditure
+  const expByInd = pivot(rows.filter(r=>r.Industry_name_NZSIOC!=='All industries'),['Total expenditure']);
+  const topInds  = topN(incByInd,8).map(x=>x[0]);
+  const ieCfg = barCfg(topInds.map(shorten),[
+    {label:'Income',      data:topInds.map(i=>incByInd[i]||0), backgroundColor:topInds.map((l,i)=>SEL.industry.size&&!SEL.industry.has(l)?'#005B9955':'#005B99'), borderRadius:4},
+    {label:'Expenditure', data:topInds.map(i=>expByInd[i]||0), backgroundColor:topInds.map((l,i)=>SEL.industry.size&&!SEL.industry.has(l)?'#DC262655':'#DC2626'), borderRadius:4},
+  ]);
+  mkChart('b-income-vs-exp', {...ieCfg, plugins:[barClickHandler('industry',topInds)]});
+
+  // Doughnut: Variable category
+  const catMap = {};
+  rows.forEach(r=>{ catMap[r.Variable_category]=(catMap[r.Variable_category]||0)+1; });
+  const catE = Object.entries(catMap).sort((a,b)=>b[1]-a[1]);
+  const catLabels = catE.map(x=>x[0]);
+  mkChart('b-category-dist', {...doughnutCfg(catLabels,catE.map(x=>x[1]),SEL.varcat), plugins:[doughnutClickHandler('varcat',catLabels)]});
+
+  // Doughnut: Aggregation level mix
+  const aggMap = {};
+  rows.forEach(r=>{ aggMap[r.Industry_aggregation_NZSIOC]=(aggMap[r.Industry_aggregation_NZSIOC]||0)+1; });
+  const aggE = Object.entries(aggMap).sort((a,b)=>b[1]-a[1]);
+  const aggLabels = aggE.map(x=>x[0]);
+  mkChart('b-agg-level-mix', {...doughnutCfg(aggLabels,aggE.map(x=>x[1]),SEL.agg), plugins:[doughnutClickHandler('agg',aggLabels)]});
+}
+
+function renderIncome(){
+  const rows   = FILTERED;
+  const kb     = kpiBase(rows);
+  const sales  = sumVar(kb,['Sales, fees, rental and leasing income']);
+  const other  = sumVar(kb,['Other income']);
+  const income = sumVar(kb,['Total income']);
+  const inds   = new Set(rows.filter(r=>r.Industry_name_NZSIOC!=='All industries').map(r=>r.Industry_name_NZSIOC));
+
+  setText('k-sales-income',        fmt(sales));
+  setText('k-other-income',        fmt(other));
+  setText('k-income-per-industry', fmt(inds.size?income/inds.size:NaN));
+
+  // Bar: income vars
+  const varIncome = {};
+  rows.filter(r=>r.Variable_category==='Financial performance'&&(r.Variable_name.toLowerCase().includes('income')||r.Variable_name.toLowerCase().includes('sales')))
+    .forEach(r=>{ varIncome[r.Variable_name]=(varIncome[r.Variable_name]||0)+r.Value; });
+  const vi = Object.entries(varIncome).sort((a,b)=>b[1]-a[1]);
+  mkChart('b-income-vars', barCfg(vi.map(x=>shorten(x[0])),[{label:'$M',data:vi.map(x=>x[1]),backgroundColor:BRAND_PALETTE,borderRadius:4}]));
+
+  // Horizontal bar: sales by industry top 15
+  const salesByInd = pivot(rows.filter(r=>r.Industry_name_NZSIOC!=='All industries'),['Sales, fees, rental and leasing income']);
+  const top15s = topN(salesByInd,15);
+  const slabels = top15s.map(x=>x[0]);
+  const scolors = slabels.map((l,i)=>SEL.industry.size&&!SEL.industry.has(l)?'#005B9955':'#005B99');
+  mkChart('b-sales-by-industry',{
+    type:'bar', plugins:[barClickHandler('industry',slabels)],
+    data:{labels:slabels.map(shorten),datasets:[{label:'Sales Income ($M)',data:top15s.map(x=>x[1]),backgroundColor:scolors,borderRadius:4}]},
+    options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false}},
+      scales:{x:{ticks:{callback:v=>fmt(v),font:{size:10}}},y:{ticks:{font:{size:10}}}}}
+  });
+
+  // Line: income trend by year
+  const incTrend = pivotYear(levelBase(rows),['Total income']);
+  const years = Object.keys(incTrend).sort();
+  const itCfg = lineCfg(years.map(labelYear),[{
+    label:'Total Income ($M)',data:years.map(y=>incTrend[y]),
+    borderColor:'#005B99',backgroundColor:'rgba(0,91,153,.1)',fill:true,tension:.35,
+    pointBackgroundColor:years.map(y=>SEL.year.size&&!SEL.year.has(y)?'#005B9955':'#005B99'),
+    pointRadius:5,pointHoverRadius:7
+  }]);
+  mkChart('b-income-trend',{...itCfg, plugins:[lineClickHandler('year',years)]});
+}
+
+function renderExpenditure(){
+  const rows = FILTERED;
+  const kb    = kpiBase(rows);
+  const purch = sumVar(kb,['Purchases and other direct costs']);
+  const depr  = sumVar(kb,['Depreciation']);
+  const other = sumVar(kb,['Other expenditure']);
+
+  setText('k-purchases',   fmt(purch));
+  setText('k-depreciation',fmt(depr));
+  setText('k-other-exp',   fmt(other));
+
+  // Bar: exp vars
+  const varExp = {};
+  rows.filter(r=>r.Variable_category==='Financial performance'&&(r.Variable_name.toLowerCase().includes('expend')||r.Variable_name.toLowerCase().includes('purchase')||r.Variable_name.toLowerCase().includes('deprec')))
+    .forEach(r=>{ varExp[r.Variable_name]=(varExp[r.Variable_name]||0)+r.Value; });
+  const ve = Object.entries(varExp).sort((a,b)=>b[1]-a[1]);
+  mkChart('b-exp-vars', barCfg(ve.map(x=>shorten(x[0])),[{label:'$M',data:ve.map(x=>x[1]),backgroundColor:['#DC2626','#D97706','#92400E'],borderRadius:4}]));
+
+  // Line: exp trend by year
+  const expTrend = pivotYear(levelBase(rows),['Total expenditure']);
+  const years = Object.keys(expTrend).sort();
+  const etCfg = lineCfg(years.map(labelYear),[{
+    label:'Total Expenditure ($M)',data:years.map(y=>expTrend[y]),
+    borderColor:'#DC2626',backgroundColor:'rgba(220,38,38,.1)',fill:true,tension:.35,
+    pointBackgroundColor:years.map(y=>SEL.year.size&&!SEL.year.has(y)?'#DC262655':'#DC2626'),
+    pointRadius:5,pointHoverRadius:7
+  }]);
+  mkChart('b-exp-trend',{...etCfg, plugins:[lineClickHandler('year',years)]});
+
+  // Horizontal bar: exp by industry top 15
+  const expByInd = pivot(rows.filter(r=>r.Industry_name_NZSIOC!=='All industries'),['Total expenditure']);
+  const top15e = topN(expByInd,15);
+  const elabels = top15e.map(x=>x[0]);
+  const ecolors = elabels.map((l,i)=>SEL.industry.size&&!SEL.industry.has(l)?'#DC262655':'#DC2626');
+  mkChart('b-exp-industry',{
+    type:'bar', plugins:[barClickHandler('industry',elabels)],
+    data:{labels:elabels.map(shorten),datasets:[{label:'Total Expenditure ($M)',data:top15e.map(x=>x[1]),backgroundColor:ecolors,borderRadius:4}]},
+    options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false}},
+      scales:{x:{ticks:{callback:v=>fmt(v),font:{size:10}}},y:{ticks:{font:{size:10}}}}}
+  });
+}
+
+function renderEmployment(){
+  const rows  = FILTERED;
+  const kb    = kpiBase(rows);
+  const wages = sumVar(kb,WAGE_VARS);
+  const emp   = sumVar(kb,EMP_VARS);
+  const avgW  = (wages&&emp) ? (wages*1000/emp).toFixed(0) : null;
+
+  setText('k-emp-wages', fmt(wages));
+  setText('k-emp-count', fmtNum(emp));
+  setText('k-avg-wage',  avgW?'$'+Number(avgW).toLocaleString():'—');
+
+  // Horizontal bar: wages by industry top 15
+  const wByInd = pivot(rows.filter(r=>r.Industry_name_NZSIOC!=='All industries'),WAGE_VARS);
+  const top15w = topN(wByInd,15);
+  const wlabels = top15w.map(x=>x[0]);
+  const wcolors = wlabels.map((l,i)=>SEL.industry.size&&!SEL.industry.has(l)?'#00A86B55':'#00A86B');
+  mkChart('b-wages-industry',{
+    type:'bar', plugins:[barClickHandler('industry',wlabels)],
+    data:{labels:wlabels.map(shorten),datasets:[{label:'Wages ($M)',data:top15w.map(x=>x[1]),backgroundColor:wcolors,borderRadius:4}]},
+    options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false}},
+      scales:{x:{ticks:{callback:v=>fmt(v),font:{size:10}}},y:{ticks:{font:{size:10}}}}}
+  });
+
+  // Line: wages trend by year
+  const wTrend = pivotYear(levelBase(rows),WAGE_VARS);
+  const years  = Object.keys(wTrend).sort();
+  const wtCfg  = lineCfg(years.map(labelYear),[{
+    label:'Wages & Salaries ($M)',data:years.map(y=>wTrend[y]),
+    borderColor:'#00A86B',backgroundColor:'rgba(0,168,107,.1)',fill:true,tension:.35,
+    pointBackgroundColor:years.map(y=>SEL.year.size&&!SEL.year.has(y)?'#00A86B55':'#00A86B'),
+    pointRadius:5,pointHoverRadius:7
+  }]);
+  mkChart('b-wages-trend',{...wtCfg, plugins:[lineClickHandler('year',years)]});
+}
+
+function renderIndustry(){
+  const rows   = FILTERED.filter(r=>r.Industry_name_NZSIOC!=='All industries');
+  const incMap = pivot(rows,['Total income']);
+  const expMap = pivot(rows,['Total expenditure']);
+  const proMap = pivot(rows,PROFIT_VARS);
+  const wMap   = pivot(rows,WAGE_VARS);
+  const aggMap = {};
+  rows.forEach(r=>{ aggMap[r.Industry_name_NZSIOC]=r.Industry_aggregation_NZSIOC; });
+
+  const top20 = topN(incMap,20);
+  const imLabels = top20.map(x=>x[0]);
+  const imColors = imLabels.map((l,i)=>SEL.industry.size&&!SEL.industry.has(l)?BRAND_PALETTE[i%15]+'55':BRAND_PALETTE[i%15]);
+
+  // Bar matrix
+  mkChart('b-industry-matrix',{
+    type:'bar', plugins:[barClickHandler('industry',imLabels)],
+    data:{labels:imLabels.map(shorten),datasets:[
+      {label:'Income', data:top20.map(x=>incMap[x[0]]||0), backgroundColor:imColors, borderRadius:4},
+      {label:'Expenditure', data:top20.map(x=>expMap[x[0]]||0), backgroundColor:imColors.map(c=>c.replace(BRAND_PALETTE[imLabels.indexOf(c[0])],'#DC2626')), borderRadius:4},
+    ]},
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:true,position:'top',labels:{boxWidth:12,font:{size:11}}},
+               tooltip:{callbacks:{label:ctx=>' '+fmt(ctx.raw)}}},
+      scales:{x:{ticks:{font:{size:9},maxRotation:45},grid:{display:false}},y:{ticks:{callback:v=>fmt(v),font:{size:10}}}}}
+  });
+  // Simpler 2-dataset version with correct colors
+  mkChart('b-industry-matrix',{
+    type:'bar', plugins:[barClickHandler('industry',imLabels)],
+    data:{labels:imLabels.map(shorten),datasets:[
+      {label:'Income',      data:top20.map(x=>incMap[x[0]]||0), backgroundColor:imLabels.map((l,i)=>SEL.industry.size&&!SEL.industry.has(l)?'#005B9933':'#005B99'), borderRadius:4},
+      {label:'Expenditure', data:top20.map(x=>expMap[x[0]]||0), backgroundColor:imLabels.map((l,i)=>SEL.industry.size&&!SEL.industry.has(l)?'#DC262633':'#DC2626'), borderRadius:4},
+    ]},
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:true,position:'top',labels:{boxWidth:12,font:{size:11}}},
+               tooltip:{callbacks:{label:ctx=>' '+fmt(ctx.raw)}}},
+      scales:{x:{ticks:{font:{size:9},maxRotation:45},grid:{display:false}},y:{ticks:{callback:v=>fmt(v),font:{size:10}}}}}
+  });
+
+  // Horizontal bar: profit margin by industry
+  const marginList = top20.map(x=>({name:x[0], margin:(incMap[x[0]]&&proMap[x[0]])?(proMap[x[0]]/incMap[x[0]]*100):0}))
+    .sort((a,b)=>b.margin-a.margin);
+  const mgLabels = marginList.map(x=>x.name);
+  const mgColors = mgLabels.map(l=>SEL.industry.size&&!SEL.industry.has(l)?'#00A86B55':'#00A86B');
+  mkChart('b-margin-industry',{
+    type:'bar', plugins:[barClickHandler('industry',mgLabels)],
+    data:{labels:mgLabels.map(shorten),datasets:[{label:'Profit Margin %',data:marginList.map(x=>x.margin.toFixed(1)),backgroundColor:mgColors,borderRadius:4}]},
+    options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>` ${ctx.raw}%`}}},
+      scales:{x:{ticks:{callback:v=>v+'%',font:{size:10}}},y:{ticks:{font:{size:10}}}}}
+  });
+
+  // Horizontal bar: wages share of income
+  const wShareList = top20.map(x=>({name:x[0], share:(incMap[x[0]]&&wMap[x[0]])?(wMap[x[0]]/incMap[x[0]]*100):0}))
+    .sort((a,b)=>b.share-a.share);
+  const wsLabels = wShareList.map(x=>x.name);
+  const wsColors = wsLabels.map(l=>SEL.industry.size&&!SEL.industry.has(l)?'#D9770655':'#D97706');
+  mkChart('b-wages-share',{
+    type:'bar', plugins:[barClickHandler('industry',wsLabels)],
+    data:{labels:wsLabels.map(shorten),datasets:[{label:'Wages / Income %',data:wShareList.map(x=>x.share.toFixed(1)),backgroundColor:wsColors,borderRadius:4}]},
+    options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>` ${ctx.raw}%`}}},
+      scales:{x:{ticks:{callback:v=>v+'%',font:{size:10}}},y:{ticks:{font:{size:10}}}}}
+  });
+
+  // Table
+  const tbody = document.getElementById('industry-tbody');
+  tbody.innerHTML = '';
+  top20.forEach(([name,inc])=>{
+    const exp  = expMap[name]||0;
+    const pro  = proMap[name]||0;
+    const mrg  = inc?(pro/inc*100).toFixed(1):'—';
+    const agg  = aggMap[name]||'';
+    const sel  = SEL.industry.has(name);
+    const tr   = document.createElement('tr');
+    if(sel) tr.classList.add('selected-row');
+    tr.innerHTML = `<td>${shorten(name)}</td><td><span class="td-badge badge-blue">${agg}</span></td><td class="td-right">${fmt(inc)}</td><td class="td-right">${fmt(exp)}</td><td class="td-right">${fmt(pro)}</td><td class="td-right">${mrg}%</td>`;
+    tr.onclick = (e)=>tog('industry',name,e.ctrlKey||e.metaKey);
+    tbody.appendChild(tr);
+  });
+}
+
+function renderTrends(){
+  const rows = FILTERED;
+
+  // KPIs
+  const incByYear = pivotYear(levelBase(rows),['Total income']);
+  const expByYear = pivotYear(levelBase(rows),['Total expenditure']);
+  const sortedYears = Object.keys(incByYear).sort();
+  const latestY = sortedYears[sortedYears.length-1];
+  const prevY   = sortedYears[sortedYears.length-2];
+  const incYoY  = latestY&&prevY&&incByYear[prevY] ? (incByYear[latestY]-incByYear[prevY])/incByYear[prevY] : null;
+  const expYoY  = latestY&&prevY&&expByYear[prevY] ? (expByYear[latestY]-expByYear[prevY])/expByYear[prevY] : null;
+
+  setText('k-latest-year', latestY?latestY.replace('Year ended March ',''):'—');
+  setText('k-income-yoy',  incYoY!==null ? (incYoY>=0?'▲ ':'▼ ')+(Math.abs(incYoY)*100).toFixed(1)+'%' : '—');
+  setText('k-exp-yoy',     expYoY!==null ? (expYoY>=0?'▲ ':'▼ ')+(Math.abs(expYoY)*100).toFixed(1)+'%' : '—');
+
+  // Line: all trends
+  const proByYear = pivotYear(levelBase(rows),PROFIT_VARS);
+  const allY = sortedYears;
+  const atCfg = lineCfg(allY.map(labelYear),[
+    {label:'Income',      data:allY.map(y=>incByYear[y]||0), borderColor:'#005B99', backgroundColor:'rgba(0,91,153,.08)', fill:false, tension:.35,
+     pointBackgroundColor:allY.map(y=>SEL.year.size&&!SEL.year.has(y)?'#005B9933':'#005B99'), pointRadius:5, pointHoverRadius:7},
+    {label:'Expenditure', data:allY.map(y=>expByYear[y]||0), borderColor:'#DC2626', backgroundColor:'rgba(220,38,38,.08)', fill:false, tension:.35,
+     pointBackgroundColor:allY.map(y=>SEL.year.size&&!SEL.year.has(y)?'#DC262633':'#DC2626'), pointRadius:5, pointHoverRadius:7},
+    {label:'Profit',      data:allY.map(y=>proByYear[y]||0), borderColor:'#00A86B', backgroundColor:'rgba(0,168,107,.08)', fill:false, tension:.35,
+     pointBackgroundColor:allY.map(y=>SEL.year.size&&!SEL.year.has(y)?'#00A86B33':'#00A86B'), pointRadius:5, pointHoverRadius:7},
+  ]);
+  mkChart('b-all-trends',{...atCfg, plugins:[lineClickHandler('year',allY)]});
+
+  // Line: margin trend
+  const marginByYear = {};
+  allY.forEach(y=>{ marginByYear[y]=incByYear[y]?(proByYear[y]||0)/incByYear[y]*100:0; });
+  const mtCfg = {
+    type:'line', plugins:[lineClickHandler('year',allY)],
+    data:{labels:allY.map(labelYear), datasets:[{
+      label:'Profit Margin %', data:allY.map(y=>marginByYear[y]||0),
+      borderColor:'#7C3AED', backgroundColor:'rgba(124,58,237,.08)', fill:true, tension:.35,
+      pointBackgroundColor:allY.map(y=>SEL.year.size&&!SEL.year.has(y)?'#7C3AED33':'#7C3AED'),
+      pointRadius:5, pointHoverRadius:7
+    }]},
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>` ${ctx.raw.toFixed(1)}%`}}},
+      scales:{x:{ticks:{font:{size:10}},grid:{display:false}},y:{ticks:{callback:v=>v.toFixed(1)+'%',font:{size:10}}}}}
+  };
+  mkChart('b-margin-trend',mtCfg);
+
+  // Line: wages growth
+  const wagByYear = pivotYear(levelBase(rows),WAGE_VARS);
+  const wgCfg = lineCfg(allY.map(labelYear),[{
+    label:'Wages & Salaries ($M)', data:allY.map(y=>wagByYear[y]||0),
+    borderColor:'#D97706', backgroundColor:'rgba(217,119,6,.1)', fill:true, tension:.35,
+    pointBackgroundColor:allY.map(y=>SEL.year.size&&!SEL.year.has(y)?'#D9770633':'#D97706'),
+    pointRadius:5, pointHoverRadius:7
+  }]);
+  mkChart('b-wages-growth',{...wgCfg, plugins:[lineClickHandler('year',allY)]});
+}
+
+function renderDataExplorer(){
+  const rows  = FILTERED;
+  const PAGE  = 200;
+  const tbody = document.getElementById('data-tbody');
+  const pager = document.getElementById('data-pager');
+  tbody.innerHTML = '';
+  const slice = rows.slice(0,PAGE);
+  slice.forEach(r=>{
+    const tr  = document.createElement('tr');
+    const sel = SEL.industry.has(r.Industry_name_NZSIOC);
+    if(sel) tr.classList.add('selected-row');
+    tr.innerHTML = `<td>${r.Year.replace('Year ended March ','')}</td><td>${shorten(r.Industry_name_NZSIOC)}</td><td>${r.Industry_aggregation_NZSIOC}</td><td>${r.Variable_name}</td><td>${r.Variable_category}</td><td>${r.Units}</td><td class="td-right">${fmtNum(r.Value)}</td><td>${r.Variable_code}</td>`;
+    tr.onclick = e=>tog('industry',r.Industry_name_NZSIOC,e.ctrlKey||e.metaKey);
+    tbody.appendChild(tr);
+  });
+  pager.textContent = rows.length > PAGE
+    ? `Showing first ${PAGE.toLocaleString()} of ${rows.length.toLocaleString()} rows matching filters`
+    : `${rows.length.toLocaleString()} rows`;
+}
+
+// ── 10. INIT ─────────────────────────────────────────────────────────────
+function init(){
+  const injected = STBI_DATA ? parseRows(STBI_DATA) : null;
+  if(injected && injected.length > 0){
+    ALL_ROWS = injected;
+    IS_MOCK  = false;
+  } else {
+    ALL_ROWS = parseMock();
+    IS_MOCK  = true;
+    document.getElementById('notice-overview').innerHTML =
+      `<div class="notice">⚠️ No live data injected — showing representative mock data for demonstration. Connect a real dataset via the STBI portal to see live figures.</div>`;
+  }
+  render();
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('results-loaded').textContent = 'true';
+}
+
+window.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>
