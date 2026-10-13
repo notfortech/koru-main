@@ -1,0 +1,81 @@
+{
+  "id": "stats-nz",
+  "name": "Stats_NZ",
+  "industry": "Government / Statistics",
+  "version": "1.2.0",
+  "description": "Annual Enterprise Survey – Industry Financial Performance (long-format NZSIOC extract)",
+  "author": "Koru Studio",
+  "requires": {
+    "minNumeric": 1,
+    "minDate": 0,
+    "minCategorical": 8
+  },
+  "requiredColumns": [
+    "Year",
+    "Industry_aggregation_NZSIOC",
+    "Industry_code_NZSIOC",
+    "Industry_name_NZSIOC",
+    "Units",
+    "Variable_code",
+    "Variable_name",
+    "Variable_category",
+    "Value",
+    "Industry_code_ANZSIC06"
+  ],
+  "optionalColumns": [],
+  "dataContract": {
+    "maxRows": 10000,
+    "rowFields": [
+      { "column": "Year", "alias": "Year", "role": "text" },
+      { "column": "Industry_aggregation_NZSIOC", "alias": "Industry_aggregation_NZSIOC", "role": "text" },
+      { "column": "Industry_code_NZSIOC", "alias": "Industry_code_NZSIOC", "role": "text" },
+      { "column": "Industry_name_NZSIOC", "alias": "Industry_name_NZSIOC", "role": "text" },
+      { "column": "Units", "alias": "Units", "role": "text" },
+      { "column": "Variable_code", "alias": "Variable_code", "role": "text" },
+      { "column": "Variable_name", "alias": "Variable_name", "role": "text" },
+      { "column": "Variable_category", "alias": "Variable_category", "role": "text" },
+      { "column": "Value", "alias": "Value", "role": "numeric" },
+      { "column": "Industry_code_ANZSIC06", "alias": "Industry_code_ANZSIC06", "role": "text" }
+    ]
+  },
+  "testIds": {
+    "resultsLoaded": "results-loaded",
+    "kpiPrefix": "kpi-tile-k",
+    "chartPrefix": "chart-b-"
+  },
+  "datasetIntegrityChecks": {
+    "variableColumn": "Variable_name",
+    "valueColumn": "Value",
+    "groupBy": ["Year", "Industry_aggregation_NZSIOC"],
+    "identities": [
+      {
+        "target": "Total income",
+        "components": ["Sales, fees, rental and leasing income", "Other income"],
+        "op": "sum",
+        "band": [60.0, 100.5]
+      },
+      {
+        "target": "Total expenditure",
+        "components": ["Purchases and other direct costs", "Depreciation", "Other expenditure"],
+        "op": "sum",
+        "band": [60.0, 100.5]
+      }
+    ]
+  },
+  "readiness": {
+    "decision": "RENDER_DASHBOARD",
+    "threshold": 50.0,
+    "method": "End-to-end run of DashboardAgents.ReportAgent.Api/python_agent's generate_generic_report.py (match + build_report + row_export) against 4 real reference extracts, immediately after fixing dataContract from a broken multi-table shape (hardcoded sheet name 'annual-enterprise-survey-2025-financial-year-provisional', which no CSV upload could ever match -- see notes) to the proven single-table rowFields shape.",
+    "validatedAgainst": {
+      "nz_aes_1yr_baseline.csv":      { "matchConfidence": 0.8, "rowsInjected": 106, "datasetIntegrityMatchPct": 50.0 },
+      "nz_aes_3yr_growth.csv":        { "matchConfidence": 0.8, "rowsInjected": 318, "datasetIntegrityMatchPct": 100.0 },
+      "nz_aes_3yr_contraction.csv":   { "matchConfidence": 0.8, "rowsInjected": 318, "datasetIntegrityMatchPct": 83.3 },
+      "nz_aes_5yr_historical.csv":    { "matchConfidence": 0.8, "rowsInjected": 530, "datasetIntegrityMatchPct": 70.0 }
+    },
+    "notes": [
+      "Confirmed live row data now injects correctly for all 4 files (row counts exactly match each source file -- no truncation, no fallback to embedded mock data), which is the direct fix for the 'every upload looks the same' symptom: the prior multi-table dataContract always failed to find its hardcoded sheet name for any CSV upload, so row_export.export_row_data_multi() returned an empty array and chrome.html's init() silently fell back to its static MOCK_DATA every time regardless of input.",
+      "nz_aes_1yr_baseline.csv's datasetIntegrityMatchPct (50.0) sits exactly at DATASET_INTEGRITY_BLOCK_BELOW_PCT's floor -- it still renders (the gate is strict '<', not '<='), but with only 2 evaluable (group, identity) checks (a 1-year extract has little group diversity), this is the least statistically robust of the 4 and the most likely to flip to a block on a slightly different single-year sample. Worth a follow-up look rather than treating it as equally solid as the other 3.",
+      "All 4 files' integrity failures are the same shape: components sum to ~101-102% of target (a published-statistics rounding artifact, not a structural mapping error) -- consistent with the band's own upper bound (100.5%) being tuned against a different, larger reference sample than these 4 fixtures."
+    ]
+  }
+}
