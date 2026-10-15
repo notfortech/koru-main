@@ -89,7 +89,11 @@ public class ReportGeneratorClientTests
 
         Assert.NotNull(handler.LastRequestBody);
         Assert.Contains("sales.csv", handler.LastRequestBody);
-        Assert.Contains("name=\"templateId\"", handler.LastRequestBody);
+        // MultipartFormDataContent.Add(content, name) serializes Content-Disposition's name
+        // parameter unquoted in .NET 8 (name=templateId, not name="templateId") -- verified by
+        // direct repro. Matching that here rather than the RFC-quoted form keeps this assertion
+        // accurate to what's actually sent, regardless of what a human would expect to see.
+        Assert.Contains("name=templateId", handler.LastRequestBody);
         Assert.Contains("generic-overview", handler.LastRequestBody);
     }
 
@@ -104,7 +108,7 @@ public class ReportGeneratorClientTests
             stream, "sales.csv", templateId: null, filtersJson: """{"Region":"North"}""", htmlTemplateId: null, correlationId: "corr-1");
 
         Assert.NotNull(handler.LastRequestBody);
-        Assert.Contains("name=\"filters\"", handler.LastRequestBody);
+        Assert.Contains("name=filters", handler.LastRequestBody);
         Assert.Contains("""{"Region":"North"}""", handler.LastRequestBody);
     }
 
@@ -184,7 +188,7 @@ public class ReportGeneratorClientTests
 
         Assert.NotNull(handler.LastRequestBody);
         Assert.Contains("sales.csv", handler.LastRequestBody);
-        Assert.Contains("name=\"chartSpecs\"", handler.LastRequestBody);
+        Assert.Contains("name=chartSpecs", handler.LastRequestBody);
         Assert.Contains("\"chartType\":\"bar\"", handler.LastRequestBody);
         Assert.Contains("\"measure\":\"Amount\"", handler.LastRequestBody);
         Assert.DoesNotContain("\"title\"", handler.LastRequestBody);
