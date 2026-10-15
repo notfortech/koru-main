@@ -1,0 +1,86 @@
+{
+  "id": "restaurant-food-service",
+  "name": "Restaurant & Food Service",
+  "industry": "Accommodation and Food Services",
+  "version": "1.0.0",
+  "description": "Annual Enterprise Survey \u2013 Restaurant, Caf\u00e9 and Food Service Industries (NZ) | Years ended March 2023\u20132025",
+  "author": "Koru Studio",
+  "requires": {
+    "minNumeric": 1,
+    "minDate": 0,
+    "minCategorical": 9
+  },
+  "requiredColumns": [
+    "Year",
+    "Industry_aggregation_NZSIOC",
+    "Industry_code_NZSIOC",
+    "Industry_name_NZSIOC",
+    "Units",
+    "Variable_code",
+    "Variable_name",
+    "Variable_category",
+    "Value",
+    "Industry_code_ANZSIC06"
+  ],
+  "optionalColumns": [],
+  "dataContract": {
+    "maxRows": 10000,
+    "rowFields": [
+      {
+        "column": "Year",
+        "alias": "Year",
+        "role": "text"
+      },
+      {
+        "column": "Industry_aggregation_NZSIOC",
+        "alias": "Industry_aggregation_NZSIOC",
+        "role": "text"
+      },
+      {
+        "column": "Industry_code_NZSIOC",
+        "alias": "Industry_code_NZSIOC",
+        "role": "text"
+      },
+      {
+        "column": "Industry_name_NZSIOC",
+        "alias": "Industry_name_NZSIOC",
+        "role": "text"
+      },
+      {
+        "column": "Units",
+        "alias": "Units",
+        "role": "text"
+      },
+      {
+        "column": "Variable_code",
+        "alias": "Variable_code",
+        "role": "text"
+      },
+      {
+        "column": "Variable_name",
+        "alias": "Variable_name",
+        "role": "text"
+      },
+      {
+        "column": "Variable_category",
+        "alias": "Variable_category",
+        "role": "text"
+      },
+      {
+        "column": "Value",
+        "alias": "Value",
+        "role": "numeric"
+      },
+      {
+        "column": "Industry_code_ANZSIC06",
+        "alias": "Industry_code_ANZSIC06",
+        "role": "text"
+      }
+    ]
+  },
+  "testIds": {
+    "resultsLoaded": "results-loaded",
+    "kpiPrefix": "kpi-tile-k",
+    "chartPrefix": "chart-b-"
+  }
+}

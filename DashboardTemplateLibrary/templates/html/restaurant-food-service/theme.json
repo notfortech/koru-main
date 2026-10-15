@@ -1,0 +1,61 @@
+{
+  "id": "restaurant-food-service",
+  "name": "Restaurant & Food Service Theme",
+  "version": "1.0.0",
+  "colors": {
+    "primary": "#B45309",
+    "secondary": "#065F46",
+    "accent": "#DC2626",
+    "bg": "#FFFBF0",
+    "surface": "#FFFFFF",
+    "text": "#1C1917"
+  },
+  "cssVariables": {
+    "--brand": "#B45309",
+    "--brand-light": "#065F46",
+    "--accent": "#DC2626",
+    "--bg": "#FFFBF0",
+    "--surface": "#FFFFFF",
+    "--text": "#1C1917",
+    "--chip-bg": "#065F4622",
+    "--chip-border": "#065F46",
+    "--chip-text": "#1C1917"
+  },
+  "presets": {
+    "ocean": {
+      "primary": "#005B8E",
+      "secondary": "#00A86B",
+      "accent": "#F4A300",
+      "bg": "#F0F7FF",
+      "text": "#0A1628"
+    },
+    "forest": {
+      "primary": "#1B5E20",
+      "secondary": "#43A047",
+      "accent": "#FF8F00",
+      "bg": "#F1F8E9",
+      "text": "#1B2E1B"
+    },
+    "sunset": {
+      "primary": "#B71C1C",
+      "secondary": "#E64A19",
+      "accent": "#FDD835",
+      "bg": "#FFF8F0",
+      "text": "#2E1B1B"
+    },
+    "mono": {
+      "primary": "#212121",
+      "secondary": "#616161",
+      "accent": "#9E9E9E",
+      "bg": "#FAFAFA",
+      "text": "#212121"
+    },
+    "violet": {
+      "primary": "#4A148C",
+      "secondary": "#7B1FA2",
+      "accent": "#CE93D8",
+      "bg": "#F3E5F5",
+      "text": "#1A0030"
+    }
+  }
+}
