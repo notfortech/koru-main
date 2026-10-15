@@ -312,6 +312,7 @@ builder.Services.AddReportValidationIntegration();
 builder.Services.AddBindDeployIntegration();
 builder.Services.AddTemplateRebindIntegration();
 builder.Services.AddPbipImportIntegration();
+builder.Services.AddStripeIntegration();
 builder.Services.Configure<PasswordResetOptions>(
     builder.Configuration.GetSection(PasswordResetOptions.SectionName));
 builder.Services.Configure<InsightEngineOptions>(

@@ -4,7 +4,9 @@ namespace StudioTechBI.Application.DTOs.Credits;
 /// the pack a client picks on PurchaseCreditsPage.</summary>
 public record CreateCreditPurchaseRequestDto(int CreditsRequested, string PackLabel, string? Notes);
 
-public record CreateCreditPurchaseRequestResponse(Guid RequestId);
+/// <summary>CheckoutUrl is null when Stripe isn't configured for this environment — the request
+/// still files normally and falls back to the manual admin-fulfillment flow.</summary>
+public record CreateCreditPurchaseRequestResponse(Guid RequestId, string? CheckoutUrl);
 
 public record CreditPurchaseRequestSummaryDto(
     Guid RequestId,
