@@ -303,7 +303,7 @@ builder.Services.AddCors(options =>
 });
 
 builder.Services.AddApplication();
-builder.Services.AddInfrastructure(builder.Configuration);
+builder.Services.AddInfrastructure(builder.Configuration, builder.Environment.IsProduction());
 builder.Services.AddAgentHostIntegration();
 builder.Services.AddReportDesignerIntegration();
 builder.Services.AddReportGeneratorIntegration();
@@ -312,6 +312,7 @@ builder.Services.AddReportValidationIntegration();
 builder.Services.AddBindDeployIntegration();
 builder.Services.AddTemplateRebindIntegration();
 builder.Services.AddPbipImportIntegration();
+builder.Services.AddStripeIntegration();
 builder.Services.Configure<PasswordResetOptions>(
     builder.Configuration.GetSection(PasswordResetOptions.SectionName));
 builder.Services.Configure<InsightEngineOptions>(
@@ -401,7 +402,11 @@ var app = builder.Build();
         "Upload limits configured. MaxUploadBytes={MaxUploadBytes}", uploadLimitsOpts.MaxUploadBytes);
 }
 
-var enableSwaggerInAzure = app.Configuration.GetValue<bool>("Swagger:Enabled");
+// Swagger:Enabled lets a non-Development environment opt in deliberately (e.g. Staging), but
+// Production itself is hard-blocked regardless of that flag -- a fat-fingered App Setting
+// should never expose the full API surface (including admin/internal endpoints) on the live
+// customer-facing site.
+var enableSwaggerInAzure = app.Configuration.GetValue<bool>("Swagger:Enabled") && !app.Environment.IsProduction();
 if (app.Environment.IsDevelopment() || enableSwaggerInAzure)
 {
     app.UseSwagger();

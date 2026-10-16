@@ -31,6 +31,14 @@ jobs:
     - name: Build
       run: dotnet build StudioTechBI.Backend/StudioTechBI.API/StudioTechBI.API.csproj --configuration Release --no-restore
 
+    - name: Test
+      # This workflow also runs on pull_request, so this is the actual PR gate -- runs the full
+      # solution's test projects (restores/builds them independently of the API-only
+      # restore/build above, which don't cover StudioTechBI.Infrastructure.Tests/
+      # StudioTechBI.API.Tests). A failing test fails the PR check, not just a local run someone
+      # has to remember to do by hand.
+      run: dotnet test StudioTechBI.Backend/StudioTechBI.sln --configuration Release
+
     - name: Publish
       run: dotnet publish StudioTechBI.Backend/StudioTechBI.API/StudioTechBI.API.csproj -c Release -o publish
 

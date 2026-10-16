@@ -27,6 +27,13 @@ jobs:
       - name: Build
         run: dotnet build StudioTechBI.Backend/StudioTechBI.API --configuration Release --no-restore
 
+      - name: Test
+        # Runs the full solution's test projects (restores/builds them independently of the
+        # API-only restore/build above, which don't cover StudioTechBI.Infrastructure.Tests/
+        # StudioTechBI.API.Tests) -- a failing test blocks publish/deploy below, not just a
+        # local `dotnet test` someone has to remember to run by hand.
+        run: dotnet test StudioTechBI.Backend/StudioTechBI.sln --configuration Release
+
       - name: Publish
         run: dotnet publish StudioTechBI.Backend/StudioTechBI.API -c Release -o publish
 

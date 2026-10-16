@@ -1,13 +1,13 @@
 namespace StudioTechBI.Domain.Entities;
 
 /// <summary>
-/// A client's request to buy additional AI credits — mock checkout for now (no real payment
-/// gateway), fulfilled manually by an admin once payment is confirmed out of band. Mirrors
-/// CustomReportRequest's Pending/Fulfilled shape: the client files a request, an admin marks it
-/// resolved, and that status transition is the only "flag" driving whether the credits have
-/// landed — once Status becomes Paid, the credits are already granted against AgentHost's ledger
-/// (see AdminCreditPurchaseRequestsController.MarkPaidAsync), so the client's next credit-balance
-/// fetch reflects the new total with no separate propagation step.
+/// A client's request to buy additional AI credits. Fulfilled either automatically — via Stripe
+/// Checkout and its webhook (see StripeCheckoutService, StripeWebhookController) — or manually by
+/// an admin once payment is confirmed out of band. Mirrors CustomReportRequest's Pending/Fulfilled
+/// shape: the request is filed, something marks it resolved, and that status transition is the
+/// only "flag" driving whether the credits have landed — once Status becomes Paid, the credits
+/// are already granted against AgentHost's ledger (see ICreditPurchaseFulfillmentService), so the
+/// client's next credit-balance fetch reflects the new total with no separate propagation step.
 /// </summary>
 public class CreditPurchaseRequest : BaseEntity
 {
@@ -26,4 +26,9 @@ public class CreditPurchaseRequest : BaseEntity
 
     public DateTime? PaidAtUtc { get; set; }
     public string? PaidByEmail { get; set; }
+
+    /// <summary>Stripe Checkout Session id for this request's payment attempt (audit/support
+    /// lookup only — fulfillment itself keys off ClientReferenceId, which is this entity's own
+    /// Id, not this field).</summary>
+    public string? StripeCheckoutSessionId { get; set; }
 }

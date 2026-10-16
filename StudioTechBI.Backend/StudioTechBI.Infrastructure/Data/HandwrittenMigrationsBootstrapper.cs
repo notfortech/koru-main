@@ -634,6 +634,11 @@ public static class HandwrittenMigrationsBootstrapper
                     CONSTRAINT [DF_CreditPurchaseRequests_Source] DEFAULT ('Client');
         ", cancellationToken);
 
+        await ExecAsync(context, logger, "CreditPurchaseRequests.StripeCheckoutSessionId column", @"
+            IF COL_LENGTH('dbo.CreditPurchaseRequests', 'StripeCheckoutSessionId') IS NULL
+                ALTER TABLE [dbo].[CreditPurchaseRequests] ADD [StripeCheckoutSessionId] NVARCHAR(255) NULL;
+        ", cancellationToken);
+
         // ── Large-file Report Generator uploads (direct-to-blob + durable async processing) ─────
         await ExecAsync(context, logger, "ReportGenerationJobs", @"
             IF OBJECT_ID('dbo.ReportGenerationJobs', 'U') IS NULL

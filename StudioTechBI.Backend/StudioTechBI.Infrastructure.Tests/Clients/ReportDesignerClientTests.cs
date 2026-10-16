@@ -1,12 +1,37 @@
 using System.Net;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using StudioTechBI.Application.DTOs.Admin;
 using StudioTechBI.Application.DTOs.ReportDesigner;
+using StudioTechBI.Application.Interfaces;
 using StudioTechBI.Application.Models;
 using StudioTechBI.Infrastructure.Clients;
 using Xunit;
 
 namespace StudioTechBI.Infrastructure.Tests.Clients;
+
+/// <summary>No-op audit sink — these tests exercise the HTTP/unwrapping behavior of
+/// ReportDesignerClient, not audit logging, so every call just succeeds trivially.</summary>
+public class FakeAiBoundaryAuditService : IAiBoundaryAuditService
+{
+    public Task LogSentAsync(string service, string operation, string correlationId, string metadataJson,
+        Guid? clientId = null, string? targetService = null, CancellationToken cancellationToken = default)
+        => Task.CompletedTask;
+
+    public Task LogReceivedAsync(string service, string operation, string correlationId, string metadataJson,
+        long durationMs, int? statusCode = null, Guid? clientId = null, string? targetService = null,
+        CancellationToken cancellationToken = default)
+        => Task.CompletedTask;
+
+    public Task LogFailedAsync(string service, string operation, string correlationId, long durationMs,
+        string errorSummary, int? statusCode = null, Guid? clientId = null, string? targetService = null,
+        CancellationToken cancellationToken = default)
+        => Task.CompletedTask;
+
+    public Task<IReadOnlyList<AiBoundaryAuditEventDto>> GetRecentAsync(int? limit, string? correlationId,
+        string? operation, bool? success, CancellationToken cancellationToken = default)
+        => Task.FromResult<IReadOnlyList<AiBoundaryAuditEventDto>>([]);
+}
 
 public class ReportDesignerClientTests
 {
@@ -14,9 +39,11 @@ public class ReportDesignerClientTests
         new(
             new HttpClient(handler) { BaseAddress = new Uri("https://transformers.example.com/") },
             NullLogger<ReportDesignerClient>.Instance,
-            Options.Create(new ReportDesignerOptions()));
+            Options.Create(new ReportDesignerOptions()),
+            new FakeAiBoundaryAuditService());
 
     private static GenerateReportModelRequest ValidRequest() => new(
+        ClientId: "11111111-1111-1111-1111-111111111111",
         Schema: new ExtractedSchemaDto(
             Source: "excel",
             FileName: "sales.xlsx",
