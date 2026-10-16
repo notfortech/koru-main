@@ -18,9 +18,22 @@ namespace StudioTechBI.Infrastructure;
 
 public static class DependencyInjection
 {
-    public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
+    public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration, bool isProduction = false)
     {
         var useDemoStorage = configuration.GetValue<bool>("UseDemoStorage");
+
+        // Hard-blocked regardless of config: UseDemoStorage=true swaps the entire app onto a
+        // throwaway in-memory database (see below) and seeds known demo credentials -- a
+        // fat-fingered App Setting on the live Production slot must never be able to silently
+        // take real customer data out of the picture like that.
+        if (useDemoStorage && isProduction)
+        {
+            throw new InvalidOperationException(
+                "UseDemoStorage=true is not allowed when ASPNETCORE_ENVIRONMENT=Production -- " +
+                "this would replace the real database with an in-memory one and seed demo " +
+                "credentials on the live site.");
+        }
+
         var connectionString = configuration["DB_CONNECTION"] ?? configuration.GetConnectionString("DefaultConnection");
         var migrationsAssembly = typeof(ApplicationDbContext).Assembly.FullName!;
 

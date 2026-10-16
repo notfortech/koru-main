@@ -71,6 +71,7 @@ public class ReportGeneratorController : ControllerBase
     private readonly IReportGenerationJobQueue _jobQueue;
     private readonly IDataBlendService _blendService;
     private readonly IWorkbookWriter _workbookWriter;
+    private readonly IClientAccessGuard _accessGuard;
 
     public ReportGeneratorController(
         IReportGeneratorClient reportGeneratorClient,
@@ -87,7 +88,8 @@ public class ReportGeneratorController : ControllerBase
         IBlobSasUriProvider sasUriProvider,
         IReportGenerationJobQueue jobQueue,
         IDataBlendService blendService,
-        IWorkbookWriter workbookWriter)
+        IWorkbookWriter workbookWriter,
+        IClientAccessGuard accessGuard)
     {
         _reportGeneratorClient = reportGeneratorClient;
         _agentHostClient = agentHostClient;
@@ -104,6 +106,7 @@ public class ReportGeneratorController : ControllerBase
         _jobQueue = jobQueue;
         _blendService = blendService;
         _workbookWriter = workbookWriter;
+        _accessGuard = accessGuard;
     }
 
     /// <summary>Resolves the caller's own client from the client_code claim — same pattern as
@@ -588,6 +591,14 @@ public class ReportGeneratorController : ControllerBase
         if (generation is null)
             return NotFound(ApiResponse<object>.ErrorResponse(
                 $"Report model generation {reportModelGenerationId} not found."));
+
+        // Same ownership-check requirement as every other caller-supplied-id lookup in this
+        // codebase (ReportDesignerController.ForbidIfNoAccessAsync, BlueprintsController,
+        // InsightsEngineController) -- a bare GUID here must never be trusted cross-tenant, even
+        // though it isn't guessable.
+        if (!await _accessGuard.CanAccessClientAsync(User, generation.ClientId, cancellationToken))
+            return StatusCode(StatusCodes.Status403Forbidden,
+                ApiResponse<object>.ErrorResponse("You do not have access to this report model generation."));
 
         if (generation.Status != ReportModelGenerationStatuses.Completed || string.IsNullOrWhiteSpace(generation.ResponseJson))
             return BadRequest(ApiResponse<object>.ErrorResponse(
